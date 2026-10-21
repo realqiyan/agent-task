@@ -1,0 +1,18 @@
+[Unit]
+Description=Agent Task MCP service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/absolute/path/to/agent-task
+ExecStart=/absolute/path/to/node /absolute/path/to/agent-task/dist/main.js --config %h/.config/agent-task/config.json
+EnvironmentFile=%h/.config/agent-task/service.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=default.target

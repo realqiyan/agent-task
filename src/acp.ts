@@ -1,0 +1,152 @@
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { Readable, Writable } from "node:stream";
+import { setTimeout as delay } from "node:timers/promises";
+import * as acp from "@agentclientprotocol/sdk";
+import { executorEnv } from "./config.js";
+import type { Executor } from "./model.js";
+import { readInputFile } from "./results.js";
+import { permissionDecision } from "./permissions.js";
+
+export type Progress = (kind: string, data: unknown, text?: string) => Promise<void>;
+
+/** Project only public progress. Queue every piece before yielding so concurrent notifications cannot reorder output. */
+export function progressEvents(update: acp.SessionUpdate): { kind: string; data: unknown; text?: string }[] {
+  if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
+    const result: { kind: string; data: unknown; text: string }[] = [];
+    for (let i = 0; i < update.content.text.length; i += 2000) {
+      const text = update.content.text.slice(i, i + 2000);
+      result.push({ kind: "output", data: { text }, text });
+    }
+    return result;
+  }
+  if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
+    return [{ kind: "tool", data: { id: update.toolCallId, name: update.name ?? null,
+      status: update.status ?? null, kind: update.kind ?? null } }];
+  }
+  if (update.sessionUpdate === "plan") {
+    return [{ kind: "plan", data: update.entries.slice(0, 30).map(entry => ({
+      content: entry.content.slice(0, 300), status: entry.status, priority: entry.priority,
+    })) }];
+  }
+  return [];
+}
+
+function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.pid) {
+    try { process.kill(-child.pid, signal); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  }
+}
+/** Kill the whole group even if its leader already exited; the system service also owns a cgroup. */
+export async function terminateGroup(child: ChildProcess): Promise<void> {
+  signalGroup(child, "SIGTERM");
+  await delay(300);
+  signalGroup(child, "SIGKILL");
+  child.stdin?.destroy();
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+}
+export async function openAcp(executor: Executor, signal: AbortSignal, emit: Progress, inputFiles: string[] = []) {
+  signal.throwIfAborted();
+  const child = spawn(executor.command, executor.args, {
+    cwd: executor.cwd, env: executorEnv(executor.envKeys), detached: true, stdio: ["pipe", "pipe", "pipe"],
+  });
+  const controller = new AbortController();
+  const cancel = AbortSignal.any([signal, controller.signal]);
+  let sessionId: string | undefined, connection: acp.ClientConnection | undefined;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  let wireBytes = 0;
+  const closed = new Promise<void>(resolve => child.once("close", () => resolve()));
+  child.once("error", error => controller.abort(error));
+  child.once("exit", (code, sig) => controller.abort(new Error("Agent exited: " + (sig ?? code))));
+  child.stdout.on("data", (chunk: Buffer) => {
+    wireBytes += chunk.length;
+    if (wireBytes > 8_388_608) controller.abort(new Error("ACP wire output limit exceeded"));
+  });
+  // Drain diagnostics without storing raw stderr, which can contain credentials.
+  child.stderr.on("data", (chunk: Buffer) => {
+    wireBytes += chunk.length;
+    if (wireBytes > 8_388_608) controller.abort(new Error("Agent diagnostic output limit exceeded"));
+  });
+  const abort = () => {
+    if (sessionId && connection) void connection.agent.notify(acp.methods.agent.session.cancel, { sessionId }).catch(() => {});
+    killTimer ??= setTimeout(() => {
+      connection?.close(cancel.reason);
+      void terminateGroup(child).catch(() => {});
+    }, 500);
+  };
+  cancel.addEventListener("abort", abort, { once: true });
+  let reporting = Promise.resolve();
+  const report: Progress = (...args) => {
+    const next = reporting.then(() => emit(...args));
+    reporting = next.catch(error => { controller.abort(error); });
+    return next;
+  };
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => closing ??= (async () => {
+    cancel.removeEventListener("abort", abort);
+    if (killTimer) clearTimeout(killTimer);
+    connection?.close();
+    await terminateGroup(child);
+    await closed;
+  })();
+  let busy = false;
+  const app = acp.client({ name: "agent-task" })
+    .onRequest(acp.methods.client.fs.readTextFile, async ctx => {
+      try {
+        cancel.throwIfAborted();
+        if (ctx.params.sessionId !== sessionId) throw new Error("Wrong input-file session");
+        return { content: readInputFile(executor, inputFiles, ctx.params.path, ctx.params.line ?? 1, ctx.params.limit ?? undefined) };
+      } catch (error) { controller.abort(error); throw error; }
+    })
+    .onRequest(acp.methods.client.session.requestPermission, async ctx => {
+      const request = ctx.params;
+      const response = permissionDecision(request, executor.permissionAllowlist,
+        cancel.aborted || request.sessionId !== sessionId);
+      await report("permission", { tool: request.toolCall.name ?? null, outcome: response.outcome });
+      return response;
+    })
+    .onNotification(acp.methods.client.session.update, async ctx => {
+      if (ctx.params.sessionId !== sessionId || cancel.aborted) return;
+      await Promise.all(progressEvents(ctx.params.update).map(event => report(event.kind, event.data, event.text)));
+      // Do not persist internal thought streams, raw tool inputs/outputs, or arbitrary extensions.
+    });
+  try {
+    connection = await app.connect(acp.ndJsonStream(
+      Writable.toWeb(child.stdin), Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>, { maxMessageBytes: 1_048_576 },
+    ));
+    if (cancel.aborted) abort();
+    const init = await connection.agent.request(acp.methods.agent.initialize, {
+      protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: inputFiles.length ? { fs: { readTextFile: true, writeTextFile: false } } : {},
+      clientInfo: { name: "agent-task", version: "0.1.0" },
+    });
+    cancel.throwIfAborted();
+    if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");
+    await report("agent", { name: init.agentInfo?.name ?? null, version: init.agentInfo?.version ?? null });
+    const session = await connection.agent.request(acp.methods.agent.session.new, { cwd: executor.cwd, mcpServers: [] });
+    sessionId = session.sessionId;
+    await report("session", sessionId);
+    cancel.throwIfAborted();
+    return {
+      close, closed,
+      async prompt(text: string): Promise<string> {
+        cancel.throwIfAborted();
+        if (closing || busy) throw new Error("ACP session closed or busy");
+        busy = true;
+        try {
+          const result = await connection!.agent.request(acp.methods.agent.session.prompt, {
+            sessionId: sessionId!, prompt: [{ type: "text", text }],
+          });
+          await reporting;
+          cancel.throwIfAborted();
+          return result.stopReason;
+        } finally { busy = false; }
+      },
+    };
+  } catch (error) {
+    await close();
+    if (cancel.aborted) throw cancel.reason;
+    throw error;
+  }
+}
