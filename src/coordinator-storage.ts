@@ -15,7 +15,8 @@ export async function openCoordinatorStorage(directory: string, runId: string) {
     try {
       const version = db.prepare("SELECT version FROM durable_schema WHERE singleton=1").get()?.["version"];
       if (version !== 1) throw new Error("Unsupported durable schema; explicit offline upgrade required");
-      const tasks = db.prepare("SELECT kind, json_extract(record,'$.version') AS version FROM tasks WHERE status != 'terminal'").all();
+      // SDK index columns such as kind are JSON-encoded; read the decoded record fields together.
+      const tasks = db.prepare("SELECT json_extract(record,'$.kind') AS kind, json_extract(record,'$.version') AS version FROM tasks WHERE status != 'terminal'").all();
       for (const task of tasks) {
         const expected = task["kind"] === "pi.tool" ? 2 : ["pi.generation", "pi.compaction"].includes(String(task["kind"])) ? 1 : undefined;
         if (task["version"] !== expected || expected === undefined) throw new Error("Unsupported durable task version");

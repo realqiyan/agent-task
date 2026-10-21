@@ -7,6 +7,7 @@
 使用 node:test、真实本地文件、SQLite、Node 子进程、MCP SDK 与 pi durable 1.3.0，不使用假模型、mock、stub 或模拟 provider。
 
 - 真实 durable SQLite 提交后关闭/重开，固定 requestId 找回同一提交，不同 TaskRun 存储隔离。
+- 用 SDK 提交未执行的 generation/compaction 任务，关闭后重开保留身份、pending 状态和检查点；未知类型/版本仍拒绝且不改写记录。该用例在修复前复现版本误判：SDK 的 kind 索引列是 JSON 编码字符串，预检现从 record 解码 kind 与 version。此测试不证明真实模型崩溃后续答成功。
 - 没有模型配置的真实 SDK 返回 no_model；它只验证错误路径及持久提交，不证明模型执行成功。
 - MCP 认证/Origin 边界；客户端断开后任务仍触发；无效协调模型明确失败，未派发 ACP，也不误报成功。
 - 结构化业务记录验证：问题文本的 end_turn 不自动生成交付，不解锁依赖；只接受最新 turn 的原文摘录；未完成计划不能 finish。
