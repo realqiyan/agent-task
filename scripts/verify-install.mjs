@@ -28,7 +28,10 @@ let logs = "", child, closed, serviceAttempted = false, secrets = [];
 function run(command, argv) {
   const result = spawnSync(command, argv, { cwd: workspace, env, encoding: "utf8", timeout: 1800000 });
   logs += (result.stdout ?? "") + (result.stderr ?? "");
-  assert(!result.error && result.status === 0, "Validation command failed (output withheld): " + command + " " + argv[0]);
+  const knownFailure = ["LaunchAgent is still loaded", "Command failed (diagnostics withheld; may contain credentials): launchctl bootout"]
+    .find(message => (result.stderr ?? "").split(/\r?\n/).includes(message));
+  assert(!result.error && result.status === 0, "Validation command failed (output withheld): " + command + " " + argv[0] +
+    (argv[0] === "service" ? " " + argv[1] : "") + (knownFailure ? "; " + knownFailure : ""));
   return result.stdout;
 }
 const cli = join(prefix, "bin/agent-task");
