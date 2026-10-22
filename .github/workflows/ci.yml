@@ -1,0 +1,75 @@
+name: Validate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ["22.19.0", "24.x"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: git diff --check
+
+  package:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run pack:release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-candidate
+          path: |
+            realqiyan-agent-task-*.tgz
+            scripts/verify-install.mjs
+          if-no-files-found: error
+          retention-days: 7
+
+  install:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # No checkout: only the tarball and a built-in-only acceptance script.
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+      - name: Start the Linux test user's manager (no lingering)
+        if: runner.os == 'Linux'
+        run: |
+          sudo systemctl start user@$(id -u).service
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      - name: Install, configure, start, authenticate, uninstall
+        run: node scripts/verify-install.mjs realqiyan-agent-task-*.tgz --service

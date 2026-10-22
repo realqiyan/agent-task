@@ -7,6 +7,7 @@ import { executorEnv } from "./config.js";
 import type { Executor } from "./model.js";
 import { readInputFile } from "./results.js";
 import { permissionDecision } from "./permissions.js";
+import { version } from "./version.js";
 
 export type Progress = (kind: string, data: unknown, text?: string) => Promise<void>;
 
@@ -119,7 +120,7 @@ export async function openAcp(executor: Executor, signal: AbortSignal, emit: Pro
     if (cancel.aborted) abort();
     const init = await connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: inputFiles.length ? { fs: { readTextFile: true, writeTextFile: false } } : {},
-      clientInfo: { name: "agent-task", version: "0.1.0" },
+      clientInfo: { name: "agent-task", version },
     });
     cancel.throwIfAborted();
     if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");

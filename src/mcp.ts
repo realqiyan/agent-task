@@ -5,8 +5,9 @@ import { errorText } from "./model.js";
 import { StorageError } from "./task-storage.js";
 import type { Tasks } from "./tasks.js";
 import { replySchema, taskSchema, taskUpdateSchema, taskIdSchema, taskListSchema, taskRunListSchema } from "./task-contract.js";
+import { version } from "./version.js";
 export function createMcpServer(service: Tasks, fatal: (error: unknown) => void): McpServer {
-  const server = new McpServer({ name: "agent-task", version: "0.1.0" });
+  const server = new McpServer({ name: "agent-task", version });
   function register<S extends z.ZodRawShape>(name: string, description: string, inputSchema: z.ZodObject<S>,
     execute: (input: z.output<z.ZodObject<S>>) => unknown, readOnly = true): void {
     const outputSchema = z.object({ ok: z.boolean(), data: z.unknown().optional(), error: z.string().optional() });

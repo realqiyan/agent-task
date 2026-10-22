@@ -4,3 +4,6 @@ dist/
 config.local.json
 state/
 *.sqlite*
+*.tgz
+.npmrc
+environment.json

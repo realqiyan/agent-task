@@ -69,6 +69,26 @@ Linux x64、Node 24.15.0 的本机记录：
 
 macOS 已有 launchd 实现，但没有安装、后台运行、任务执行或卸载的实机证据。待验收重点是原生认证与权限、关闭终端后的任务存续、取消及进程清理、重复卸载的数据保留；模板生成和 Linux 测试不能替代。
 
+## npm 发布候选验证
+
+2026-10-22，`realqiyan` 已将 **[@realqiyan/agent-task@0.0.1-rc.1](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.0.1-rc.1)** 发布到 npmjs。匿名 registry 查询确认版本、发布账号、MIT 许可证及 `latest=0.0.1-rc.1`。本次经授权从本机发布，没有 GitHub provenance。包内文档是打包时快照，后续证据以[仓库中的最新记录](https://github.com/realqiyan/agent-task/blob/master/docs/validation.md#npm-发布候选验证)为准。
+
+npm 因包名保护拒绝了未加 scope 的 `agent-task`：名称被判定与 `agent-base` 过于相似。维护者已明确批准使用 `@realqiyan/agent-task`，安装命令随之改为 `npm install -g @realqiyan/agent-task`，CLI 仍为 `agent-task`。未关闭账号 2FA，也未上传本机凭据。
+
+本次 Linux x64 证据：
+
+- Node 22.19.0 和 24.15.0 的 TypeScript 检查、33 项基础测试及构建均通过；真实 PTY 用例验证 setup 的确认/取消、生成独立 token 和不输出凭据。
+- [包清单门禁](../scripts/pack-release.mjs)通过：仅包含预编译 JS、Web 资源、明确列出的操作脚本、示例及公开文档；不包含源码、开发工具、凭据文件、运行数据库或本地记录。
+- Node 22.19.0 先验收 scoped tarball，再从 npmjs 按 `npm install -g @realqiyan/agent-task` 的默认版本选择全局安装到独立临时 prefix；没有指定版本或使用本地 tarball 替代 registry 安装。禁用 lifecycle scripts，不使用项目源码或 TypeScript。前台启动、Web HTTP 配置保存/重启、真实 systemd 用户服务及带认证的健康检查均通过。
+- 重复 setup 保留 token；重复卸载保留配置、凭据、任务库和工作空间。显式注册的执行端仍未授权，没有 ACP 工作或模型调用。捕获的命令、前台输出及用户服务日志未出现验证用凭据，测试服务已移除。
+- tarball 预验收使用 npm 镜像依赖；发布后验收固定使用 `https://registry.npmjs.org/`，通过独立空 npm 配置文件进行匿名安装。复用 npm 下载缓存，没有复制项目 node_modules；不构成空缓存下载时延的保证。
+
+Linux 22.19.0 的发布后 registry 安装报告：`/tmp/agent-task-npm-uM8FT5/report.json`；scoped tarball 预验收报告：`/tmp/agent-task-npm-Zgkggc/report.json`。临时目录包含验证专用随机凭据和空业务库，不上传或打包；报告仅含结果。Node 22.19.0 会输出内置 SQLite 的 experimental warning，这不是认证错误。
+
+已添加 [CI](../.github/workflows/ci.yml) 和[受控发布工作流](../.github/workflows/publish.yml)。GitHub CI、macOS LaunchAgent 及真实浏览器交互尚待实际运行证据；工作流定义不能代替验收。发布 Environment 审核和 npm 发布 secret 尚未配置，发布工作流没有实际执行；本机首发不等于 Actions 发布已经验收。
+
+操作和发布条件见[部署说明](deployment.md)、[发布说明](release.md)。此前源码安装的历史部署证据不替代本次 npm 候选包验收。
+
 ## 尚未验证
 
 - 独立单节点用例在当前接口上的真实模型复验、复杂任务的语义验收、并行分支与汇合、不同执行端之间的交付。

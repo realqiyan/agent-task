@@ -4,14 +4,14 @@
 
 ## 启用与连接
 
-新安装由 [setup](../scripts/setup.mjs) 在私有 `environment.json` 中生成独立的 `AGENT_TASK_ADMIN_TOKEN`。用本地编辑器读取该字段并在连接表单输入；它不是 MCP token，不能放进 URL、命令参数、截图或日志。
+新安装由 `agent-task setup`（[实现](../scripts/setup.mjs)）在私有 `environment.json` 中生成独立的 `AGENT_TASK_ADMIN_TOKEN`。用本地编辑器读取该字段并在连接表单输入；它不是 MCP token，不能放进 URL、命令参数、截图或日志。
 
 已有文件不会由 setup 补写或覆盖。缺少管理员令牌时，管理接口关闭。需要启用时先停服，用本地密码管理器生成独立随机令牌，离线加入该字段；令牌约束见 [main.ts](../src/main.ts)。不要复用服务或模型密钥。
 
 托管服务已绑定配置和环境文件。手动部署使用：
 
 ```bash
-npm start -- --config /absolute/private/config.json \
+agent-task start --config /absolute/private/config.json \
   --environment /absolute/private/environment.json
 ```
 

@@ -17,7 +17,8 @@
 | 配置、管理员注册和工作空间 | [config.ts](../src/config.ts)、[model.ts](../src/model.ts)、[admin.ts](../src/admin.ts)、[workspace.ts](../src/workspace.ts) | [config-preflight.test.mjs](../tests/config-preflight.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
 | 控制台 HTTP 边界与页面 | [web.ts](../src/web.ts)、[http-auth.ts](../src/http-auth.ts)、[页面模块](../src/web/) | [web.test.mjs](../tests/web.test.mjs) |
 | 配置和凭据的校验、保存与下次启动 | [settings.ts](../src/settings.ts)、[settings-contract.ts](../src/settings-contract.ts)、[private-files.ts](../src/private-files.ts)、[environment.ts](../src/environment.ts) | [settings.test.mjs](../tests/settings.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
-| 安装、启动环境与卸载 | [setup.mjs](../scripts/setup.mjs)、[install-lib.mjs](../scripts/install-lib.mjs)、[service-runner.mjs](../scripts/service-runner.mjs)、[uninstall.mjs](../scripts/uninstall.mjs) | [install.test.mjs](../tests/install.test.mjs) |
+| npm 命令、安装、启动环境与卸载 | [agent-task.mjs](../bin/agent-task.mjs)、[setup-wizard.mjs](../scripts/setup-wizard.mjs)、[setup.mjs](../scripts/setup.mjs)、[install-lib.mjs](../scripts/install-lib.mjs)、[service-runner.mjs](../scripts/service-runner.mjs)、[uninstall.mjs](../scripts/uninstall.mjs) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[verify-install.mjs](../scripts/verify-install.mjs) |
+| npm 包清单与发布门禁 | [package.json](../package.json)、[pack-release.mjs](../scripts/pack-release.mjs)、[工作流](../.github/workflows/) | [发布说明](release.md) |
 
 配置示例见 [config.example.json](../config.example.json)，命令和依赖版本见 [package.json](../package.json)。测试只说明各自验证的风险，不能把失败进程或结构化状态测试当成真实模型成功执行。
 

@@ -1,0 +1,65 @@
+name: Publish npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact reviewed version (0.0.1-rc.1); publishes with latest"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'realqiyan/agent-task' && github.ref == 'refs/heads/master' && github.actor == 'realqiyan' && github.triggering_actor == 'realqiyan'
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+          registry-url: https://registry.npmjs.org
+      - name: Check reviewed artifact version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readdirSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          import assert from "node:assert/strict";
+          const files = readdirSync(".").filter(file => /^realqiyan-agent-task-.*\.tgz$/.test(file));
+          assert.equal(files.length, 1);
+          const pkg = JSON.parse(execFileSync("tar", ["-xOf", files[0], "package/package.json"], { encoding: "utf8" }));
+          assert.equal(pkg.name, "@realqiyan/agent-task");
+          assert.equal(pkg.version, process.env.EXPECTED_VERSION);
+          assert.equal(pkg.license, "MIT");
+          assert.equal(pkg.publishConfig.tag, "latest");
+          JS
+      - name: Publish as realqiyan (no rebuild or package scripts)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test "$(npm whoami --registry=https://registry.npmjs.org)" = realqiyan
+          npm publish realqiyan-agent-task-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
+      - name: Verify public latest and default global install
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          test "$(npm view @realqiyan/agent-task dist-tags.latest --registry=https://registry.npmjs.org)" = "$EXPECTED_VERSION"
+          node scripts/verify-install.mjs --registry

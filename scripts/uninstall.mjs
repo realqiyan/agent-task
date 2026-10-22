@@ -7,7 +7,7 @@ import { argumentsFor, installRoot, readManifest, saveManifest, operationLock, d
 process.umask(0o077);
 const options = argumentsFor(process.argv.slice(2));
 if (options.help) {
-  console.log("Usage: node scripts/uninstall.mjs [--home ABSOLUTE_PRIVATE_DIR]\nStops/removes the owned service and installed components only. Keeps configuration, credentials, logs, task history and workspaces.");
+  console.log("Usage: agent-task uninstall [--home ABSOLUTE_PRIVATE_DIR]\nStops/removes the owned service and installed components only. Keeps configuration, credentials, logs, task history and workspaces.");
   process.exit(0);
 }
 let unlock, release;
@@ -24,11 +24,11 @@ try {
     const config = json(join(root, "config.json"));
     const protectedPaths = [config.dataDir, ...config.executors.flatMap(executor => [executor.cwd, ...executor.resultReadRoots])];
     // Verify the service is stopped, including any manually started owner.
-    const lockModule = join(root, "app/dist/lock.js");
+    const lockModule = join(manifest.app, "dist/lock.js");
     if (existsSync(lockModule)) {
       const { acquireLock } = await import(pathToFileURL(lockModule).href);
       release = await acquireLock(config.dataDir);
-      const storeModule = join(root, "app/dist/task-storage.js");
+      const storeModule = join(manifest.app, "dist/task-storage.js");
       if (existsSync(join(config.dataDir, "tasks.sqlite")) && existsSync(storeModule)) {
         const { TaskStore } = await import(pathToFileURL(storeModule).href);
         const store = new TaskStore(config.dataDir);
@@ -40,7 +40,8 @@ try {
     } else if (manifest.phase !== "uninstalled") throw new Error("Cannot verify data ownership; resume setup before uninstall");
     for (const path of protectedPaths.filter(Boolean)) {
       const canonical = existsSync(path) ? realpathSync(path) : path;
-      if (["app", "components"].some(name => canonical === join(root, name) || canonical.startsWith(join(root, name) + "/"))) {
+      const components = join(root, "components");
+      if (canonical === components || canonical.startsWith(components + "/")) {
         throw new Error("Installed components are referenced as data/workspace; refusing to delete them");
       }
     }

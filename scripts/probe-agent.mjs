@@ -4,6 +4,7 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { loadConfig, executorEnv } from "../dist/config.js";
 import { terminateGroup } from "../dist/acp.js";
+import { version } from "../dist/version.js";
 const [file, id] = process.argv.slice(2);
 if (!file || !id) { console.error("Usage: node scripts/probe-agent.mjs <config.json> <executorId>"); process.exit(2); }
 const config = loadConfig(file);
@@ -25,7 +26,7 @@ try {
     Writable.toWeb(child.stdin), Readable.toWeb(child.stdout), { maxMessageBytes: 1048576 }));
   const result = await connection.agent.request(acp.methods.agent.initialize, {
     protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {},
-    clientInfo: { name: "agent-task-probe", version: "0.1.0" },
+    clientInfo: { name: "agent-task-probe", version },
   });
   if (result.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");
   console.log(JSON.stringify(result, null, 2));

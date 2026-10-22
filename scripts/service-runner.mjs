@@ -10,5 +10,5 @@ if (manifest.phase !== "ready") throw new Error("Installation is not ready");
 const env = runtimeBaseEnv(manifest);
 for (const key of Object.keys(process.env)) delete process.env[key];
 Object.assign(process.env, env);
-process.argv = [process.execPath, join(root, "app/dist/main.js"), "--config", join(root, "config.json"), "--environment", join(root, "environment.json")];
+process.argv = [process.execPath, join(manifest.app, "dist/main.js"), "--config", join(root, "config.json"), "--environment", join(root, "environment.json")];
 await import("../dist/main.js");
