@@ -20,11 +20,9 @@ git diff --check
 
 尚未完成真实浏览器交互、CSP 执行和跨浏览器缓存/自动填充验收。需在浏览器核对：不可信任务文本不执行脚本或加载外链；离开、刷新和退出后无令牌残留；配置草稿不被轮询覆盖；密钥保存与配置保存的提示明确。HTTP 头检查不能替代这些验证，也不证明模型认证或 ACP 执行成功。
 
-### 本次启动与注册调整
+### 启动与注册调整
 
-Linux x64、Node 24.15.0：35 项基础测试、TypeScript 检查及 npm 包清单门禁通过。使用本次本地 tarball 执行 `node scripts/verify-install.mjs realqiyan-agent-task-0.0.1-rc.1.tgz --service`，前台和真实 systemd 用户服务的 Web/CLI 重启、认证健康检查、后台数据目录/端口/token 变量名切换及卸载保留数据均通过。未调用模型或启动 ACP 任务，未发现验证凭据进入捕获输出。报告：`/tmp/agent-task-npm-8kUj45/report.json`。
-
-本次尚未在 macOS 复验 launchd，历史 macOS 安装证据不代表新启动器已验收。四类执行端的固定命令映射和凭据过滤有本地契约测试；Claude ACP 新增注册目标没有真实握手、认证或任务证据。其他执行端的历史结果也不能代替新原生环境和审批策略下的真实复验。
+新启动器的 Linux/systemd、macOS/launchd 和 Web/CLI 重启证据见下文 [rc.2 发布验收](#001-rc2当前-latest)。四类执行端的固定命令映射和凭据过滤有本地契约测试；Claude ACP 新增注册目标没有真实握手、认证或任务证据。其他执行端的历史结果也不能代替新原生环境和审批策略下的真实复验。
 
 ## 真实模型验收入口
 
@@ -76,6 +74,18 @@ Linux x64、Node 24.15.0 的本机记录：
 macOS 的 npm 安装、LaunchAgent 启停及卸载保留数据已在 GitHub macOS ARM64 runner 验证，见下文。原生认证与权限、真实任务、终端关闭/用户注销后的存续，以及执行端取消和进程清理仍未验收；CI 服务启动不能替代这些证据。
 
 ## npm 发布候选验证
+
+### 0.0.1-rc.2（当前 latest）
+
+2026-10-22，`realqiyan` 已将 **[@realqiyan/agent-task@0.0.1-rc.2](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.0.1-rc.2)** 发布到 npmjs。匿名 registry 查询确认版本、发布账号、MIT 许可证及 `latest=0.0.1-rc.2`。本机直接发布了下述 CI 已验收的同一 tarball，没有重新构建，也没有 GitHub provenance。
+
+- [Validate 运行 39829900075](https://github.com/realqiyan/agent-task/actions/runs/39829900075)在提交 `48549ea` 上全部通过：Node 22.19.0/24.x 类型检查、35 项基础测试、构建和包清单门禁。
+- Ubuntu x64 与 macOS ARM64 的 Node 22.19.0 安装任务不 checkout 源码，使用同一 CI tarball 验证前台、真实 systemd/LaunchAgent、Web/CLI 重启、启动目录/端口/token 变量名切换、认证健康检查及卸载保留数据。macOS 证据来自 hosted runner，不包括 Intel Mac、浏览器、休眠或用户注销场景。
+- 发布后在 Linux x64、Node 24.15.0 以独立空 npm 配置匿名执行默认 `npm install -g @realqiyan/agent-task`，未指定版本或使用本地 tarball；固定使用 npmjs。前台、Web HTTP 配置、真实 systemd 用户服务、重启、健康检查和重复卸载均通过。
+
+发布后安装报告：`/tmp/agent-task-npm-vseswA/report.json`。捕获输出未发现验证凭据，测试服务已移除。没有模型调用或 ACP 任务，不替代原生认证、权限或真实模型复验。临时目录可能被系统清理；包内文档是打包时快照，后续证据以本仓库为准。
+
+### 0.0.1-rc.1（历史证据）
 
 2026-10-22，`realqiyan` 已将 **[@realqiyan/agent-task@0.0.1-rc.1](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.0.1-rc.1)** 发布到 npmjs。匿名 registry 查询确认版本、发布账号、MIT 许可证及 `latest=0.0.1-rc.1`。本次经授权从本机发布，没有 GitHub provenance。包内文档是打包时快照，后续证据以[仓库中的最新记录](https://github.com/realqiyan/agent-task/blob/master/docs/validation.md#npm-发布候选验证)为准。
 
