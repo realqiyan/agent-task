@@ -1,6 +1,6 @@
 # npm 发布
 
-npm 包为 [@realqiyan/agent-task](https://www.npmjs.com/package/@realqiyan/agent-task)，首个候选版本 **0.0.1-rc.1**，发布账号 **realqiyan**，许可证 [MIT](../LICENSE)。该候选版有意使用 **latest**，因此默认 `npm install -g @realqiyan/agent-task` 会安装它；这不表示已达到稳定或生产可用状态。实际完成情况见[验证说明](validation.md#npm-发布候选验证)。
+npm 包为 [@realqiyan/agent-task](https://www.npmjs.com/package/@realqiyan/agent-task)，发布账号 **realqiyan**，许可证 [MIT](../LICENSE)。候选版有意使用 **latest**，因此默认 `npm install -g @realqiyan/agent-task` 会安装最新候选版；这不表示已达到稳定或生产可用状态。实际完成情况见[验证说明](validation.md#npm-发布候选验证)。
 
 版本、引擎、公开文件和 registry 设置以 [package.json](../package.json) 为准。[打包门禁](../scripts/pack-release.mjs)检查实际包清单；消费者安装不运行构建脚本。不要发布工作目录、私有环境、SQLite、运行日志、模型会话或测试证据。
 
@@ -12,7 +12,7 @@ npm run check
 npm test
 git diff --check
 npm run pack:release
-npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.1.tgz --service
+npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.2.tgz --service
 ```
 
 安装验证在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；再配置、前台启动、调用 Web 配置接口、重启、运行用户服务、进行认证健康检查并卸载。验证脚本不调用模型或启动 ACP 工作。仅 `--service` 会触及真实用户服务管理器，遇到已有同名服务会拒绝，不覆盖其他安装。
@@ -31,21 +31,21 @@ npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.1.tgz --service
 1. 配置必要审核人及仅允许 master 部署。若要禁止发起人自审，需要另一个审核人。
 2. 在该 Environment 中添加 **NPM_TOKEN**，使用 realqiyan 的最小发布权限、短有效期 token，允许直接发布（publish and stage），并满足 npm 的 2FA/自动发布策略。不要放入仓库文件或普通 CI 环境。
 3. 核查分支保护及工作流修改权限。工作流中的 environment 名称本身**不自动创建审核保护**。
-4. 将代码审查后提交到 master，再在 Actions 选择 Publish npm，输入 `0.0.1-rc.1`。包尚不存在时，应确认账号允许首次创建此名称；认证/权限失败须停止，不能换账号或跳过验证。
+4. 将代码审查后提交到 master，再在 Actions 选择 Publish npm，输入已验收的版本（本次为 `0.0.1-rc.2`）。包尚不存在时，应确认账号允许首次创建此名称；认证/权限失败须停止，不能换账号或跳过验证。
 
 发布命令明确传 `--tag latest --access public --provenance`。provenance 依赖 GitHub OIDC，不代替 npm 发布授权。当前流程要求 Environment token 并检查 `npm whoami` 为 realqiyan；不宣称已经配置 npm trusted publishing。
 
-## 经授权的本机首次发布
+## 经授权的本机发布
 
-若由维护者明确批准在本机首次发布，须先完成同样的候选验收；这条路径没有 GitHub provenance。通过 npm 官方交互登录，不通过聊天、命令参数或 Git 传递 token：
+若由维护者明确批准在本机发布，须先完成同样的候选验收；这条路径没有 GitHub provenance。通过 npm 官方交互登录，不通过聊天、命令参数或 Git 传递 token：
 
 ```bash
 npm login --registry=https://registry.npmjs.org
 npm whoami --registry=https://registry.npmjs.org
 # 必须确认输出 realqiyan，再发布已检查的 tarball：
-npm publish ./realqiyan-agent-task-0.0.1-rc.1.tgz --ignore-scripts \
+npm publish ./realqiyan-agent-task-0.0.1-rc.2.tgz --ignore-scripts \
   --access public --tag latest --registry=https://registry.npmjs.org
-npm view @realqiyan/agent-task@0.0.1-rc.1 version license --registry=https://registry.npmjs.org
+npm view @realqiyan/agent-task@0.0.1-rc.2 version license --registry=https://registry.npmjs.org
 npm view @realqiyan/agent-task dist-tags --json --registry=https://registry.npmjs.org
 node scripts/verify-install.mjs --registry --service
 ```

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Exact reviewed version (0.0.1-rc.1); publishes with latest"
+        description: "Exact reviewed package version; publishes with latest"
         required: true
         type: string
 

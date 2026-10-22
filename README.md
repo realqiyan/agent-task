@@ -20,7 +20,7 @@
 
 ## 使用入口
 
-Linux/macOS，Node.js **22.19+**。安装包自带运行产物，无需克隆或编译。`0.0.1-rc.1` 已发布并使用 `latest`；平台验收范围见[发布证据](docs/validation.md#npm-发布候选验证)。
+Linux/macOS，Node.js **22.19+**。安装包自带运行产物，无需克隆或编译。`latest` 指向的已发布版本及平台验收范围见[发布证据](docs/validation.md#npm-发布候选验证)。
 
 ```bash
 npm install -g @realqiyan/agent-task
