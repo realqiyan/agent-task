@@ -15,7 +15,7 @@ const child = spawn(executor.command, executor.args, {
 child.stderr.resume();
 let connection;
 const closed = new Promise(resolve => child.once("close", resolve));
-child.once("error", error => { console.error(error.message); connection?.close(error); });
+child.once("error", error => { console.error("ACP executable could not start"); connection?.close(error); });
 const timer = setTimeout(() => {
   connection?.close(new Error("ACP initialization timed out"));
   void terminateGroup(child);
@@ -29,5 +29,5 @@ try {
   });
   if (result.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");
   console.log(JSON.stringify(result, null, 2));
-} catch (error) { console.error(error.message); process.exitCode = 1; }
+} catch { console.error("ACP initialize failed; inspect native configuration in a private terminal. No task was sent."); process.exitCode = 1; }
 finally { clearTimeout(timer); connection?.close(); await terminateGroup(child); await closed; }

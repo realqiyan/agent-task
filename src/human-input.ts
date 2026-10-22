@@ -46,7 +46,7 @@ export function applyReply(run: TaskRun, input: InputReply, now: number): boolea
 
 export function coordinatorInput(run: TaskRun): CoordinatorInput {
   const question = run.questions.findLast(value => value.reply !== null);
-  if (!question) return { requestId: "run:" + run.id, content: "Coordinate this task run. Start by reading inspect_run." };
+  if (!question) return { requestId: "run:" + run.id, content: "Advance this task run using its caller-defined DAG. Start by reading inspect_run." };
   return { requestId: "reply:" + question.id,
     content: "Human facts for the existing task run. Read inspect_run; preserve the committed plan and accepted deliveries. This reply grants no permissions or authorization to retry uncertain effects.\n" +
       JSON.stringify({ questionId: question.id, nodeId: question.nodeId, question: question.question,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { realpath, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,7 +18,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
   assert.equal(executor.unattendedApproved, true, "Review native executor permissions before approving unattended use");
   if (dependencies) assert.equal(process.env.AGENT_TASK_E2E_ALLOW_RESULT_READ, "1",
     "This case requires explicit approval: AGENT_TASK_E2E_ALLOW_RESULT_READ=1 and native read-only tools for the generated result directory");
-  const dir = await mkdtemp(join(tmpdir(), "agent-task-real-e2e-"));
+  const dir = await mkdtemp(join(await realpath(tmpdir()), "agent-task-real-e2e-"));
   t.diagnostic(`Private E2E evidence retained at ${dir}`);
   const log = (event, data = {}) => appendFileSync(join(dir, "events.jsonl"),
     JSON.stringify({ at: new Date().toISOString(), event, ...data }) + "\n", { mode: 0o600 });
@@ -83,7 +83,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
     return result.structuredContent.data;
   }
   async function create(input) {
-    const task = await call("task_create", { requestKey: "real-e2e", name: "Real ACP E2E", executorIds: [executor.id],
+    const task = await call("task_create", { requestKey: "real-e2e", name: "Real ACP E2E",
       schedule: { type: "now" }, maxRunSeconds: 300, maxSteps: 35, maxNodeTurns: 3, ...input });
     taskId = task.id;
     log("task_created", { taskId });

@@ -9,11 +9,13 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && node scripts/copy-web.mjs",
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/deepseek-acp.test.mjs",
     "test:e2e:human": "npm run build && node scripts/run-pi-human-e2e.mjs",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "setup": "node scripts/setup.mjs",
+    "uninstall:service": "node scripts/uninstall.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.0",

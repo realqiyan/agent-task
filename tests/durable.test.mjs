@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -11,7 +11,7 @@ import { CompactionTask, GenerationTask, Harness, createRegistry } from "@earend
 import { openCoordinatorStorage } from "../dist/coordinator-storage.js";
 
 test("pending SDK tasks reopen unchanged while unsupported versions and kinds still fail closed", async t => {
-  const dir = mkdtempSync(join(tmpdir(), "agent-task-pending-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-pending-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const id = randomUUID(), path = join(dir, "coordinators", id + ".sqlite");
   const open = async () => Harness.open(await openCoordinatorStorage(dir, id), { models: createModels(), registry: createRegistry() }, context);
@@ -49,7 +49,7 @@ test("pending SDK tasks reopen unchanged while unsupported versions and kinds st
 });
 
 test("real durable SQLite preserves a submission across reopen and isolates task runs", async t => {
-  const dir = mkdtempSync(join(tmpdir(), "agent-task-durable-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-durable-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const id = randomUUID();
   const open = async runId => Harness.open(await openCoordinatorStorage(dir, runId), { models: createModels(), registry: createRegistry() }, context);

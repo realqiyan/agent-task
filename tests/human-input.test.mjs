@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TaskStore } from "../dist/task-storage.js";
@@ -17,12 +17,12 @@ import { Harness, createRegistry } from "@earendil-works/pi-durable";
 import { createModels } from "@earendil-works/pi-ai/models";
 
 function fixture(t) {
-  const dir = mkdtempSync(join(tmpdir(), "agent-task-input-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-input-"));
   const executor = executorSchema.parse({ id: "local", command: "/usr/bin/false", cwd: dir, unattendedApproved: true });
   const coordinate = createCoordinator(dir, { provider: "openai", model: "not-a-real-model" });
   let store = new TaskStore(dir), service = new Tasks(store, [executor], new Results(dir), openExecution, coordinate, error => { throw error; });
   const input = taskSchema.parse({ requestKey: "task", name: "task", prompt: "Inspect authorized data",
-    executorIds: ["local"], schedule: { type: "interval", startAt: new Date(Date.now() + 1000).toISOString(), seconds: 60 } });
+    nodes: [{ id: "A", prompt: "Inspect", executorId: "local" }], schedule: { type: "interval", startAt: new Date(Date.now() + 1000).toISOString(), seconds: 60 } });
   const task = service.create(input);
   service.trigger(task.nextAt);
   const run = service.runs(task.id).items[0];
@@ -49,6 +49,7 @@ test("waiting survives reopen, skips overlapping slots, and a persisted reply re
   assert.equal(f.service.runs(f.task.id).items.at(-1).status, "skipped");
   await f.reopen();
   assert.equal(f.service.run(f.run.id).status, "waiting_input");
+  assert.deepEqual(f.service.run(f.run.id).nodes, f.run.nodes);
   f.service.reply(reply(f.run, question));
   const input = coordinatorInput(f.service.run(f.run.id));
   await f.reopen(); // Business reply committed before durable admission.
@@ -110,7 +111,6 @@ test("expired and cancelled questions reject replies without reactivating work",
 test("missing ACP sessions and expired retention never authorize replay after a human answer", async t => {
   for (const mode of ["reply", "recovery", "retention"]) {
     const f = fixture(t);
-    f.service.plan(f.run.id, [{ id: "A", prompt: "Inspect", executorId: "local", dependsOn: [], maxRunSeconds: 600 }]);
     // Persisted state contract only; no fabricated ACP server.
     const run = f.store.run(f.run.id);
     run.nodes[0].status = "awaiting_review"; run.nodes[0].startedAt = new Date().toISOString();

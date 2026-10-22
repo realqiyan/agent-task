@@ -7,7 +7,7 @@ import { executorSchema, identifier, timestamp } from "./model.js";
 import { nodeSchema, questionSchema, taskSchema } from "./task-contract.js";
 
 const definitionSchema = z.object({
-  id: z.string().uuid(), input: taskSchema, executors: z.record(identifier, executorSchema),
+  id: z.string().uuid(), input: taskSchema, workspace: z.string().nullable(), executors: z.record(identifier, executorSchema),
   status: z.enum(["active", "paused", "cancelled", "completed", "expired"]),
   nextAt: z.number().finite().nullable(), createdAt: timestamp,
 }).strict();
@@ -24,10 +24,10 @@ const roundSchema = z.object({
   nodes: z.array(z.object({
     id: z.string().uuid(), definition: nodeSchema,
     status: z.enum(["pending", "running", "awaiting_review", "succeeded", "failed", "blocked", "interrupted"]),
-    inputFiles: z.array(z.string()), resultFile: z.string().nullable(), result: z.string().nullable(), acceptance: z.string().nullable(),
+    workspace: z.string().nullable(), inputFiles: z.array(z.string()), resultFile: z.string().nullable(), result: z.string().nullable(), acceptance: z.string().nullable(),
     turns: z.array(z.object({ prompt: z.string(), output: z.string(), stopReason: z.string().nullable() }).strict()),
     error: z.string().nullable(), sessionId: z.string().nullable(), startedAt: timestamp.nullable(), eventCount: z.number().int().nonnegative(),
-  }).strict()).max(20),
+  }).strict()).min(1).max(20),
 }).strict();
 
 export class StorageError extends Error {}

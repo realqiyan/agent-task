@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { loadConfig } from "./config.js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadConfig, validateConfig } from "./config.js";
+import { replacePrivateText } from "./private-files.js";
 import { executorSchema } from "./model.js";
 import { acquireLock } from "./lock.js";
 
@@ -10,7 +11,7 @@ if (!configPath || !["register", "list"].includes(action ?? "") || (action === "
   throw new Error("Usage: node dist/admin.js list CONFIG | register CONFIG PROFILE.json (service stopped)");
 }
 const path = resolve(configPath), config = loadConfig(path);
-const release = await acquireLock(config.dataDir, () => { process.exitCode = 1; });
+const release = await acquireLock(config.dataDir);
 try {
   if (action === "list") {
     console.log(JSON.stringify(config.executors.map(({ id, command, args, cwd, envKeys, permissionAllowlist, unattendedApproved, resultReadRoots }) =>
@@ -19,17 +20,8 @@ try {
     const profile = executorSchema.parse(JSON.parse(readFileSync(resolve(profilePath!), "utf8")));
     if (config.executors.some(item => item.id === profile.id)) throw new Error("Executor ID already registered; edit reviewed config while stopped to replace");
     config.executors.push(profile);
-    const temporary = path + ".register-" + process.pid;
-    writeFileSync(temporary, JSON.stringify(config, null, 2) + "\n", { mode: 0o600, flag: "wx" });
-    try {
-      // Validate the complete candidate, including token separation and canonical local paths, before publication.
-      loadConfig(temporary);
-      const fd = openSync(temporary, "r");
-      try { fsyncSync(fd); } finally { closeSync(fd); }
-      renameSync(temporary, path);
-    } catch (error) { unlinkSync(temporary); throw error; }
-    const dir = openSync(dirname(path), "r");
-    try { fsyncSync(dir); } finally { closeSync(dir); }
+    // Validate the complete candidate before publication, using the same rules as startup and the console.
+    replacePrivateText(path, JSON.stringify(validateConfig(config), null, 2) + "\n");
     console.log(JSON.stringify({ registered: profile.id, transport: "stdio" }));
   }
 } finally { await release(); }

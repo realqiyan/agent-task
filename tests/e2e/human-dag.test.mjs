@@ -18,22 +18,35 @@ function quantityOf(value) {
   return Number(value);
 }
 
+// Check known arithmetic facts without imposing a delivery schema; the coordinator reviews their meaning.
+function verifyQuoteFacts(text, marker, expectedNumbers) {
+  assert.ok(text.includes(marker), "Delivery must preserve the upstream marker");
+  const numbers = (text.replaceAll(marker, "").match(/-?\b\d+(?:,\d{3})*(?:\.\d+)?\b/g) ?? [])
+    .map(value => Number(value.replaceAll(",", "")));
+  for (const expected of expectedNumbers) assert.ok(numbers.includes(expected), `Delivery must include ${expected}`);
+}
+
 // The model and ACP execution are real. Only the human-role input may be a declared test fixture.
 test("real three-node DAG waits for human quantity and resumes without replay", { timeout: answerFile ? manualWaitMs + 420000 : 420000 }, async t => {
   if (answerFile) assert.equal(await readAnswer(), undefined, "Use a new answer file; stale answers must not be replayed");
   else quantityOf(fixtureQuantity);
   const e2e = await startE2e(t, { dependencies: true });
   const marker = `QUOTE-${randomBytes(8).toString("hex")}`;
-  const task = await e2e.create({ inputWaitSeconds: 1800, prompt: `Run a three-node quotation workflow using only executor ${e2e.executor.id}. This is arithmetic, not a purchase or external transaction.
-Commit exactly these nodes once, with maxRunSeconds=180 each:
-1. price, no dependencies: calculate 17 * 19 and return only JSON {"marker":"${marker}","unitPrice":323}. Independently calculate the number rather than blindly copy it.
-2. total, dependsOn=["price"]: read the accepted upstream JSON using the read tool. The purchase quantity is deliberately absent from this committed prompt. On the FIRST turn return exactly NEED_QUANTITY, not a quote. On a follow-up in this SAME session, use the explicitly supplied human quantity, multiply the actual upstream unitPrice by it, and return only JSON with marker, unitPrice, quantity, total.
-3. audit, dependsOn=["total"]: use the read tool to read the accepted total delivery, independently check its arithmetic, and return only JSON with marker, unitPrice, quantity, total, verified=true if correct. Do not request more human input.
-Execution order is mandatory: run price and accept its exact JSON delivery. BEFORE starting total or audit, call request_input alone, asking the human for an integer quantity from 1 to 9, with completedWork identifying the accepted price. Do not guess a quantity, use a default, or start downstream work before the human reply. There must be no open ACP session when waiting.
-After the human reply, preserve this plan and price delivery. Start total with its committed prompt (no message on first converse). Its NEED_QUANTITY response is NOT a delivery: send the human quantity in a second converse to the SAME total session, without requesting human input again. Accept the computed JSON only after checking it. Then run audit and accept its JSON, and finish_run. No writes, shell commands, network tools or side effects; only read the supplied upstream result files. Keep all acceptance excerpts as complete JSON objects without Markdown fences.` });
+  const task = await e2e.create({ inputWaitSeconds: 1800,
+    nodes: [
+      { id: "price", executorId: e2e.executor.id, dependsOn: [], maxRunSeconds: 180,
+        prompt: `Calculate 17 * 19 as a unit price. Report the marker ${marker} and the computed unit price in readable text; no fixed format is required. No tools or external side effects are needed.` },
+      { id: "total", executorId: e2e.executor.id, dependsOn: ["price"], maxRunSeconds: 180,
+        prompt: "Read the accepted upstream delivery using the read tool. The purchase quantity is deliberately absent from this prompt. On the FIRST turn ask for the missing quantity in your own words, not a completed quote. On a follow-up in this SAME session, use the explicitly supplied human quantity and multiply the actual upstream unit price by it. Report the upstream marker, unit price, quantity and total in readable text; no fixed format is required. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
+      { id: "audit", executorId: e2e.executor.id, dependsOn: ["total"], maxRunSeconds: 180,
+        prompt: "Use the read tool to read the accepted total delivery and independently check its arithmetic. Report the upstream marker, unit price, quantity, total and your verification conclusion in your own words; no fixed format is required. Do not request more human input. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
+    ],
+    prompt: `Advance the supplied three-node quotation DAG. This is arithmetic, not a purchase or external transaction.
+Execution order is mandatory: run price and accept its delivery only after checking the calculation and marker. BEFORE starting total or audit, call request_input alone, asking the human for an integer quantity from 1 to 9, with completedWork identifying the accepted price. Do not guess a quantity, use a default, or start downstream work before the human reply. There must be no open ACP session when waiting.
+After the human reply, preserve this plan and price delivery. Start total with its committed prompt (no message on first converse). Its first response asking for quantity is NOT a delivery: send the human quantity in a second converse to the SAME total session, without requesting human input again. Accept the computed quote only after checking it. Then run audit, review and accept its verification, and finish_run. No writes, shell commands, network tools or side effects; only read the supplied upstream result files. Deliveries are read by agents, not parsed as records. Accept substantive text that preserves the required facts; do not request reformatting for prose, Markdown, headings or explanatory text.` });
   const waiting = await e2e.waitFor("waiting_input");
   await e2e.save("waiting-run.json", waiting);
-  assert.equal(waiting.nodes.length, 3);
+  assert.deepEqual(waiting.nodes.map(node => node.definition), task.input.nodes);
   const byName = run => Object.fromEntries(run.nodes.map(node => [node.definition.id, node]));
   const before = byName(waiting);
   assert.deepEqual(Object.keys(before).sort(), ["audit", "price", "total"]);
@@ -41,7 +54,7 @@ After the human reply, preserve this plan and price delivery. Start total with i
   assert.deepEqual(before.total.definition.dependsOn, ["price"]);
   assert.deepEqual(before.audit.definition.dependsOn, ["total"]);
   await verifyDelivery(before.price);
-  assert.deepEqual(JSON.parse(before.price.result), { marker, unitPrice: 323 });
+  verifyQuoteFacts(before.price.result, marker, [323]);
   for (const node of [before.total, before.audit]) {
     assert.equal(node.status, "pending"); assert.equal(node.sessionId, null); assert.equal(node.turns.length, 0);
   }
@@ -97,10 +110,9 @@ After the human reply, preserve this plan and price delivery. Start total with i
   }
   assert.equal(new Set(run.nodes.map(node => node.sessionId)).size, 3);
   assert.equal(after.total.turns.length, 2, "Total must clarify within the same ACP session");
-  assert.match(after.total.turns[0].output, /\bNEED_QUANTITY\b/);
+  assert.ok(after.total.turns[0].output.trim(), "The clarification turn must have an actual response");
   assert.ok(!after.total.turns[0].output.includes(after.total.result), "The quantity request must not be accepted as the computed delivery");
-  assert.deepEqual(JSON.parse(after.total.result), { marker, unitPrice: 323, quantity, total: 323 * quantity });
-  assert.deepEqual(JSON.parse(after.audit.result), { marker, unitPrice: 323, quantity, total: 323 * quantity, verified: true });
+  for (const node of [after.total, after.audit]) verifyQuoteFacts(node.result, marker, [323, quantity, 323 * quantity]);
   assert.deepEqual(after.total.inputFiles, [after.price.resultFile]);
   assert.deepEqual(after.audit.inputFiles, [after.total.resultFile]);
   assert.deepEqual(await e2e.call("task_run_reply", reply), run, "A duplicate reply after completion must not reactivate the run");

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Task 控制台</title>
+  <link rel="stylesheet" href="/admin/style.css">
+  <script type="module" src="/admin/app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Agent Task</h1>
+    <p>本机管理控制台 · 配置保存后须手动重启</p>
+    <form id="login" autocomplete="off">
+      <label>管理员令牌
+        <input id="token" type="password" required maxlength="256" autocomplete="off" spellcheck="false">
+      </label>
+      <button type="submit">连接</button>
+      <p class="hint">使用独立的 AGENT_TASK_ADMIN_TOKEN，不是 MCP token。令牌只保存在当前页面内存中。</p>
+    </form>
+    <nav id="navigation" hidden>
+      <button id="tasks" type="button">任务</button>
+      <button id="settings" type="button">配置</button>
+      <button id="refresh" type="button">刷新</button>
+      <button id="logout" type="button">退出</button>
+    </nav>
+    <p id="status" role="status"></p>
+  </header>
+  <p id="notice" role="alert"></p>
+  <main id="view"></main>
+  <noscript>控制台需要 JavaScript；没有加载任何第三方脚本。</noscript>
+</body>
+</html>

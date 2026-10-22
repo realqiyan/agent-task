@@ -1,9 +1,12 @@
 import express from "express";
-import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import type { Server } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { loadConfig } from "./config.js";
+import { ADMIN_TOKEN_ENV, loadConfig } from "./config.js";
+import { baseEnvironment, readEnvironment } from "./environment.js";
+import { bearerVerifier } from "./http-auth.js";
+import { Settings } from "./settings.js";
+import { createWebRouter } from "./web.js";
 import { acquireLock } from "./lock.js";
 import { createMcpServer } from "./mcp.js";
 import { errorText } from "./model.js";
@@ -15,22 +18,33 @@ import { createCoordinator } from "./coordinator.js";
 
 process.umask(0o077);
 const args = process.argv.slice(2);
-if (args.length !== 2 || args[0] !== "--config") {
-  console.error("Usage: node dist/main.js --config /absolute/path/config.json");
+if (args[0] !== "--config" || (args.length !== 2 && !(args.length === 4 && args[2] === "--environment"))) {
+  console.error("Usage: node dist/main.js --config /absolute/path/config.json [--environment /absolute/private/path/environment.json]");
   process.exit(2);
 }
-const config = loadConfig(resolve(args[1]!));
+const configPath = resolve(args[1]!), environmentPath = args[3] ? resolve(args[3]) : undefined;
+const base = baseEnvironment(process.env);
+if (environmentPath) {
+  const environment = readEnvironment(environmentPath);
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, base, environment);
+}
+const config = loadConfig(configPath);
 const token = process.env[config.tokenEnv];
 if (!token || token.length < 32) throw new Error(config.tokenEnv + " must contain a token of at least 32 characters");
-const expected = Buffer.from("Bearer " + token);
+const authorized = bearerVerifier(token), adminToken = process.env[ADMIN_TOKEN_ENV];
+if (adminToken !== undefined && (!environmentPath || !/^[!-~]{32,256}$/.test(adminToken) || adminToken === token)) {
+  throw new Error("Console requires --environment and a distinct administrator token of 32–256 visible ASCII characters");
+}
 let http: Server | undefined;
-let tasks: Tasks | undefined, taskStore: TaskStore | undefined;
+let tasks: Tasks | undefined, taskStore: TaskStore | undefined, settings: Settings | undefined;
 let release: (() => Promise<void>) | undefined;
 let shutting: Promise<void> | undefined;
 const connections = new Set<() => Promise<void>>();
 function shutdown(code: number): Promise<void> {
   process.exitCode = Math.max(process.exitCode ? Number(process.exitCode) : 0, code);
   return shutting ??= (async () => {
+    settings?.close();
     try { await tasks?.close(); }
     catch (error) { console.error(errorText(error)); process.exitCode = 1; }
     for (const close of connections) await close().catch(() => {});
@@ -41,23 +55,28 @@ function shutdown(code: number): Promise<void> {
 }
 const fatal = (error: unknown) => { console.error(errorText(error)); void shutdown(1); };
 try {
-  release = await acquireLock(config.dataDir, () => fatal(new Error("Process lock lost")));
+  release = await acquireLock(config.dataDir);
   taskStore = new TaskStore(config.dataDir);
   tasks = new Tasks(taskStore, config.executors, new Results(config.dataDir), openExecution,
     config.coordinator ? createCoordinator(config.dataDir, config.coordinator) : undefined, fatal);
   const app = express();
-  app.disable("x-powered-by");
-  app.use((req, res, next) => {
-    const host = req.headers.host?.split(":")[0];
-    if (req.headers.origin || (host !== "127.0.0.1" && host !== "localhost")) { res.status(403).end(); return; }
-    const actual = Buffer.from(req.headers.authorization ?? "");
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-      res.status(401).set("WWW-Authenticate", "Bearer").end(); return;
-    }
+  app.disable("x-powered-by"); app.disable("etag");
+  app.use((_req, res, next) => {
     if (shutting) { res.status(503).end(); return; }
     next();
   });
-  app.use(express.json({ limit: "512kb" }));
+  if (adminToken && environmentPath) {
+    settings = new Settings(configPath, environmentPath, config, base, process.env);
+    app.use("/admin", createWebRouter(tasks, settings, adminToken, fatal));
+  }
+  app.use("/mcp", (req, res, next) => {
+    const suffix = req.socket.localPort === 80 ? "" : ":" + req.socket.localPort;
+    if (req.headers.origin !== undefined || !["127.0.0.1" + suffix, "localhost" + suffix].includes(req.headers.host ?? "")) { res.status(403).end(); return; }
+    if (!authorized(req.headers.authorization)) {
+      res.status(401).set("WWW-Authenticate", "Bearer").end(); return;
+    }
+    next();
+  }, express.json({ limit: "512kb" }));
   app.post("/mcp", async (req, res) => {
     const server = createMcpServer(tasks!, fatal);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
@@ -83,7 +102,8 @@ try {
   });
   tasks.start();
   const address = http.address();
-  console.log(JSON.stringify({ event: "ready", url: "http://127.0.0.1:" + (typeof address === "object" && address ? address.port : config.port) + "/mcp" }));
+  const origin = "http://127.0.0.1:" + (typeof address === "object" && address ? address.port : config.port);
+  console.log(JSON.stringify({ event: "ready", url: origin + "/mcp", consoleUrl: settings ? origin + "/admin/" : null }));
   process.once("SIGINT", () => { void shutdown(0); });
   process.once("SIGTERM", () => { void shutdown(0); });
 } catch (error) { fatal(error); }

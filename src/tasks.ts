@@ -4,8 +4,9 @@ import type { Executor } from "./model.js";
 import type { Coordinate, CoordinatorActions, ExecutionSession, InputReply, NodeDefinition, NodeRun, OpenExecution, Task, TaskInput, TaskRun } from "./task-model.js";
 import { TaskStore, StorageError } from "./task-storage.js";
 import { Results } from "./results.js";
-import { nodeSchema, questionSchema, replySchema, taskSchema } from "./task-contract.js";
+import { questionSchema, replySchema, taskSchema, taskUpdateSchema } from "./task-contract.js";
 import { applyReply, askInput, coordinatorInput, waitingFailure } from "./human-input.js";
+import { resolveWorkspace, checkWorkspace } from "./workspace.js";
 
 export function validateGraph(nodes: NodeDefinition[]): void {
   const graph = new Map(nodes.map(node => [node.id, node]));
@@ -20,6 +21,10 @@ export function validateGraph(nodes: NodeDefinition[]): void {
     visiting.add(id); node.dependsOn.forEach(visit); visiting.delete(id); visited.add(id);
   };
   nodes.forEach(node => visit(node.id));
+}
+
+function authorizedProfile(snapshot: Executor | undefined, current: Executor | undefined): boolean {
+  return Boolean(snapshot && current?.unattendedApproved && JSON.stringify(current) === JSON.stringify(snapshot));
 }
 
 type ActiveSession = { runId: string; handle: ExecutionSession; timer: ReturnType<typeof setTimeout>; closing: boolean };
@@ -53,6 +58,13 @@ export class Tasks {
     return { executors: this.executors.map(({ id, cwd, permissionAllowlist, unattendedApproved, resultReadRoots }) =>
       ({ id, transport: "stdio", cwd, permissionAllowlist: [...permissionAllowlist], unattendedApproved, resultReadRoots: [...resultReadRoots] })) };
   }
+  executorImpact(profiles: readonly Executor[]) {
+    this.check();
+    return this.store.definitions().filter(task =>
+      ((task.nextAt !== null && ["active", "paused"].includes(task.status)) || this.store.activeRounds(task.id).length > 0) &&
+      Object.entries(task.executors).some(([id, snapshot]) => !authorizedProfile(snapshot, profiles.find(profile => profile.id === id))))
+      .map(task => ({ id: task.id, name: task.input.name }));
+  }
   create(value: TaskInput, now = Date.now()): Task {
     this.check();
     if (!this.coordinate) throw new Error("Coordinator is not configured");
@@ -63,17 +75,18 @@ export class Tasks {
       return existing;
     }
     if (all.length >= 1000) throw new Error("Task definition limit reached");
-    if (new Set(input.executorIds).size !== input.executorIds.length) throw new Error("Duplicate executor IDs");
+    validateGraph(input.nodes);
     const executors: Record<string, Executor> = Object.create(null) as Record<string, Executor>;
-    for (const id of input.executorIds) {
-      const executor = this.executors.find(item => item.id === id);
-      if (!executor?.unattendedApproved) throw new Error("Executor not found or not approved: " + id);
-      executors[id] = structuredClone(executor);
+    for (const node of input.nodes) {
+      const executor = this.executors.find(item => item.id === node.executorId);
+      if (!executor?.unattendedApproved) throw new Error("Executor not found or not approved: " + node.executorId);
+      if (node.dependsOn.length) this.results.authorize(executor);
+      executors[node.executorId] = structuredClone(executor);
     }
     const nextAt = initialTime(input.schedule, now);
     if (input.schedule.type !== "now" && nextAt < now) throw new Error("Schedule must start in the future");
     if (input.expiresAt && Date.parse(input.expiresAt) <= Math.max(now, nextAt)) throw new Error("Deadline must follow first trigger");
-    const task: Task = { id: randomUUID(), input, executors, nextAt, status: "active", createdAt: iso(now) };
+    const task: Task = { id: randomUUID(), input, workspace: input.workspace === undefined ? null : resolveWorkspace(input.workspace), executors, nextAt, status: "active", createdAt: iso(now) };
     this.store.commit(task); return task;
   }
   get(id: string) { this.check(); return this.store.get(id); }
@@ -86,8 +99,10 @@ export class Tasks {
     this.check(); const all = this.store.rounds(taskId);
     return { items: all.slice(after, after + limit), next: all.length > after + limit ? after + limit : null };
   }
-  change(id: string, action: "pause" | "resume" | "cancel", now = Date.now()): Task {
-    this.check(); const task = this.store.get(id);
+  update(value: { id: string; action: "pause" | "resume" | "cancel" }, now = Date.now()): Task {
+    this.check();
+    const { id, action } = taskUpdateSchema.parse(value);
+    const task = this.store.get(id);
     if (action === "cancel") { task.status = "cancelled"; task.nextAt = null; }
     else {
       if (task.nextAt === null || ["cancelled", "expired"].includes(task.status)) throw new Error("Task has no future schedule");
@@ -115,7 +130,10 @@ export class Tasks {
         : now - at > GRACE_MS ? "Late slot skipped" : null;
       const run: TaskRun = { id: randomUUID(), taskId: task.id, scheduledAt: at, status: reason ? "skipped" : "running",
         createdAt: iso(now), finishedAt: reason ? iso(now) : null, error: reason, skippedCount: reason ? count : count - 1,
-        steps: 0, coordinatorStartedAt: null, summary: null, nodes: [], questions: [], waitedMs: 0 };
+        steps: 0, coordinatorStartedAt: null, summary: null, questions: [], waitedMs: 0,
+        nodes: task.input.nodes.map(definition => ({ id: randomUUID(), definition, status: reason ? "blocked" : "pending",
+          workspace: null, inputFiles: [], resultFile: null, result: null, acceptance: null,
+          turns: [], error: reason, sessionId: null, startedAt: null, eventCount: 0 })) };
       task.nextAt = schedule.type === "interval" ? at + schedule.seconds * 1000 : null;
       if (task.nextAt === null) task.status = "completed";
       this.store.commit(task, run);
@@ -134,7 +152,6 @@ export class Tasks {
         if (run.steps >= task.input.maxSteps) { this.end(id, "failed", "Coordinator step budget exhausted"); throw new Error("Step budget exhausted"); }
         run.steps++; this.store.commit(undefined, run);
       },
-      plan: nodes => { current(); this.plan(id, nodes); },
       converse: (node, message) => { current(); return this.converse(id, node, message); },
       accept: (node, turn, result, reason) => { current(); return this.accept(id, node, turn, result, reason); },
       ask: request => {
@@ -159,23 +176,8 @@ export class Tasks {
   }
   private authorized(task: Task, id: string): Executor {
     const executor = task.executors[id], current = this.executors.find(value => value.id === id);
-    if (!executor || !current?.unattendedApproved || JSON.stringify(current) !== JSON.stringify(executor)) throw new Error("Executor authorization revoked or changed");
+    if (!executor || !authorizedProfile(executor, current)) throw new Error("Executor authorization revoked or changed");
     return executor;
-  }
-  plan(id: string, values: NodeDefinition[]): void {
-    const run = this.running(id), task = this.store.get(run.taskId);
-    const nodes = values.map(node => nodeSchema.parse(node)); validateGraph(nodes);
-    if (run.nodes.length) {
-      if (JSON.stringify(run.nodes.map(node => node.definition)) === JSON.stringify(nodes)) return;
-      throw new Error("Plan already committed; replacing execution identities is not allowed");
-    }
-    for (const node of nodes) {
-      const executor = this.authorized(task, node.executorId);
-      if (node.dependsOn.length) this.results.authorize(executor);
-    }
-    run.nodes = nodes.map(definition => ({ id: randomUUID(), definition, status: "pending", inputFiles: [], resultFile: null,
-      result: null, acceptance: null, turns: [], error: null, sessionId: null, startedAt: null, eventCount: 0 }));
-    this.store.commit(undefined, run);
   }
   async converse(id: string, nodeId: string, message?: string): Promise<NodeRun> {
     const run = this.running(id), task = this.store.get(run.taskId), node = this.node(run, nodeId);
@@ -190,6 +192,8 @@ export class Tasks {
     if (node.status === "pending") {
       if (task.input.expiresAt && Date.now() >= Date.parse(task.input.expiresAt)) throw new Error("Deadline reached before node start");
       if (this.sessions.size >= 8) throw new Error("ACP session capacity reached; accept existing results first");
+      node.workspace = task.workspace ?? executor.cwd;
+      checkWorkspace(node.workspace);
       node.inputFiles = parents.map(parent => parent.resultFile!);
     } else if (!this.sessions.has(node.id)) {
       this.end(id, "interrupted", "ACP session unavailable; no replay"); throw new Error("ACP session unavailable");
@@ -204,9 +208,10 @@ export class Tasks {
     try {
       let active = this.sessions.get(node.id);
       if (!active) {
-        const handle = this.openExecution({ executor, inputFiles: node.inputFiles },
+        const handle = this.openExecution({ executor: { ...executor, cwd: node.workspace! }, inputFiles: node.inputFiles },
           (kind, data, output) => this.record(id, nodeId, kind, data, output), () => {
             this.running(id); this.authorized(task, node.definition.executorId);
+            checkWorkspace(node.workspace!);
             if (task.input.expiresAt && Date.now() >= Date.parse(task.input.expiresAt)) throw new Error("Deadline reached before ACP start");
           });
         active = { runId: id, handle, closing: false,

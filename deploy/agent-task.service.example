@@ -1,13 +1,12 @@
 [Unit]
-Description=Agent Task MCP service
+Description=Agent Task local service
 StartLimitIntervalSec=60
 StartLimitBurst=3
 
 [Service]
 Type=simple
 WorkingDirectory=/absolute/path/to/agent-task
-ExecStart=/absolute/path/to/node /absolute/path/to/agent-task/dist/main.js --config %h/.config/agent-task/config.json
-EnvironmentFile=%h/.config/agent-task/service.env
+ExecStart=/absolute/path/to/node /absolute/path/to/agent-task/dist/main.js --config %h/.config/agent-task/config.json --environment %h/.config/agent-task/environment.json
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

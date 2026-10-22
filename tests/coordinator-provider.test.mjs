@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configSchema, loadConfig } from "../dist/config.js";
@@ -36,7 +36,7 @@ test("compatible config requires explicit endpoint, credential reference and val
 });
 
 test("loadConfig isolates DeepSeek and custom coordinator credentials from token and executors", () => {
-  const directory = mkdtempSync(join(tmpdir(), "coordinator-config-"));
+  const directory = mkdtempSync(join(realpathSync(tmpdir()), "coordinator-config-"));
   const path = join(directory, "config.json");
   try {
     for (const [coordinator, key] of [[{ provider: "deepseek", model: "deepseek-flash" }, "DEEPSEEK_API_KEY"],

@@ -8,12 +8,14 @@ test("real DeepSeek coordinator → MCP task → ACP delivery → accepted compl
   const e2e = await startE2e(t);
   const marker = `E2E-${randomBytes(8).toString("hex")}`;
   const task = await e2e.create({
-    prompt: `Create exactly one node using executor ${e2e.executor.id}. Ask that executor to calculate 17 * 19 and reply with ${marker} and the result. No filesystem, shell, network tools or external side effects are needed. Accept its actual response only if it contains the marker and the correct result, then finish the run. Do not request human input.`,
+    prompt: `Advance the supplied calculation node. Accept its actual response only if it contains ${marker} and the correct result of 17 * 19, then finish the run. Do not request human input.`,
+    nodes: [{ id: "calc", executorId: e2e.executor.id, dependsOn: [], maxRunSeconds: 180,
+      prompt: `Calculate 17 * 19 and reply with ${marker} and the result. No filesystem, shell, network tools or external side effects are needed.` }],
     maxRunSeconds: 180, maxSteps: 12, maxNodeTurns: 2,
   });
   const run = await e2e.waitFor("succeeded");
   await e2e.save("run.json", run);
-  assert.equal(run.nodes.length, 1);
+  assert.deepEqual(run.nodes.map(node => node.definition), task.input.nodes);
   const node = run.nodes[0];
   await verifyDelivery(node);
   assert.ok(run.summary && node.result.includes(marker) && /\b323\b/.test(node.result));

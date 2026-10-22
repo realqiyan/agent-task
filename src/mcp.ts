@@ -4,10 +4,7 @@ import { z } from "zod";
 import { errorText } from "./model.js";
 import { StorageError } from "./task-storage.js";
 import type { Tasks } from "./tasks.js";
-import { replySchema, taskSchema } from "./task-contract.js";
-
-const page = { after: z.number().int().nonnegative().default(0), limit: z.number().int().min(1).max(100).default(20) };
-const id = z.string().uuid();
+import { replySchema, taskSchema, taskUpdateSchema, taskIdSchema, taskListSchema, taskRunListSchema } from "./task-contract.js";
 export function createMcpServer(service: Tasks, fatal: (error: unknown) => void): McpServer {
   const server = new McpServer({ name: "agent-task", version: "0.1.0" });
   function register<S extends z.ZodRawShape>(name: string, description: string, inputSchema: z.ZodObject<S>,
@@ -31,22 +28,20 @@ export function createMcpServer(service: Tasks, fatal: (error: unknown) => void)
     z.object({}).strict(), () => service.status());
   register("executor_list", "Registered local ACP execution profiles and authorization settings. Approval filtering is not a sandbox.",
     z.object({}).strict(), () => service.listExecutors());
-  register("task_create", "Create an intelligent task. A durable coordinator plans a DAG and delegates to approved ACP executors. No uncertain-effect retries.", taskSchema,
+  register("task_create", "Create a task with a caller-defined DAG in nodes. Each node selects an administrator-registered ACP executorId. The coordinator advances this fixed DAG, reviews deliveries and requests missing user facts; it does not plan new nodes. Optional workspace selects an existing absolute directory; otherwise each executor uses its registered cwd. Path checks do not grant permissions; no uncertain-effect retries.", taskSchema,
     input => service.create(input), false);
-  register("task_list", "List persisted task definitions.", z.object(page).strict(),
+  register("task_list", "List persisted task definitions.", taskListSchema,
     input => service.list(input.after, input.limit));
-  register("task_get", "Get task goal, allowed executor profiles, budgets and schedule.", z.object({ id }).strict(), input => service.get(input.id));
-  for (const action of ["pause", "resume", "cancel"] as const) {
-    register("task_" + action, "Control future task triggers, not active rounds.", z.object({ id }).strict(),
-      input => service.change(input.id, action), false);
-  }
+  register("task_get", "Get task goal, caller-defined DAG and assigned executor profiles, canonical workspace (null means executor cwd defaults), budgets and schedule.", taskIdSchema, input => service.get(input.id));
+  register("task_update", "Pause, resume or cancel future triggers only; resume never catches up. To change a task, cancel it and create a new task. Use task_run_cancel to stop an active run; cancellation does not roll back external effects.",
+    taskUpdateSchema, input => service.update(input), false);
   register("task_run_list", "List independent task runs with node progress and blocking reasons.",
-    z.object({ ...page, taskId: id.optional() }).strict(), input => service.runs(input.taskId, input.after, input.limit));
-  register("task_run_get", "Get the committed plan, ACP turns, accepted deliveries, blocking questions and errors for one task run.",
-    z.object({ id }).strict(), input => service.run(input.id));
+    taskRunListSchema, input => service.runs(input.taskId, input.after, input.limit));
+  register("task_run_get", "Get the committed plan, selected node workspaces, ACP turns, accepted deliveries, blocking questions and errors for one task run.",
+    taskIdSchema, input => service.run(input.id));
   register("task_run_reply", "Answer a persisted question on the same task run. Deduplicated by requestKey; no permission escalation or uncertain-effect replay.",
     replySchema, input => service.reply(input), false);
   register("task_run_cancel", "Stop this task run; external effects are not rolled back.",
-    z.object({ id }).strict(), input => service.cancel(input.id), false);
+    taskIdSchema, input => service.cancel(input.id), false);
   return server;
 }

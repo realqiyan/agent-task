@@ -1,5 +1,5 @@
 // Explicit, billable acceptance runner. Uses only the caller-approved DeepSeek test key.
-import { mkdtempSync, mkdirSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
@@ -22,7 +22,7 @@ const locate = command => {
   catch { throw new Error(`Missing ${command}. Install Pi and npm install -g pi-acp@0.0.34 --ignore-scripts before E2E`); }
 };
 const pi = locate("pi"), acp = locate("pi-acp");
-const dir = mkdtempSync(join(tmpdir(), "agent-task-pi-human-"));
+const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-pi-human-"));
 const home = join(dir, "home"), agent = join(home, ".pi", "agent");
 mkdirSync(agent, { recursive: true, mode: 0o700 });
 const settings = { defaultProvider: "deepseek", defaultModel: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash",

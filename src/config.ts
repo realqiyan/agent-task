@@ -3,6 +3,7 @@ import { basename, delimiter, isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { executorSchema } from "./model.js";
 
+export const ADMIN_TOKEN_ENV = "AGENT_TASK_ADMIN_TOKEN";
 const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 const baseEnvKeys = ["PATH", "LANG", "LC_ALL", "TZ"];
 const modelId = z.string().min(1).max(200);
@@ -39,11 +40,17 @@ export function coordinatorCredentialEnv(config: NonNullable<Config["coordinator
     case "openai-compatible": return config.apiKeyEnv;
   }
 }
-export function loadConfig(path: string): Config {
-  const config = configSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+export function loadConfig(path: string, environment: NodeJS.ProcessEnv = process.env): Config {
+  let value: unknown;
+  try { value = JSON.parse(readFileSync(path, "utf8")); } catch { throw new Error("Cannot read configuration JSON"); }
+  return validateConfig(value, environment);
+}
+export function validateConfig(value: unknown, environment: NodeJS.ProcessEnv = process.env): Config {
+  const config = configSchema.parse(value);
   if (!isAbsolute(config.dataDir)) throw new Error("dataDir must be absolute");
   const coordinatorKey = config.coordinator ? coordinatorCredentialEnv(config.coordinator) : undefined;
-  if ([...baseEnvKeys, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", coordinatorKey].includes(config.tokenEnv)) throw new Error("tokenEnv must be separate from base environment and model credentials");
+  if ([...baseEnvKeys, ADMIN_TOKEN_ENV, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", coordinatorKey].includes(config.tokenEnv)) throw new Error("tokenEnv must be separate from base environment, administrator and model credentials");
+  if (coordinatorKey === ADMIN_TOKEN_ENV) throw new Error("Administrator token must not be used as a model credential");
   const ids = new Set<string>();
   for (const executor of config.executors) {
     if (ids.has(executor.id)) throw new Error("Duplicate executor ID");
@@ -52,8 +59,8 @@ export function loadConfig(path: string): Config {
     if (basename(executor.command) === "pi") {
       throw new Error(`Executor ${executor.id}: pi CLI is not an ACP server (including --mode rpc). Install pi-acp with npm install -g pi-acp@0.0.34 and configure its absolute executable path.`);
     }
-    const piCommandOverride = executor.envKeys.includes("PI_ACP_PI_COMMAND") && process.env.PI_ACP_PI_COMMAND;
-    if (basename(executor.command) === "pi-acp" && !piCommandOverride && !(process.env.PATH ?? "").split(delimiter).some(directory => {
+    const piCommandOverride = executor.envKeys.includes("PI_ACP_PI_COMMAND") && environment.PI_ACP_PI_COMMAND;
+    if (basename(executor.command) === "pi-acp" && !piCommandOverride && !(environment.PATH ?? "").split(delimiter).some(directory => {
       if (!isAbsolute(directory)) return false;
       try {
         const file = join(directory, "pi");
@@ -74,7 +81,7 @@ export function loadConfig(path: string): Config {
     for (const root of executor.resultReadRoots) {
       if (!isAbsolute(root) || realpathSync(root) !== root || !statSync(root).isDirectory()) throw new Error("Result read roots must be canonical absolute directories");
     }
-    if (executor.envKeys.includes(config.tokenEnv)) throw new Error("Service token must not be passed to executors");
+    if (executor.envKeys.includes(config.tokenEnv) || executor.envKeys.includes(ADMIN_TOKEN_ENV)) throw new Error("Service or administrator token must not be passed to executors");
     if (coordinatorKey && executor.envKeys.includes(coordinatorKey)) throw new Error("Coordinator credential must not be passed to executors; use separate executor credentials");
   }
   return config;
@@ -83,7 +90,7 @@ export function loadConfig(path: string): Config {
 export function executorEnv(keys: string[], source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const key of new Set(["PATH", "LANG", "LC_ALL", "TZ", ...keys])) {
-    if (source[key] !== undefined) env[key] = source[key];
+    if (key !== ADMIN_TOKEN_ENV && source[key] !== undefined) env[key] = source[key];
   }
   return env;
 }

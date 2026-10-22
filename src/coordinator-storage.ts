@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { SqliteStorage } from "@earendil-works/pi-durable/storage/sqlite";
 import { openNodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 
-/** The caller holds the application flock. New files initialize; existing files must already match the pinned SDK. */
+/** The caller holds the application directory lock. New files initialize; existing files must already match the pinned SDK. */
 export async function openCoordinatorStorage(directory: string, runId: string) {
   if (!/^[a-f0-9-]{36}$/.test(runId)) throw new Error("Invalid run identity");
   const root = join(directory, "coordinators");
