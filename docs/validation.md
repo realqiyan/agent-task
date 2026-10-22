@@ -67,7 +67,7 @@ Linux x64、Node 24.15.0 的本机记录：
 
 证据目录：`/tmp/agent-task-deploy-verified`、`/tmp/agent-task-deploy-final`；工作空间：`/tmp/agent-task-deploy-workspace`；空认证 HOME：`/tmp/agent-task-deploy-native-home`。临时文件可能被系统清理，长期留存需管理员安全归档。
 
-macOS 已有 launchd 实现，但没有安装、后台运行、任务执行或卸载的实机证据。待验收重点是原生认证与权限、关闭终端后的任务存续、取消及进程清理、重复卸载的数据保留；模板生成和 Linux 测试不能替代。
+macOS 的 npm 安装、LaunchAgent 启停及卸载保留数据已在 GitHub macOS ARM64 runner 验证，见下文。原生认证与权限、真实任务、终端关闭/用户注销后的存续，以及执行端取消和进程清理仍未验收；CI 服务启动不能替代这些证据。
 
 ## npm 发布候选验证
 
@@ -85,7 +85,9 @@ npm 因包名保护拒绝了未加 scope 的 `agent-task`：名称被判定与 `
 
 Linux 22.19.0 的发布后 registry 安装报告：`/tmp/agent-task-npm-uM8FT5/report.json`；scoped tarball 预验收报告：`/tmp/agent-task-npm-Zgkggc/report.json`。临时目录包含验证专用随机凭据和空业务库，不上传或打包；报告仅含结果。Node 22.19.0 会输出内置 SQLite 的 experimental warning，这不是认证错误。
 
-已添加 [CI](../.github/workflows/ci.yml) 和[受控发布工作流](../.github/workflows/publish.yml)。GitHub CI、macOS LaunchAgent 及真实浏览器交互尚待实际运行证据；工作流定义不能代替验收。发布 Environment 审核和 npm 发布 secret 尚未配置，发布工作流没有实际执行；本机首发不等于 Actions 发布已经验收。
+同日，[GitHub Validate 运行 39813423968](https://github.com/realqiyan/agent-task/actions/runs/39813423968)在提交 `461a1b0` 上全部通过：Node 22.19.0/24.x 检查、基础测试、构建及包清单门禁；Ubuntu x64 与 macOS ARM64 的 Node 22.19.0 安装任务均不 checkout 源码，使用 CI tarball 完成前台、Web HTTP 配置、真实 systemd/LaunchAgent、认证健康检查和卸载保留数据验收。报告确认输出无验证凭据，没有模型或 ACP 工作。macOS 的证据来自 hosted runner，不包括 Intel Mac、交互式终端/浏览器、休眠或用户注销场景。
+
+[受控发布工作流](../.github/workflows/publish.yml)已推送，但发布 Environment 审核和 npm 发布 secret 尚未配置，发布作业没有实际执行；本机首发和 Validate 通过不等于 Actions 发布已经验收。
 
 操作和发布条件见[部署说明](deployment.md)、[发布说明](release.md)。此前源码安装的历史部署证据不替代本次 npm 候选包验收。
 
@@ -94,7 +96,7 @@ Linux 22.19.0 的发布后 registry 安装报告：`/tmp/agent-task-npm-uM8FT5/r
 - 独立单节点用例在当前接口上的真实模型复验、复杂任务的语义验收、并行分支与汇合、不同执行端之间的交付。
 - 各执行端原生权限、认证续期、沙箱、技能/MCP 发现及文件访问；其他模型和 OpenAI 兼容端点的协议差异。
 - 真实模型崩溃窗口、重复收费和预算行为；人工等待期间保留真实 ACP 会话的续答、并发回复、长时间等待及重启。
-- 系统级强杀、断电、业务库磁盘满、Linux 注销/重启与 cgroup 清理，以及 macOS 部署和监督。
+- 系统级强杀、断电、业务库磁盘满、Linux 注销/重启与 cgroup 清理，以及 macOS 真实任务的长期监督和原生权限。
 - SDK 升级、历史数据转换，以及执行中修改计划等当前未开放能力。
 
 实现和操作入口见[代码导航](technical-design.md)、[部署说明](deployment.md)。
