@@ -21,7 +21,7 @@ try {
   readManifest(root);
   unlock = operationLock(root);
   const manifest = readManifest(root);
-  deactivate(manifest);
+  await deactivate(manifest);
   manifest.serviceInstalled = false; saveManifest(root, manifest);
   unlockLauncher = acquireLauncherLock(root);
   if (existsSync(join(root, "launch.json"))) {

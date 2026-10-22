@@ -138,7 +138,7 @@ export function activate(manifest) {
     run("launchctl", ["print", domain + "/" + label]);
   }
 }
-export function deactivate(manifest) {
+export async function deactivate(manifest) {
   const definition = verifyServiceFile(manifest);
   if (!existsSync(definition.path)) {
     if (manifest.serviceInstalled) throw new Error("Managed service file is missing; verify it is unloaded before cleanup");
@@ -153,7 +153,12 @@ export function deactivate(manifest) {
     const target = `gui/${process.getuid()}/${label}`;
     const active = spawnSync("launchctl", ["print", target], { stdio: "ignore" });
     if (active.status === 0) run("launchctl", ["bootout", target]);
-    if (spawnSync("launchctl", ["print", target], { stdio: "ignore" }).status === 0) throw new Error("LaunchAgent is still loaded");
+    // bootout can return while launchd still reports the job during graceful shutdown.
+    const deadline = Date.now() + 50_000;
+    while (spawnSync("launchctl", ["print", target], { stdio: "ignore" }).status === 0) {
+      if (Date.now() >= deadline) throw new Error("LaunchAgent is still loaded");
+      await delay(100);
+    }
   }
   unlinkSync(definition.path);
   if (manifest.platform === "linux") run("systemctl", ["--user", "daemon-reload"], { env: serviceEnv() });

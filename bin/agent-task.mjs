@@ -40,7 +40,7 @@ try {
       const unlock = lib.operationLock(root);
       try {
         const manifest = lib.readManifest(root);
-        lib.deactivate(manifest);
+        await lib.deactivate(manifest);
         manifest.serviceInstalled = false;
         lib.saveManifest(root, manifest);
         console.log("Owned service removed; configuration, credentials, components and data preserved.");
