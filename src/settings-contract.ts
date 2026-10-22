@@ -3,7 +3,7 @@ import { configSchema } from "./config.js";
 
 export const settingsConfigSchema = z.object({
   editToken: z.string().uuid(),
-  config: configSchema.pick({ executors: true, coordinator: true }),
+  config: configSchema,
 }).strict();
 const credential = {
   editToken: z.string().uuid(),

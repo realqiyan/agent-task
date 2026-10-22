@@ -13,7 +13,8 @@ import { Tasks } from "../dist/tasks.js";
 import { Results } from "../dist/results.js";
 import { executorSchema } from "../dist/model.js";
 import { taskSchema } from "../dist/task-contract.js";
-import { openExecution } from "../dist/node-execution.js";
+import { createExecution } from "../dist/node-execution.js";
+const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
 import { createCoordinator } from "../dist/coordinator.js";
 
 async function until(fn) {
@@ -30,10 +31,10 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
   const token = randomBytes(32).toString("hex");
   await writeFile(config, JSON.stringify({ dataDir: join(dir, "state"), port: 0,
     coordinator: { provider: "openai", model: "not-a-real-model" },
-    executors: [{ id: "local", command: "/usr/bin/false", cwd: dir, unattendedApproved: true, resultReadRoots: [dir] }] }));
+    executors: [{ id: "local", type: "codex", cwd: dir, unattendedApproved: true }] }), { mode: 0o600 });
   // Persist a real waiting run before starting the HTTP owner; no model or ACP output is fabricated.
   const state = join(dir, "state"), store = new TaskStore(state);
-  const executor = executorSchema.parse({ id: "local", command: "/usr/bin/false", cwd: dir, unattendedApproved: true, resultReadRoots: [dir] });
+  const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
   const service = new Tasks(store, [executor], new Results(state), openExecution,
     createCoordinator(state, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
   const waitingTask = service.create(taskSchema.parse({ requestKey: "waiting", name: "waiting", prompt: "Inspect",
@@ -42,7 +43,9 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
   const waitingRun = service.runs(waitingTask.id).items[0];
   const question = service.actions(waitingRun.id).ask({ question: "Which source?", completedWork: "None" });
   await service.close(); store.close();
-  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", config], {
+  const environmentPath = join(dir, "environment.json");
+  await writeFile(environmentPath, JSON.stringify({ AGENT_TASK_TOKEN: token }), { mode: 0o600 });
+  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", config, "--environment", environmentPath], {
     env: { PATH: process.env.PATH, AGENT_TASK_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "", stderr = "";

@@ -5,6 +5,7 @@ import { dirname, join, resolve, isAbsolute, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { controlService } from "../dist/launcher.js";
 
 export const packageRoot = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -13,6 +14,7 @@ export const unit = "agent-task.service";
 export const packages = {
   pi: ["@earendil-works/pi-coding-agent@1.3.0", "pi-acp@0.0.34"],
   codex: ["@agentclientprotocol/codex-acp@2.2.2"],
+  claude: ["@zed-industries/claude-agent-acp@0.23.1"],
   opencode: ["opencode-ai@1.19.3"],
 };
 export function argumentsFor(argv) {
@@ -85,13 +87,8 @@ export function saveManifest(root, manifest) {
   }
 }
 export function runtimeBaseEnv(manifest) {
-  // Do not inherit shell/service-manager credentials, loader hooks or executor overrides.
-  return { HOME: manifest.home, PATH: [join(manifest.root, "components/node_modules/.bin"), dirname(manifest.node), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":"), LANG: "en_US.UTF-8" };
-}
-export function runtimeEnv(manifest) {
-  const values = json(join(manifest.root, "environment.json"));
-  if (!values || typeof values !== "object" || Array.isArray(values) || Object.entries(values).some(([key, value]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || ["__proto__", "constructor", "prototype"].includes(key) || typeof value !== "string" || value.includes("\0"))) throw new Error("Invalid environment.json");
-  return { ...runtimeBaseEnv(manifest), ...values };
+  // Capture the OS user environment; the runtime isolates private service values before worker creation.
+  return { ...process.env, HOME: manifest.home, PATH: [join(manifest.root, "components/node_modules/.bin"), dirname(manifest.node), process.env.PATH ?? "", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":"), LANG: process.env.LANG ?? "en_US.UTF-8" };
 }
 const xml = value => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 const systemdQuote = value => '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%").replaceAll("$", "$$") + '"';
@@ -99,33 +96,24 @@ export function serviceDefinition(manifest) {
   const runner = join(manifest.app, "scripts/service-runner.mjs");
   if (manifest.platform === "linux") return {
     path: join(manifest.home, ".config/systemd/user", unit),
-    text: `[Unit]\nDescription=Agent Task (managed by setup)\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=${[manifest.node, runner, manifest.root].map(systemdQuote).join(" ")}\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=20\nKillMode=control-group\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
+    text: `[Unit]\nDescription=Agent Task (managed by setup)\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=${[manifest.node, runner, manifest.root].map(systemdQuote).join(" ")}\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
   };
   return { path: join(manifest.home, "Library/LaunchAgents", label + ".plist"), text:
-    `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>${label}</string>\n<key>ProgramArguments</key><array>${[manifest.node, runner, manifest.root].map(value => `<string>${xml(value)}</string>`).join("")}</array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n<key>ThrottleInterval</key><integer>5</integer>\n<key>ExitTimeOut</key><integer>20</integer>\n<key>AbandonProcessGroup</key><false/>\n<key>Umask</key><integer>63</integer>\n<key>StandardOutPath</key><string>${xml(join(manifest.root, "service.log"))}</string>\n<key>StandardErrorPath</key><string>${xml(join(manifest.root, "service-error.log"))}</string>\n</dict></plist>\n` };
+    `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>${label}</string>\n<key>ProgramArguments</key><array>${[manifest.node, runner, manifest.root].map(value => `<string>${xml(value)}</string>`).join("")}</array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n<key>ThrottleInterval</key><integer>5</integer>\n<key>ExitTimeOut</key><integer>45</integer>\n<key>AbandonProcessGroup</key><false/>\n<key>Umask</key><integer>63</integer>\n</dict></plist>\n` };
 }
 export function serviceEnv() {
   const keys = ["HOME", "PATH", "LANG", "LC_ALL", "DBUS_SESSION_BUS_ADDRESS"];
   return { ...Object.fromEntries(keys.filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]])),
     XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid()}` };
 }
-export async function checkHealth(config, env, waitMs = 5000) {
-  const token = env[config.tokenEnv ?? "AGENT_TASK_TOKEN"];
-  if (!token || token.length < 32) throw new Error("A valid service token is required for the health check");
+export async function checkHealth(home, waitMs = 5000) {
   const deadline = Date.now() + waitMs;
   do {
-    try {
-      const response = await fetch(`http://127.0.0.1:${config.port}/mcp`, {
-        method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "service_status", arguments: {} } }),
-        signal: AbortSignal.timeout(1000),
-      });
-      const body = await response.json();
-      if (response.ok && body.result?.structuredContent?.ok && body.result.structuredContent.data?.running) return;
-    } catch { /* Startup can take several seconds; never log the authenticated request. */ }
+    try { return await controlService(home, "status"); }
+    catch { /* The launcher may still be starting; never log credentials. */ }
     await delay(200);
   } while (Date.now() < deadline);
-  throw new Error("Authenticated MCP health check failed; inspect the service manager and private configuration");
+  throw new Error("Authenticated MCP health check failed; inspect private logs and startup files");
 }
 export function verifyServiceFile(manifest) {
   const definition = serviceDefinition(manifest);

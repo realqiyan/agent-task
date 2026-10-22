@@ -4,6 +4,8 @@ import { realpathSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configSchema, loadConfig } from "../dist/config.js";
+import { executorEnvironment } from "../dist/executor-runtime.js";
+import { validateServiceEnvironment } from "../dist/environment.js";
 import { createCoordinatorProvider } from "../dist/coordinator-provider.js";
 import { createModels } from "@earendil-works/pi-ai/models";
 
@@ -42,13 +44,18 @@ test("loadConfig isolates DeepSeek and custom coordinator credentials from token
     for (const [coordinator, key] of [[{ provider: "deepseek", model: "deepseek-flash" }, "DEEPSEEK_API_KEY"],
       [compatible, "COORDINATOR_KEY"]]) {
       const base = { dataDir: directory, coordinator };
-      writeFileSync(path, JSON.stringify({ ...base, tokenEnv: key }));
+      writeFileSync(path, JSON.stringify({ ...base, tokenEnv: key }), { mode: 0o600 });
       assert.throws(() => loadConfig(path), /tokenEnv must be separate/);
-      const executor = { id: "agent", command: "/usr/bin/false", cwd: directory, envKeys: [key] };
-      writeFileSync(path, JSON.stringify({ ...base, executors: [executor] }));
-      assert.throws(() => loadConfig(path), /Coordinator credential must not be passed/);
-      writeFileSync(path, JSON.stringify({ ...base, executors: [{ ...executor, envKeys: ["EXECUTOR_KEY"] }] }));
-      assert.equal(loadConfig(path).coordinator.provider, coordinator.provider);
+      const executor = { id: "agent", type: "codex", cwd: directory };
+      writeFileSync(path, JSON.stringify({ ...base, executors: [executor] }), { mode: 0o600 });
+      const config = loadConfig(path);
+      assert.equal(config.coordinator.provider, coordinator.provider);
+      assert.equal(executorEnvironment({ [key]: "private" }, {}, config)[key], undefined);
+      const environment = { AGENT_TASK_TOKEN: "s".repeat(64), AGENT_TASK_ADMIN_TOKEN: "a".repeat(64) };
+      for (const credential of Object.values(environment)) {
+        assert.throws(() => validateServiceEnvironment(config, { ...environment, [key]: credential }), /distinct/);
+      }
+      assert.equal(validateServiceEnvironment(config, { ...environment, [key]: "m".repeat(64) }).token, environment.AGENT_TASK_TOKEN);
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

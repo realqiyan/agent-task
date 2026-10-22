@@ -1,5 +1,5 @@
 // Explicit, billable acceptance runner. Uses only the caller-approved DeepSeek test key.
-import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, symlinkSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
@@ -30,12 +30,12 @@ const settings = { defaultProvider: "deepseek", defaultModel: process.env.AGENT_
   retry: { enabled: false, provider: { maxRetries: 0 } }, compaction: { enabled: false } };
 writeFileSync(join(agent, "settings.json"), JSON.stringify(settings), { mode: 0o600 });
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
-const wrapper = join(dir, "pi-read-only");
+const nativeBin = join(dir, "native-bin"); mkdirSync(nativeBin, { mode: 0o700 });
+symlinkSync(acp, join(nativeBin, "pi-acp"));
+const wrapper = join(nativeBin, "pi");
 writeFileSync(wrapper, `#!/bin/sh\nunset DEEPSEEK_API_KEY AGENT_TASK_E2E_TOKEN\nexec ${quote(pi)} --tools read --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve --offline "$@"\n`, { mode: 0o700 });
 const profile = join(dir, "profile.json");
-writeFileSync(profile, JSON.stringify({ id: "pi-e2e", command: acp, args: [], cwd: dir,
-  envKeys: ["HOME", "PI_CODING_AGENT_DIR", "PI_ACP_PI_COMMAND", "PI_TELEMETRY"],
-  unattendedApproved: true, permissionAllowlist: [], resultReadRoots: [] }), { mode: 0o600 });
+writeFileSync(profile, JSON.stringify({ id: "pi-e2e", type: "pi", note: "read-only acceptance", cwd: dir, unattendedApproved: true }), { mode: 0o600 });
 console.log(`Private acceptance logs: ${dir}`);
 console.log("Real models; billable. Native Pi read tool only (not an OS sandbox). Shared approved test key, not independent-account isolation.");
 console.log(options["--answer-file"] ? `Manual answer file: ${resolve(options["--answer-file"])}` : `Human-role input source: declared fixture quantity=${quantity}`);
@@ -58,8 +58,8 @@ try {
     try {
       child = spawn(process.execPath, ["--test", "--test-concurrency=1", "tests/e2e/human-dag.test.mjs"], {
         detached: true,
-        env: { PATH: process.env.PATH, LANG: process.env.LANG, HOME: home, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
-          PI_CODING_AGENT_DIR: agent, PI_ACP_PI_COMMAND: wrapper, PI_TELEMETRY: "0",
+        env: { PATH: nativeBin + ":" + process.env.PATH, LANG: process.env.LANG, HOME: home, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+          PI_CODING_AGENT_DIR: agent, PI_TELEMETRY: "0",
           AGENT_TASK_E2E_EXECUTOR: profile, AGENT_TASK_E2E_ALLOW_RESULT_READ: "1", AGENT_TASK_E2E_MODEL: settings.defaultModel,
           AGENT_TASK_E2E_QUANTITY: String(quantity),
           ...(options["--answer-file"] ? { AGENT_TASK_E2E_ANSWER_FILE: resolve(options["--answer-file"]) } : {}),

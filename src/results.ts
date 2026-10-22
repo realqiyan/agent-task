@@ -1,15 +1,12 @@
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, fstatSync, fsyncSync, realpathSync, statSync, accessSync, constants } from "node:fs";
 import { join, relative, isAbsolute } from "node:path";
 import { OUTPUT_LIMIT } from "./model.js";
-import type { Executor } from "./model.js";
 
-/** Exact per-run file allowlist intersected with administrator-granted roots. Never offers general filesystem access. */
-export function readInputFile(executor: Executor, allowed: readonly string[], path: string, line = 1, limit?: number): string {
+/** Exact upstream files within dataDir/results, never a general dataDir read capability. */
+export function readInputFile(root: string, allowed: readonly string[], path: string, line = 1, limit?: number): string {
   if (!allowed.includes(path) || realpathSync(path) !== path) throw new Error("Input file is not authorized for this run");
-  if (!executor.resultReadRoots.some(root => {
-    const rel = relative(realpathSync(root), path);
-    return !rel.startsWith("..") && !isAbsolute(rel);
-  })) throw new Error("Input file outside authorized read scope");
+  const rel = relative(root, path);
+  if (realpathSync(root) !== root || !rel || rel.startsWith("..") || isAbsolute(rel)) throw new Error("Input file outside result scope");
   if (!Number.isInteger(line) || line < 1 || (limit !== undefined && (!Number.isInteger(limit) || limit < 1))) throw new Error("Invalid line range");
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -26,19 +23,14 @@ export class Results {
   readonly root: string;
   constructor(directory: string) {
     mkdirSync(join(directory, "results"), { recursive: true, mode: 0o700 });
-    this.root = realpathSync(join(directory, "results"));
+    this.root = join(directory, "results");
+    if (realpathSync(this.root) !== this.root) throw new Error("Result root must not be a symlink");
   }
   private inside(root: string, path: string): boolean {
     const rel = relative(root, path);
     return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
   }
-  authorize(executor: Executor): void {
-    if (!executor.resultReadRoots.some(root => this.inside(realpathSync(root), this.root))) {
-      throw new Error("Executor " + executor.id + " lacks administrator-approved result read scope");
-    }
-  }
-  readable(path: string, executor: Executor): void {
-    this.authorize(executor);
+  readable(path: string): void {
     if (realpathSync(path) !== path || !this.inside(this.root, path) || !statSync(path).isFile()) throw new Error("Invalid result file");
     accessSync(path, constants.R_OK);
     // Actually open it. Native agent sandbox access remains an administrator-reviewed prerequisite.

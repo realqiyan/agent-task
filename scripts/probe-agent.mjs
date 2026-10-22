@@ -2,7 +2,10 @@
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { loadConfig, executorEnv } from "../dist/config.js";
+import { loadConfig } from "../dist/config.js";
+import { executorCommand, executorEnvironment } from "../dist/executor-runtime.js";
+import { readEnvironment } from "../dist/environment.js";
+import { join } from "node:path";
 import { terminateGroup } from "../dist/acp.js";
 import { version } from "../dist/version.js";
 const [file, id] = process.argv.slice(2);
@@ -10,8 +13,10 @@ if (!file || !id) { console.error("Usage: node scripts/probe-agent.mjs <config.j
 const config = loadConfig(file);
 const executor = config.executors.find(value => value.id === id);
 if (!executor) throw new Error("Executor not found");
-const child = spawn(executor.command, executor.args, {
-  cwd: executor.cwd, env: executorEnv(executor.envKeys), detached: true, stdio: ["pipe", "pipe", "pipe"],
+const env = executorEnvironment(process.env, readEnvironment(join(config.dataDir, "environment.json")), config);
+const launch = executorCommand(executor.type, env);
+const child = spawn(launch.command, launch.args, {
+  cwd: executor.cwd, env, detached: true, stdio: ["pipe", "pipe", "pipe"],
 });
 child.stderr.resume();
 let connection;

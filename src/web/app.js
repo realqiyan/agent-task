@@ -51,6 +51,13 @@ document.querySelector("#refresh").addEventListener("click", async () => {
 });
 document.querySelector("#logout").addEventListener("click", () => { logout(); notice("已退出；刷新后也须重新输入管理员令牌。"); });
 document.addEventListener("unauthorized", logout);
+document.addEventListener("service-restarted", event => {
+  logout();
+  notice("新实例已通过认证健康检查。请在新地址重新连接；令牌没有放入链接。");
+  const url = new URL(event.detail.consoleUrl);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") return;
+  const link = element("a", url.href); link.href = url.href; main.append(link);
+});
 window.addEventListener("pagehide", logout);
 setInterval(async () => {
   if (!connected || document.hidden || loading) return;

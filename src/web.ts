@@ -19,7 +19,7 @@ function query<T>(schema: z.ZodType<T>, request: express.Request): T {
   }
   return schema.parse(value);
 }
-export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: string, fatal: (error: unknown) => void): express.Router {
+export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: string, fatal: (error: unknown) => void, restart: () => Promise<unknown>, instanceId: string): express.Router {
   const router = express.Router(), authorized = bearerVerifier(token);
   router.use((req, res, next) => {
     res.set({
@@ -58,7 +58,7 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
       } else res.status(400).json({ error: "Request rejected; check inputs and refresh the current state" });
     }
   };
-  router.get("/api/status", respond(() => ({ ...tasks.status(), settings: settings.status() })));
+  router.get("/api/status", respond(() => ({ ...tasks.status(), settings: settings.status(), instanceId })));
   router.get("/api/tasks", respond(req => {
     const input = query(taskListSchema, req), page = tasks.list(input.after, input.limit);
     return { ...page, items: page.items.map(task => ({ id: task.id, name: task.input.name, status: task.status, nextAt: task.nextAt, schedule: task.input.schedule })) };
@@ -79,6 +79,11 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
   }));
   router.post("/api/settings/config", respond(req => settings.saveConfig(req.body)));
   router.post("/api/settings/credential", respond(req => settings.saveCredential(req.body)));
+  router.post("/api/restart", async (req, res) => {
+    if (!req.body || Array.isArray(req.body) || typeof req.body !== "object" || Object.keys(req.body).length) { res.status(400).json({ error: "Expected an empty request" }); return; }
+    try { res.json({ data: await restart() }); }
+    catch { res.status(503).json({ error: "Restart could not be confirmed; inspect private logs and use CLI status before retrying" }); }
+  });
   router.use((_req, res) => { res.status(404).end(); });
   router.use(((error: { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(error.status === 413 ? 413 : error.status === 415 ? 415 : 400).json({ error: "Invalid request body" });

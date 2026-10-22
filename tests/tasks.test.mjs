@@ -9,15 +9,21 @@ import { Tasks } from "../dist/tasks.js";
 import { Results } from "../dist/results.js";
 import { executorSchema } from "../dist/model.js";
 import { taskSchema } from "../dist/task-contract.js";
-import { openExecution } from "../dist/node-execution.js";
+import { createExecution } from "../dist/node-execution.js";
 import { createCoordinator } from "../dist/coordinator.js";
 
+function executable(dir, name, command, args) {
+  const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+  writeFileSync(join(dir, name), "#!/bin/sh\nexec " + [command, ...args].map(quote).join(" ") + "\n", { mode: 0o700 });
+}
 function fixture(t, command = "/usr/bin/false", args = [], nodes = [node("A"), node("B", ["A"])]) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-contract-"));
   const store = new TaskStore(dir);
-  const executor = executorSchema.parse({ id: "local", command, args, cwd: dir, unattendedApproved: true, resultReadRoots: [dir] });
+  // Real failing/waiting OS processes, not ACP protocol imitations.
+  executable(dir, "codex-acp", command, args);
+  const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
   const executors = [executor];
-  const service = new Tasks(store, executors, new Results(dir), openExecution,
+  const service = new Tasks(store, executors, new Results(dir), createExecution({ PATH: dir }),
     createCoordinator(dir, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
   t.after(async () => { await service.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
   const input = taskSchema.parse({ requestKey: "task", name: "task", prompt: "Inspect authorized data", nodes, schedule: { type: "now" } });
@@ -73,8 +79,6 @@ test("DAG admission validates structure, assigned executors and deduplication be
     [[node("A", ["B"]), node("B", ["A"])], /Cyclic/], [[node("A", ["missing"])], /Unknown dependency/],
     [[{ ...node("A"), executorId: "unregistered" }], /not found or not approved/],
   ]) assert.throws(() => f.service.create({ ...f.input, requestKey: "invalid", nodes }), error);
-  f.executor.resultReadRoots = [];
-  assert.throws(() => f.service.create({ ...f.input, requestKey: "unreadable" }), /result read scope/);
   f.executor.unattendedApproved = false;
   assert.throws(() => f.service.create({ ...f.input, requestKey: "unapproved" }), /not found or not approved/);
   await assert.rejects(f.service.converse(f.run.id, "A"), /authorization/);
@@ -89,8 +93,8 @@ test("DAG admission validates structure, assigned executors and deduplication be
 test("each run retains the caller DAG and dispatches only to the node's assigned executor", async t => {
   const f = fixture(t);
   // A real failing process proves executor selection, not successful ACP execution.
-  f.executors.push(executorSchema.parse({ ...f.executor, id: "other", command: process.execPath,
-    args: ["--eval", 'require("node:fs").writeFileSync("selected.txt", "other"); process.exit(1);'] }));
+  executable(f.dir, "opencode", process.execPath, ["--eval", 'require("node:fs").writeFileSync("selected.txt", "other"); process.exit(1);']);
+  f.executors.push(executorSchema.parse({ ...f.executor, id: "other", type: "opencode" }));
   const nodes = [node("A"), { ...node("B"), executorId: "other" }], now = Date.now();
   const task = f.service.create({ ...f.input, requestKey: "assigned", nodes,
     schedule: { type: "interval", startAt: new Date(now).toISOString(), seconds: 60 } }, now);

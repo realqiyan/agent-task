@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Agent Task is an independently developed TypeScript service. MCP exposes task management; ACP connects execution agents. Pi Agent, Codex and OpenCode are ACP executor integration targets, not executors embedded in this service.
+Agent Task is an independently developed TypeScript service. MCP exposes task management; ACP connects execution agents. Pi Agent, Codex, Claude and OpenCode are ACP executor integration targets, not executors embedded in this service.
 
 ## Read first
 
@@ -35,9 +35,9 @@ The current MVP uses flat source files and has documented boundary gaps. Do not 
 - Resources have explicit ownership and idempotent close behavior. Reject operations against closed instances.
 - Only administrator-registered executors may launch. MCP task creation may select an existing absolute workspace; commands, credentials and capability endpoints remain administrator-only. Workspace validation is not authorization or a sandbox.
 - Keep discovered capability facts, authorization and validation evidence separate.
-- ACP permission requests are optional. The permission allowlist and unattendedApproved flag are not a sandbox or proof of complete tool authorization. Never infer permission from prompts, roles, tool titles or protocol success.
+- ACP permission requests are optional. Rely on native executor authorization and reject requests for additional ACP approval. The unattendedApproved flag is not a sandbox or proof of complete tool authorization. Never infer permission from prompts, roles, tool titles or protocol success.
 - No interactive approvals for unattended execution. Reject requests that lack sufficient authorization; never silently widen access.
-- Do not inherit service credentials into executors. Do not intentionally log secrets. Agent outputs may still be sensitive.
+- Executors inherit the OS user’s native environment only after filtering private service variables and credential aliases. Do not inherit service credentials into executors. Do not intentionally log secrets. Agent outputs may still be sensitive.
 - Never delete user history or workspaces to repair state. Do not add file hash verification in code, tests or checks.
 
 ## Storage and releases

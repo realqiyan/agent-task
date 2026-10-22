@@ -1,113 +1,115 @@
 # 安装与运行
 
-支持 Linux 和 macOS，要求 Node.js **22.19+** 与 npm。安装包包含编译后的服务、worker、Web 资源和操作脚本，不需要源码、TypeScript 或用户自行构建。当前发布状态和平台证据见[验证说明](validation.md#npm-发布候选验证)，发布步骤见[发布说明](release.md)。
+支持 Linux 和 macOS，要求 Node.js **22.19+** 与 npm。安装包包含运行产物，不需要源码或 TypeScript。发布状态和平台证据见[验证说明](validation.md)，发布操作见[发布说明](release.md)。
 
 ## 安装与交互配置
 
 ```bash
 npm install -g @realqiyan/agent-task
-agent-task --version
 agent-task setup
 agent-task start
 ```
 
-使用当前用户可写的 npm prefix，不以 root 运行任务服务。若使用 nvm 等版本管理器，先选定后台服务长期使用的 Node 安装；服务记录绝对路径，移除该 Node 或全局包会使它无法启动。
+使用当前用户可写的 npm prefix，不以 root 运行。若使用 nvm 等版本管理器，先选定后台长期使用的 Node；服务记录绝对路径，移除该 Node 或全局包会使它无法启动。
 
-向导收集工作空间、可选执行端、可选协调模型及端口，并询问是否安装后台服务。默认只准备配置，不启动服务、不安装执行端、不请求密钥。取消确认不会写入配置。无终端环境必须明确提供参数：
+向导收集工作空间、可选执行端、可选协调模型及端口，并询问是否安装后台服务。默认只准备配置，不启动服务、不请求密钥。取消确认不写配置。无终端环境须明确提供参数：
 
 ```bash
 agent-task setup --executors none --cwd /absolute/workspace --prepare-only
-# 可选：安装 Pi ACP 组件，但仍不授权执行。
+# 另一个首次安装选择：安装 Pi ACP 组件，但不授权执行。
 agent-task setup --home /absolute/private/agent-task \
   --executors pi --cwd /absolute/workspace \
   --provider deepseek --model deepseek-flash --prepare-only
 ```
 
-这两个例子是不同的首次安装选择，不要用第二条覆盖已有安装。工作空间须预先存在，且位于安装目录及 npm 包之外。完整选项见 `agent-task setup --help`；执行端固定版本及平台实现见 [install-lib.mjs](../scripts/install-lib.mjs)。
+工作空间须预先存在，且位于安装目录及 npm 包之外。完整选项见 `agent-task setup --help`；组件版本及平台实现见 [install-lib.mjs](../scripts/install-lib.mjs)。安装不执行原生登录或批准任务。
 
-默认私有目录为 Linux 的 `~/.local/share/agent-task` 或 macOS 的 `~/Library/Application Support/agent-task`。setup 输出配置、凭据文件和控制台地址，**不打印 token**。使用自定义 `--home` 时，后续命令也需传同一路径。
+默认安装目录为 Linux 的 `~/.local/share/agent-task` 或 macOS 的 `~/Library/Application Support/agent-task`。自定义 `--home` 后，后续命令也传同一路径。setup 输出私有文件路径和控制台地址，**不打印 token**。
 
-配置、凭据和任务数据不写入 npm 包目录。npm 管理应用包；setup 只管理私有目录、选定的 ACP 组件和用户服务。不要移动 npm prefix、Node 或安装目录后直接继续运行；当前不提供既有安装的自动路径重绑。
+## 数据目录与配置
 
-## 配置与认证
+初始 `dataDir` 是安装目录下的 `data/`。运行配置、私有环境文件、任务和协调会话记录、结果及服务文件日志均位于当前 `dataDir`。配置契约见 [config.ts](../src/config.ts)，路径选择与新目录准备见 [startup.ts](../src/startup.ts)。
 
-1. 前台运行 `agent-task start`，打开 setup 输出的本机控制台地址。用本地编辑器读取私有 `environment.json` 的 `AGENT_TASK_ADMIN_TOKEN`，在连接表单输入。不要把 token 放进 URL、命令行、Git、截图或日志。
-2. 在[控制台](web-console.md)配置协调模型、单独保存模型密钥及注册 ACP 执行端。未配置协调模型时，服务仍可启动和配置，但不能接收可执行任务。
-3. 如需安装器提供的执行端，用 setup 输出的专属路径按原生方式认证：[Pi](https://github.com/earendil-works/pi/tree/v1.3.0/packages/coding-agent/docs)、[Codex ACP](https://github.com/agentclientprotocol/codex-acp#readme)、[OpenCode](https://opencode.ai/docs/acp/)。后台服务与原生登录须使用一致的 HOME/配置目录。
-4. 停服后审核执行端原生工具、沙箱、凭据传递及结果读取范围，再由管理员明确批准 `unattendedApproved`。安装器从不登录、自动批准或扩大权限；ACP allowlist 不是完整工具授权或 OS 沙箱。
-5. 保存后手动重启。正在运行或等待人工回复的任务可能持有 ACP 会话，重启前须核查；不保证无损续接。
+安装目录保留固定的 `launch.json` 定位文件、安装清单、组件及启动器控制资源；它不是另一份运行配置。这个固定入口让原有 CLI、systemd 和 launchd 注册在更换数据目录后仍能找到服务。npm 包、用户工作空间和执行端原生配置不随 `dataDir` 移动。
 
-后台和托管前台启动都只读取明确的私有环境文件，不自动继承 shell 模型密钥。MCP token、管理员 token、协调模型和执行端凭据必须分开。工作空间校验不是授权。
+在 Web 修改数据目录后，下次启动只在目标目录准备已保存的配置和私有环境，并切换定位文件；**不复制任务、会话、结果或日志，不删除旧目录**。目标已有不同启动文件时拒绝覆盖；须停服核对并显式准备目标，不自动合并或修复。新目录没有旧任务，不能把切换目录当成故障恢复或重放许可。
 
-显式执行握手检查：
+1. 运行 `agent-task start`，打开输出的本机控制台地址。用本地编辑器读取当前 `dataDir/environment.json` 的 `AGENT_TASK_ADMIN_TOKEN`，在连接表单输入。不要把 token 放进 URL、命令行、Git、截图或日志。
+2. 在[控制台](web-console.md)配置协调模型、单独保存模型密钥及注册执行端。未配置协调模型时可管理服务，但不能接收可执行任务。
+3. 按执行端官方方式准备原生认证及权限：[Pi](https://github.com/earendil-works/pi/tree/v1.3.0/packages/coding-agent/docs)、[Codex ACP](https://github.com/agentclientprotocol/codex-acp#readme)、[Claude ACP](https://github.com/zed-industries/claude-agent-acp)、[OpenCode](https://opencode.ai/docs/acp/)。后台服务与原生登录须使用同一 OS 用户及相应 HOME/配置目录。
+4. 审核原生工具、沙箱、凭据和结果文件读取权限后，再明确批准无人值守执行。注册只选类型，不配置命令、参数、环境变量清单或 ACP 工具白名单；系统映射见 [executor-runtime.ts](../src/executor-runtime.ts)。额外 ACP 审批请求被拒绝，不自动批准。
+
+服务和协调员的秘密只从私有环境文件加载，不回退到 shell 模型密钥。执行端沿用启动上下文中的用户原生环境，但排除私有文件变量、服务/管理员令牌、协调员凭据及同值别名。不要把执行端原生凭据放入服务的私有环境文件。后台管理器的环境未必等于交互式 shell；启动器不执行 shell 启动脚本，也不导入原生认证文件。隔离实现见 [environment.ts](../src/environment.ts)、[executor-runtime.ts](../src/executor-runtime.ts)。这不是同一 OS 用户下的沙箱。
+
+显式握手检查：
 
 ```bash
 agent-task setup --check --probe
 ```
 
-这只执行 ACP initialize，不验证模型认证、任务成功或工具权限。普通 Pi CLI 不是 ACP server，需配合 pi-acp。已有执行端也可直接由控制台注册绝对 ACP 命令路径，不必重新安装或使用全局执行端。
+这只做 ACP initialize，不验证模型认证、任务成功或原生工具权限。普通 Pi CLI 不是 ACP server，须配合 pi-acp。自行安装的受支持适配器也可使用，只要在服务的原生 PATH 中；无需填写绝对可执行文件路径。
 
-## 前台运行与健康检查
+## 前台、重启与健康检查
 
 ```bash
 agent-task start
-# 另一个终端；自动从私有文件读取 MCP token，不输出凭据。
+# 另一个终端：
 agent-task status
+agent-task restart
 ```
 
-Ctrl-C 停止前台服务。也可显式指定已有的私有文件：
+Ctrl-C 关闭前台启动器及其运行进程。`restart` 和 Web 的“重启并检查可用性”使用同一启动器：先停止新派发、关闭活动执行并释放数据所有权，再用已保存配置创建新进程。前台终端和后台服务管理器继续监督启动器，不需另开一个脱离监督的进程。
 
-```bash
-agent-task start --config /absolute/private/config.json \
-  --environment /absolute/private/environment.json
-```
+只有新实例通过带 MCP token 的健康检查才返回成功，并给出新实例标识及地址。端口变化或自动分配端口时，以返回地址为准；Web 不通过链接传递管理员令牌，须重新连接。
 
-文件权限、Web 认证与配置保存约束见[控制台说明](web-console.md)。显式文件模式不会生成安装清单；此时用自己的 MCP 客户端调用 `service_status`，不要使用依赖清单的 `agent-task status`。
+重启会关闭 ACP 会话，不保证等待人工回复的运行能无损继续。结果不明的执行保持阻断，不自动重试、重放或改派执行端。请求超时不代表重启没发生，先用 `agent-task status` 核对；不要盲目重复操作。
 
-配置契约以 [config.example.json](../config.example.json)、[config.ts](../src/config.ts) 为准。开发者仍可 `npm ci --ignore-scripts && npm run build` 后使用 `npm start -- --config ... --environment ...`，但 npm 安装用户不需要这些步骤。
+启动失败不会回滚配置或重放工作。查看当前 `dataDir/service.log`；确认没有运行实例持有数据后，修正私有文件，再显式 `agent-task restart`。启动器也已退出时，用原启动方式重新启动。后台管理器的“进程活动”不等于 HTTP 服务可用，以认证健康检查为准。
+
+源码开发者执行 `npm ci --ignore-scripts && npm run build` 后，可用 `npm run setup -- ...` 和 `npm start -- --home ...`；npm 安装用户不需要构建。内部 `dist/main.js` 不是独立的重启入口。
 
 ## 后台运行
 
-先停止前台实例，再安装并启动后台服务：
+先停止前台实例，再注册并启动用户服务：
 
 ```bash
 agent-task service install
 agent-task status
+agent-task restart
 ```
 
-命令在真实服务管理器中注册服务，并等待带 MCP token 的健康检查。重复安装不会覆盖配置或授权；已有同名但内容不同的服务会被拒绝覆盖。每个 OS 用户只管理一个同名服务。
+重复安装不会覆盖配置或批准执行端。同名但内容不同的服务文件会被拒绝覆盖。每个 OS 用户只管理一个同名服务。
 
 Linux 需要可连接的 systemd 用户管理器：
 
 ```bash
 systemctl --user status agent-task.service
 systemctl --user stop agent-task.service
-systemctl --user restart agent-task.service
 journalctl --user -u agent-task.service
 ```
 
-SSH/容器会话若没有用户 bus，应先配置正常用户会话；不要以 root 启动本服务。注销后运行需要管理员按策略配置 lingering，安装器不会启用。手动部署模板见 [deploy/agent-task.service.example](../deploy/agent-task.service.example)。
+SSH/容器会话若没有用户 bus，先配置正常用户会话，不以 root 运行。注销后存续需要管理员按策略配置 lingering，安装器不会启用。手动部署模板见 [deploy/agent-task.service.example](../deploy/agent-task.service.example)。
 
 macOS 需要已登录的图形用户会话：
 
 ```bash
 launchctl print gui/$(id -u)/com.agent-task.service
+agent-task restart
 agent-task service remove
-agent-task service install
 ```
 
-remove 停止并卸载服务注册，install 重新加载配置。LaunchAgent 不是系统 LaunchDaemon，不保证用户注销后运行。日志位于 setup 的私有目录内。launchd 不等同于 Linux cgroup；两平台都不保证休眠或关机期间准点执行。
+LaunchAgent 不是系统 LaunchDaemon，不保证用户注销后运行，也不等同于 Linux cgroup。两平台都不保证休眠或关机期间准点执行。服务文件日志由启动器写入当前数据目录；systemd journal 是操作系统另行管理的日志。
 
-## 重入、更新与卸载
+## 更新与卸载
 
-重复 setup 保留配置和授权。中断安装只能显式 `agent-task setup --resume`；所有权、清单或服务状态不明时停止核查，不删除历史或工作空间修复。
+重复 setup 保留配置和授权。中断安装只能显式 `agent-task setup --resume`；所有权或清单不明时停止核查，不删除数据修复。
 
-本项目仍处于调研阶段，不保证旧数据兼容。更新前阅读发行说明，停止服务并备份私有目录；普通启动不迁移既有数据。更换 Node 或 npm prefix 前先移除服务注册。不要在服务运行期间删除或覆盖应用包。
+调研阶段不保证旧数据兼容，也不提供普通启动迁移。更新前停服并备份安装目录和当前数据目录。更换 Node、npm prefix 或安装目录前先移除服务注册；不要在运行时删除应用包。
 
 ```bash
-agent-task service remove   # 仅停服、移除服务注册；保留组件和数据
-agent-task uninstall        # 再移除本安装拥有的 ACP 组件
+agent-task service remove             # 仅停止并移除服务注册
+agent-task uninstall                  # 再移除本安装拥有的 ACP 组件
 npm uninstall -g @realqiyan/agent-task # 最后由 npm 移除应用包
 ```
 
-`agent-task uninstall` 可重复运行，保留配置、凭据、日志、任务历史、工作空间和未入清单文件，不操作全局执行端及原生认证。卸载不是凭据撤销或数据销毁；停服不能回滚已发生的外部操作。实现见 [uninstall.mjs](../scripts/uninstall.mjs)。
+卸载可重复运行，保留配置、凭据、日志、任务历史、工作空间及未入清单文件，不操作全局执行端和原生认证。卸载不是凭据撤销或数据销毁，停服也不能回滚外部操作。实现见 [uninstall.mjs](../scripts/uninstall.mjs)。

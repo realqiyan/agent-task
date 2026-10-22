@@ -8,7 +8,8 @@ import { Tasks } from "../dist/tasks.js";
 import { Results } from "../dist/results.js";
 import { executorSchema } from "../dist/model.js";
 import { taskSchema } from "../dist/task-contract.js";
-import { openExecution } from "../dist/node-execution.js";
+import { createExecution } from "../dist/node-execution.js";
+const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
 import { createCoordinator } from "../dist/coordinator.js";
 import { coordinatorInput } from "../dist/human-input.js";
 import { openCoordinatorStorage } from "../dist/coordinator-storage.js";
@@ -18,7 +19,7 @@ import { createModels } from "@earendil-works/pi-ai/models";
 
 function fixture(t) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-input-"));
-  const executor = executorSchema.parse({ id: "local", command: "/usr/bin/false", cwd: dir, unattendedApproved: true });
+  const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
   const coordinate = createCoordinator(dir, { provider: "openai", model: "not-a-real-model" });
   let store = new TaskStore(dir), service = new Tasks(store, [executor], new Results(dir), openExecution, coordinate, error => { throw error; });
   const input = taskSchema.parse({ requestKey: "task", name: "task", prompt: "Inspect authorized data",

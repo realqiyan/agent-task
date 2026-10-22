@@ -1,27 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { realpathSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../dist/config.js";
+import { validateConfig } from "../dist/config.js";
+import { executorCommand } from "../dist/executor-runtime.js";
 
-test("executor preflight explains missing commands, Pi RPC misuse and missing Pi dependency", () => {
+test("only four native executor types are registered; ACP commands and arguments are system-owned", t => {
   const directory = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-preflight-"));
-  const path = join(directory, "config.json");
-  const originalPath = process.env.PATH;
-  const check = (command, args = []) => {
-    writeFileSync(path, JSON.stringify({ dataDir: directory,
-      executors: [{ id: "local", command, args, cwd: directory }] }));
-    return () => loadConfig(path);
-  };
-  try {
-    assert.throws(check(join(directory, "absent")), /ACP executable is missing or not executable.*npm install -g pi-acp@0\.0\.34/);
-    assert.throws(check(join(directory, "pi"), ["--mode", "rpc"]), /pi CLI is not an ACP server/);
-    process.env.PATH = directory;
-    assert.throws(check(join(directory, "pi-acp")), /pi-acp requires pi on the executor PATH/);
-    assert.equal(check("/usr/bin/false")().executors.length, 1);
-  } finally {
-    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
-    rmSync(directory, { recursive: true, force: true });
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  for (const name of ["pi", "pi-acp", "codex-acp", "claude-agent-acp", "opencode"]) symlinkSync("/usr/bin/false", join(directory, name));
+  for (const type of ["pi", "codex", "claude", "opencode"]) {
+    const config = validateConfig({ dataDir: directory, executors: [{ id: type, type, cwd: directory, note: "native" }] });
+    assert.equal(config.executors[0].type, type);
+    const launch = executorCommand(type, { PATH: directory });
+    assert.equal(launch.command, realpathSync("/usr/bin/false"));
+    assert.deepEqual(launch.args, type === "opencode" ? ["acp"] : []);
   }
+  for (const field of ["command", "args", "envKeys", "permissionAllowlist", "resultReadRoots"]) {
+    assert.throws(() => validateConfig({ dataDir: directory, executors: [{ id: "x", type: "pi", cwd: directory, [field]: [] }] }));
+  }
+  assert.throws(() => validateConfig({ dataDir: directory, executors: [{ id: "x", type: "other", cwd: directory }] }));
+  assert.throws(() => executorCommand("pi", { PATH: "/missing" }), /Missing ACP dependency/);
 });

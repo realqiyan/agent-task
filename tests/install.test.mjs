@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createFile, json, saveManifest, runtimeEnv, inventory, removeInventory, operationLock, run } from "../scripts/install-lib.mjs";
+import { createFile, json, saveManifest, inventory, removeInventory, operationLock, run } from "../scripts/install-lib.mjs";
+
+import { readEnvironment } from "../dist/environment.js";
 
 test("installer preserves credentials and uninventoried files, rejects escaping paths and serializes operations", t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-install-"));
@@ -23,10 +25,11 @@ test("installer preserves credentials and uninventoried files, rejects escaping 
   const manifest = { root, home: root, node: process.execPath, phase: "ready" };
   saveManifest(root, manifest);
   assert.deepEqual(json(join(root, "installation.json")), manifest);
+  createFile(join(root, "launch.json"), JSON.stringify({ dataDir: root }));
   createFile(join(root, "environment.json"), JSON.stringify({ AGENT_TASK_TOKEN: "private-test-token", HOME: root }));
   assert.throws(() => createFile(join(root, "environment.json"), "{}"), /EEXIST/);
-  assert.equal(runtimeEnv(manifest).AGENT_TASK_TOKEN, "private-test-token");
-  assert.equal(runtimeEnv(manifest).HOME, root);
+  assert.equal(readEnvironment(join(root, "environment.json")).AGENT_TASK_TOKEN, "private-test-token");
+  assert.equal(readEnvironment(join(root, "environment.json")).HOME, root);
   createFile(join(root, "app/module.js"), "installed code");
   createFile(join(root, "components/bin/agent"), "installed binary");
   const files = [...inventory(root, "components")];

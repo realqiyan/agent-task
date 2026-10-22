@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { permissionDecision } from "../dist/permissions.js";
 import { progressEvents } from "../dist/acp.js";
-import { executorEnv } from "../dist/config.js";
+import { executorEnvironment } from "../dist/executor-runtime.js";
 const request = {
   sessionId: "session", toolCall: { toolCallId: "tool", name: "read_file", rawInput: { path: "a" } },
   options: [
@@ -11,14 +11,11 @@ const request = {
     { optionId: "no", name: "Reject", kind: "reject_once" },
   ],
 };
-test("permission policy is exact, rejects missing metadata and never grants always", () => {
-  assert.equal(permissionDecision(request, []).outcome.optionId, "no");
-  assert.equal(permissionDecision(request, ["read_*"]).outcome.optionId, "no");
-  assert.equal(permissionDecision(request, ["read_file"]).outcome.optionId, "once");
-  assert.equal(permissionDecision({ ...request, toolCall: { toolCallId: "tool", title: "read_file" } }, ["read_file"]).outcome.optionId, "no");
-  assert.deepEqual(permissionDecision(request, ["read_file"], true), { outcome: { outcome: "cancelled" } });
-  assert.equal(permissionDecision({ ...request, toolCall: { ...request.toolCall, rawInput: null } }, ["read_file"]).outcome.optionId, "no");
-  assert.deepEqual(permissionDecision({ ...request, options: request.options.filter(o => o.kind === "allow_always") }, ["read_file"]),
+test("unattended ACP requests never grant additional permissions", () => {
+  assert.equal(permissionDecision(request).outcome.optionId, "no");
+  assert.equal(permissionDecision({ ...request, toolCall: { title: "read_file" } }).outcome.optionId, "no");
+  assert.deepEqual(permissionDecision(request, true), { outcome: { outcome: "cancelled" } });
+  assert.deepEqual(permissionDecision({ ...request, options: request.options.filter(o => o.kind.startsWith("allow")) }),
     { outcome: { outcome: "cancelled" } });
 });
 test("public progress preserves output and omits thoughts and raw tool data", () => {
@@ -31,8 +28,11 @@ test("public progress preserves output and omits thoughts and raw tool data", ()
     rawInput: { secret: "private" }, rawOutput: "private", kind: "read", status: "completed" });
   assert.deepEqual(tools, [{ kind: "tool", data: { id: "id", name: "read", kind: "read", status: "completed" } }]);
 });
-test("executor environment excludes unselected credentials and service configuration", () => {
-  const env = executorEnv(["HOME", "MODEL_KEY"], { PATH: "/usr/bin", HOME: "/work", MODEL_KEY: "selected",
-    AGENT_TASK_TOKEN: "private", OTHER_KEY: "private", NODE_OPTIONS: "--require arbitrary" });
-  assert.deepEqual(env, { PATH: "/usr/bin", HOME: "/work", MODEL_KEY: "selected" });
+test("native executor environment survives, but service secrets, coordinator credentials and aliases do not", () => {
+  const privateValues = { SERVICE_AUTH: "service", AGENT_TASK_ADMIN_TOKEN: "administrator", MODEL_KEY: "coordinator", NEXT_MODEL_KEY: "next" };
+  const config = { tokenEnv: "SERVICE_AUTH", coordinator: { provider: "openai-compatible", apiKeyEnv: "MODEL_KEY" } };
+  const env = executorEnvironment({ PATH: "/usr/bin", HOME: "/work", XDG_CONFIG_HOME: "/native", CODEX_HOME: "/native/codex",
+    NATIVE_API_KEY: "native", ...privateValues, ALIAS_KEY: "coordinator", PENDING_ALIAS: "next",
+    NODE_OPTIONS: "--require arbitrary", PI_ACP_PI_COMMAND: "/unreviewed", AGENT_TASK_INTERNAL: "private" }, privateValues, config);
+  assert.deepEqual(env, { PATH: "/usr/bin", HOME: "/work", XDG_CONFIG_HOME: "/native", CODEX_HOME: "/native/codex", NATIVE_API_KEY: "native" });
 });

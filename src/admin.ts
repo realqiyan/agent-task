@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { loadConfig, validateConfig } from "./config.js";
 import { replacePrivateText } from "./private-files.js";
 import { executorSchema } from "./model.js";
@@ -11,11 +11,10 @@ if (!configPath || !["register", "list"].includes(action ?? "") || (action === "
   throw new Error("Usage: node dist/admin.js list CONFIG | register CONFIG PROFILE.json (service stopped)");
 }
 const path = resolve(configPath), config = loadConfig(path);
-const release = await acquireLock(config.dataDir);
+const release = await acquireLock(dirname(path));
 try {
   if (action === "list") {
-    console.log(JSON.stringify(config.executors.map(({ id, command, args, cwd, envKeys, permissionAllowlist, unattendedApproved, resultReadRoots }) =>
-      ({ id, transport: "stdio", command, args, cwd, envKeys, permissionAllowlist, unattendedApproved, resultReadRoots })), null, 2));
+    console.log(JSON.stringify(config.executors.map(executor => ({ ...executor, transport: "stdio" })), null, 2));
   } else {
     const profile = executorSchema.parse(JSON.parse(readFileSync(resolve(profilePath!), "utf8")));
     if (config.executors.some(item => item.id === profile.id)) throw new Error("Executor ID already registered; edit reviewed config while stopped to replace");

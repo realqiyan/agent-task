@@ -42,7 +42,7 @@ async function stop() {
 let origin, config, credentials;
 async function health() {
   const response = await fetch(origin + "/mcp", { method: "POST", headers: {
-    Authorization: "Bearer " + credentials.AGENT_TASK_TOKEN, "Content-Type": "application/json", Accept: "application/json, text/event-stream",
+    Authorization: "Bearer " + credentials[config.tokenEnv], "Content-Type": "application/json", Accept: "application/json, text/event-stream",
   }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "service_status", arguments: {} } }),
   signal: AbortSignal.timeout(1000) });
   const body = await response.json();
@@ -91,7 +91,7 @@ try {
     server.listen(0, "127.0.0.1", () => { const port = server.address().port; server.close(() => resolve(port)); });
   });
   invoke("setup", "--home", home, "--executors", "none", "--cwd", workspace, "--port", String(port), "--prepare-only");
-  const environmentPath = join(home, "environment.json"), configPath = join(home, "config.json");
+  let environmentPath = join(home, "data/environment.json"), configPath = join(home, "data/config.json");
   config = JSON.parse(readFileSync(configPath, "utf8"));
   credentials = JSON.parse(readFileSync(environmentPath, "utf8"));
   secrets = Object.values(credentials);
@@ -112,18 +112,19 @@ try {
   const testSecret = randomBytes(32).toString("hex");
   secrets.push(testSecret);
   settings = await admin("/settings/credential", { editToken: settings.editToken, key: "INSTALL_CHECK_SECRET", action: "replace", value: testSecret });
-  // A real local executable registered but NOT approved; no ACP invocation or model request.
-  const executor = { id: "unapproved", command: process.execPath, args: [], cwd: workspace, envKeys: [],
-    permissionAllowlist: [], unattendedApproved: false, resultReadRoots: [] };
-  await admin("/settings/config", { editToken: settings.editToken, config: { executors: [executor] } });
+  // Registered but NOT approved; no ACP invocation or model request.
+  const executor = { id: "unapproved", type: "claude", note: "installation check", cwd: workspace, unattendedApproved: false };
+  await admin("/settings/config", { editToken: settings.editToken, config: { ...settings.saved, executors: [executor] } });
   assert((await admin("/settings")).pendingRestart);
-  await stop();
-  await start();
+  const before = JSON.parse(invoke("status", "--home", home));
+  const webRestart = await admin("/restart", {});
+  assert.notEqual(webRestart.pid, before.pid);
+  assert.notEqual(JSON.parse(invoke("restart", "--home", home)).pid, webRestart.pid);
   settings = await admin("/settings");
   assert(!settings.pendingRestart && settings.running.executors.length === 1 && !settings.running.executors[0].unattendedApproved);
   assert(settings.credentials.some(credential => credential.key === "INSTALL_CHECK_SECRET" && credential.running));
   await stop();
-  const savedConfig = readFileSync(configPath, "utf8"), savedEnvironment = readFileSync(environmentPath, "utf8");
+  let savedConfig = readFileSync(configPath, "utf8"), savedEnvironment = readFileSync(environmentPath, "utf8");
   writeFileSync(join(home, "data/operator-note.txt"), "retain installation validation data", { mode: 0o600 });
   if (background) {
     const since = "@" + Math.floor(Date.now() / 1000);
@@ -131,11 +132,24 @@ try {
     invoke("service", "install", "--home", home);
     invoke("status", "--home", home);
     await health();
-    assert((await admin("/settings")).running.executors[0].unattendedApproved === false);
+    settings = await admin("/settings");
+    assert(settings.running.executors[0].unattendedApproved === false);
+    await admin("/settings/config", { editToken: settings.editToken,
+      config: { ...settings.saved, dataDir: join(root, "selected-data"), port: 0, tokenEnv: "BACKGROUND_TOKEN" } });
+    const webRestart = await admin("/restart", {});
+    origin = new URL(webRestart.url).origin;
+    configPath = join(root, "selected-data/config.json"); environmentPath = join(root, "selected-data/environment.json");
+    config = JSON.parse(readFileSync(configPath, "utf8")); credentials = JSON.parse(readFileSync(environmentPath, "utf8"));
+    const cliRestart = JSON.parse(invoke("restart", "--home", home));
+    assert.notEqual(cliRestart.pid, webRestart.pid);
+    origin = new URL(cliRestart.url).origin;
+    await health();
+    assert.equal((await admin("/settings")).running.dataDir, config.dataDir);
+    savedConfig = readFileSync(configPath, "utf8"); savedEnvironment = readFileSync(environmentPath, "utf8");
     invoke("service", "remove", "--home", home);
     serviceAttempted = false;
     if (process.platform === "linux") run("journalctl", ["--user", "-u", "agent-task.service", "--since", since, "--no-pager"]);
-    else for (const name of ["service.log", "service-error.log"]) if (existsSync(join(home, name))) logs += readFileSync(join(home, name), "utf8");
+    for (const directory of [join(home, "data"), config.dataDir]) if (existsSync(join(directory, "service.log"))) logs += readFileSync(join(directory, "service.log"), "utf8");
   }
   invoke("uninstall", "--home", home);
   invoke("uninstall", "--home", home);

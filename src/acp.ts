@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import * as acp from "@agentclientprotocol/sdk";
-import { executorEnv } from "./config.js";
+import { executorCommand } from "./executor-runtime.js";
 import type { Executor } from "./model.js";
 import { readInputFile } from "./results.js";
 import { permissionDecision } from "./permissions.js";
@@ -48,10 +48,11 @@ export async function terminateGroup(child: ChildProcess): Promise<void> {
   child.stdout?.destroy();
   child.stderr?.destroy();
 }
-export async function openAcp(executor: Executor, signal: AbortSignal, emit: Progress, inputFiles: string[] = []) {
+export async function openAcp(executor: Executor, signal: AbortSignal, emit: Progress, resultsRoot: string, inputFiles: string[] = []) {
   signal.throwIfAborted();
-  const child = spawn(executor.command, executor.args, {
-    cwd: executor.cwd, env: executorEnv(executor.envKeys), detached: true, stdio: ["pipe", "pipe", "pipe"],
+  const launch = executorCommand(executor.type, process.env);
+  const child = spawn(launch.command, launch.args, {
+    cwd: executor.cwd, env: process.env, detached: true, stdio: ["pipe", "pipe", "pipe"],
   });
   const controller = new AbortController();
   const cancel = AbortSignal.any([signal, controller.signal]);
@@ -98,13 +99,12 @@ export async function openAcp(executor: Executor, signal: AbortSignal, emit: Pro
       try {
         cancel.throwIfAborted();
         if (ctx.params.sessionId !== sessionId) throw new Error("Wrong input-file session");
-        return { content: readInputFile(executor, inputFiles, ctx.params.path, ctx.params.line ?? 1, ctx.params.limit ?? undefined) };
+        return { content: readInputFile(resultsRoot, inputFiles, ctx.params.path, ctx.params.line ?? 1, ctx.params.limit ?? undefined) };
       } catch (error) { controller.abort(error); throw error; }
     })
     .onRequest(acp.methods.client.session.requestPermission, async ctx => {
       const request = ctx.params;
-      const response = permissionDecision(request, executor.permissionAllowlist,
-        cancel.aborted || request.sessionId !== sessionId);
+      const response = permissionDecision(request, cancel.aborted || request.sessionId !== sessionId);
       await report("permission", { tool: request.toolCall.name ?? null, outcome: response.outcome });
       return response;
     })

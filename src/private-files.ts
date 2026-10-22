@@ -1,6 +1,17 @@
-import { constants, openSync, closeSync, fstatSync, lstatSync, realpathSync, readFileSync, writeFileSync, fsyncSync, renameSync, unlinkSync } from "node:fs";
-import { dirname, basename, join } from "node:path";
+import { existsSync, constants, openSync, closeSync, fstatSync, lstatSync, realpathSync, readFileSync, writeFileSync, fsyncSync, renameSync, unlinkSync } from "node:fs";
+import { dirname, basename, join, isAbsolute, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+
+export function checkDataDirectory(path: string): void {
+  if (!isAbsolute(path) || resolve(path) !== path || /[\x00-\x1f\x7f]/.test(path)) throw new Error("Expected a canonical absolute dataDir");
+  let parent = path;
+  while (!existsSync(parent)) parent = dirname(parent);
+  if (realpathSync(parent) !== parent || !lstatSync(parent).isDirectory()) throw new Error("dataDir must not traverse symlinks");
+  if (parent === path) {
+    const stat = lstatSync(path);
+    if (stat.uid !== process.getuid!() || (stat.mode & 0o077)) throw new Error("dataDir must be owned and private");
+  }
+}
 
 function privateDirectory(path: string): void {
   const directory = dirname(path), stat = lstatSync(directory);

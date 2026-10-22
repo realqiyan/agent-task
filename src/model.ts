@@ -11,13 +11,10 @@ export const scheduleSchema = z.discriminatedUnion("type", [
 export type Schedule = z.infer<typeof scheduleSchema>;
 export const executorSchema = z.object({
   id: identifier,
-  command: z.string().min(1),
-  args: z.array(z.string().max(4096)).max(100).default([]),
+  type: z.enum(["pi", "codex", "claude", "opencode"]),
+  note: z.string().max(2000).default(""),
   cwd: z.string().min(1),
-  envKeys: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(50).default([]),
-  permissionAllowlist: z.array(z.string().min(1).max(200)).max(100).default([]),
   unattendedApproved: z.boolean().default(false),
-  resultReadRoots: z.array(z.string().min(1)).max(50).default([]),
 }).strict();
 export type Executor = z.infer<typeof executorSchema>;
 export const OUTPUT_LIMIT = 262_144;

@@ -1,12 +1,11 @@
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { executorEnv } from "./config.js";
 import type { OpenExecution } from "./task-model.js";
 
 /** One supervised worker and ACP session per node, retained across turns. */
-export const openExecution: OpenExecution = (input, event, beforeStart) => {
+export const createExecution = (environment: NodeJS.ProcessEnv): OpenExecution => (input, event, beforeStart) => {
   const worker = fork(fileURLToPath(new URL("./worker.js", import.meta.url)), [], {
-    env: executorEnv(input.executor.envKeys), stdio: ["ignore", "ignore", "pipe", "ipc"], execArgv: [],
+    env: { ...environment }, stdio: ["ignore", "ignore", "pipe", "ipc"], execArgv: [],
   });
   worker.stderr?.resume();
   let stopped = false, exited = false, busy = false;

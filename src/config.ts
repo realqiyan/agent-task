@@ -1,11 +1,12 @@
-import { readFileSync, realpathSync, statSync, accessSync, constants } from "node:fs";
-import { basename, delimiter, isAbsolute, join } from "node:path";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { executorSchema } from "./model.js";
+import { readPrivateText } from "./private-files.js";
 
 export const ADMIN_TOKEN_ENV = "AGENT_TASK_ADMIN_TOKEN";
 const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
-const baseEnvKeys = ["PATH", "LANG", "LC_ALL", "TZ"];
+const baseEnvKeys = ["HOME", "PATH", "LANG", "LC_ALL", "TZ", "TMPDIR", "NODE_OPTIONS", "NODE_PATH", "__proto__", "constructor", "prototype"];
 const modelId = z.string().min(1).max(200);
 const coordinatorSchema = z.discriminatedUnion("provider", [
   z.object({ provider: z.enum(["openai", "anthropic", "deepseek"]), model: modelId }).strict(),
@@ -40,57 +41,24 @@ export function coordinatorCredentialEnv(config: NonNullable<Config["coordinator
     case "openai-compatible": return config.apiKeyEnv;
   }
 }
-export function loadConfig(path: string, environment: NodeJS.ProcessEnv = process.env): Config {
+export function loadConfig(path: string): Config {
   let value: unknown;
-  try { value = JSON.parse(readFileSync(path, "utf8")); } catch { throw new Error("Cannot read configuration JSON"); }
-  return validateConfig(value, environment);
+  try { value = JSON.parse(readPrivateText(path)); } catch { throw new Error("Cannot read configuration JSON"); }
+  return validateConfig(value);
 }
-export function validateConfig(value: unknown, environment: NodeJS.ProcessEnv = process.env): Config {
+export function validateConfig(value: unknown): Config {
   const config = configSchema.parse(value);
-  if (!isAbsolute(config.dataDir)) throw new Error("dataDir must be absolute");
+  if (!isAbsolute(config.dataDir) || /[\x00-\x1f\x7f]/.test(config.dataDir)) throw new Error("dataDir must be absolute without control characters");
   const coordinatorKey = config.coordinator ? coordinatorCredentialEnv(config.coordinator) : undefined;
-  if ([...baseEnvKeys, ADMIN_TOKEN_ENV, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", coordinatorKey].includes(config.tokenEnv)) throw new Error("tokenEnv must be separate from base environment, administrator and model credentials");
+  if (/^(NODE_|LD_|DYLD_)/.test(config.tokenEnv) || [...baseEnvKeys, ADMIN_TOKEN_ENV, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", coordinatorKey].includes(config.tokenEnv)) throw new Error("tokenEnv must be separate from base environment, administrator and model credentials");
   if (coordinatorKey === ADMIN_TOKEN_ENV) throw new Error("Administrator token must not be used as a model credential");
   const ids = new Set<string>();
   for (const executor of config.executors) {
     if (ids.has(executor.id)) throw new Error("Duplicate executor ID");
     ids.add(executor.id);
-    if (!isAbsolute(executor.command) || !isAbsolute(executor.cwd)) throw new Error("Executor command and cwd must be absolute");
-    if (basename(executor.command) === "pi") {
-      throw new Error(`Executor ${executor.id}: pi CLI is not an ACP server (including --mode rpc). Install pi-acp with npm install -g pi-acp@0.0.34 and configure its absolute executable path.`);
-    }
-    const piCommandOverride = executor.envKeys.includes("PI_ACP_PI_COMMAND") && environment.PI_ACP_PI_COMMAND;
-    if (basename(executor.command) === "pi-acp" && !piCommandOverride && !(environment.PATH ?? "").split(delimiter).some(directory => {
-      if (!isAbsolute(directory)) return false;
-      try {
-        const file = join(directory, "pi");
-        accessSync(file, constants.X_OK);
-        return statSync(file).isFile();
-      } catch { return false; }
-    })) {
-      throw new Error(`Executor ${executor.id}: pi-acp requires pi on the executor PATH. Install/configure pi before starting the service.`);
-    }
-    try {
-      executor.command = realpathSync(executor.command);
-      accessSync(executor.command, constants.X_OK);
-    } catch {
-      throw new Error(`Executor ${executor.id}: ACP executable is missing or not executable. Check the administrator-configured absolute command path. For Pi, install npm install -g pi-acp@0.0.34 and use command -v pi-acp to locate it; pi must also be on the executor PATH.`);
-    }
+    if (!isAbsolute(executor.cwd)) throw new Error("Executor cwd must be absolute");
     executor.cwd = realpathSync(executor.cwd);
-    if (!statSync(executor.command).isFile() || !statSync(executor.cwd).isDirectory()) throw new Error("Invalid executor command or cwd");
-    for (const root of executor.resultReadRoots) {
-      if (!isAbsolute(root) || realpathSync(root) !== root || !statSync(root).isDirectory()) throw new Error("Result read roots must be canonical absolute directories");
-    }
-    if (executor.envKeys.includes(config.tokenEnv) || executor.envKeys.includes(ADMIN_TOKEN_ENV)) throw new Error("Service or administrator token must not be passed to executors");
-    if (coordinatorKey && executor.envKeys.includes(coordinatorKey)) throw new Error("Coordinator credential must not be passed to executors; use separate executor credentials");
+    if (!statSync(executor.cwd).isDirectory()) throw new Error("Invalid executor cwd");
   }
   return config;
-}
-/** No shell or wholesale inheritance; secrets are references to administrator-selected environment keys. */
-export function executorEnv(keys: string[], source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of new Set(["PATH", "LANG", "LC_ALL", "TZ", ...keys])) {
-    if (key !== ADMIN_TOKEN_ENV && source[key] !== undefined) env[key] = source[key];
-  }
-  return env;
 }

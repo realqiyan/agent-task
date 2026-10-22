@@ -13,7 +13,7 @@ export async function request(path, body) {
       method: body === undefined ? "GET" : "POST",
       headers: { Authorization: "Bearer " + token, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
-      credentials: "omit", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000),
+      credentials: "omit", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(path === "/restart" ? 60_000 : 15_000),
     });
   } catch { throw new Error("请求结果未确认。请刷新核对，不要盲目重复写入。"); }
   if (!response.ok) {

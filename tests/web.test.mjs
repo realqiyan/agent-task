@@ -1,22 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, realpathSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../dist/config.js";
 import { TaskStore } from "../dist/task-storage.js";
 import { Tasks } from "../dist/tasks.js";
 import { Results } from "../dist/results.js";
-import { openExecution } from "../dist/node-execution.js";
+import { createExecution } from "../dist/node-execution.js";
+const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
 import { createCoordinator } from "../dist/coordinator.js";
 import { taskSchema } from "../dist/task-contract.js";
 
-async function start(t, configPath, environmentPath) {
-  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", configPath, "--environment", environmentPath],
+async function start(t, home) {
+  const child = spawn(process.execPath, ["--input-type=module", "-e", 'import {launch} from "./dist/launcher.js"; await launch(process.argv[1], process.env);', home],
     { env: { PATH: process.env.PATH }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "", stderr = "";
   child.stdout.on("data", value => { stdout += value; }); child.stderr.on("data", value => { stderr += value; });
@@ -35,16 +36,18 @@ async function start(t, configPath, environmentPath) {
   }
   throw new Error("Service startup timed out");
 }
-test("console enforces its HTTP boundary, restricts task writes and applies private settings only after restart", { timeout: 30000 }, async t => {
+test("console enforces its HTTP boundary, restricts task writes and applies private settings only after restart", { timeout: 60000 }, async t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-web-"));
-  const configPath = join(root, "config.json"), environmentPath = join(root, "environment.json");
+  const dataDir = join(root, "data"); mkdirSync(dataDir, { mode: 0o700 });
+  writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }), { mode: 0o600 });
+  const configPath = join(dataDir, "config.json"), environmentPath = join(dataDir, "environment.json");
   const secrets = Array.from({ length: 4 }, () => randomBytes(32).toString("hex"));
   const [mcpToken, adminToken, oldKey, newKey] = secrets;
   const environment = { AGENT_TASK_TOKEN: mcpToken, AGENT_TASK_ADMIN_TOKEN: adminToken, OPENAI_API_KEY: oldKey };
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
   writeFileSync(configPath, JSON.stringify({ dataDir: join(root, "data"), port: 0,
     coordinator: { provider: "openai", model: "not-a-real-model" },
-    executors: [{ id: "local", command: "/usr/bin/false", cwd: root, unattendedApproved: true }] }), { mode: 0o600 });
+    executors: [{ id: "local", type: "codex", cwd: root, unattendedApproved: true }] }), { mode: 0o600 });
   const config = loadConfig(configPath), store = new TaskStore(config.dataDir);
   const service = new Tasks(store, config.executors, new Results(config.dataDir), openExecution,
     createCoordinator(config.dataDir, config.coordinator), error => { throw error; });
@@ -64,7 +67,7 @@ test("console enforces its HTTP boundary, restricts task writes and applies priv
     }
     rmSync(root, { recursive: true, force: true });
   });
-  let child = await start(t, configPath, environmentPath); children.push(child);
+  let child = await start(t, root); children.push(child);
   const raw = (path, options = {}) => fetch(child.origin + "/admin" + path, {
     ...options, headers: { Authorization: "Bearer " + adminToken, ...options.headers },
   });
@@ -126,24 +129,45 @@ test("console enforces its HTTP boundary, restricts task writes and applies priv
   settings = await call("/settings/credential", { editToken: settings.editToken, key: "OPENAI_API_KEY", action: "replace", value: newKey });
   for (const secret of secrets) assert(!JSON.stringify(settings).includes(secret));
   assert.equal(settings.credentials.find(item => item.key === "OPENAI_API_KEY").pendingRestart, true);
-  const changed = { executors: structuredClone(settings.saved.executors), coordinator: settings.saved.coordinator };
-  changed.executors[0].permissionAllowlist = ["read"];
+  const changed = structuredClone(settings.saved);
+  changed.executors[0].unattendedApproved = false;
+  changed.executors[0].note = "native configuration reviewed separately";
   const input = { editToken: settings.editToken, config: changed };
   assert.deepEqual((await call("/settings/validate", input)).affectedTasks.map(item => item.id), [task.id]);
   settings = await call("/settings/config", input);
-  assert.deepEqual(settings.running.executors[0].permissionAllowlist, []);
+  assert.equal(settings.running.executors[0].unattendedApproved, true);
   assert.equal((await call("/status")).settings.pendingRestart, true);
-  assert.deepEqual((await call("/tasks/" + task.id)).executors.local.permissionAllowlist, []);
-  await child.stop();
-  child = await start(t, configPath, environmentPath); children.push(child);
+  assert.equal((await call("/tasks/" + task.id)).executors.local.unattendedApproved, true);
+  const previous = (await call("/status")).instanceId;
+  const restarted = await call("/restart", {});
+  assert.notEqual(restarted.instanceId, previous);
+  child.origin = new URL(restarted.url).origin;
   settings = await call("/settings");
-  assert.deepEqual(settings.running.executors[0].permissionAllowlist, ["read"]);
+  assert.equal(settings.running.executors[0].unattendedApproved, false);
   assert.equal(settings.pendingRestart, false);
   assert.equal(settings.credentials.find(item => item.key === "OPENAI_API_KEY").pendingRestart, false);
   assert.equal((await call("/runs/" + run.id)).status, "waiting_input");
+  // CLI restarts the same foreground launcher, including token name and dataDir changes.
+  const next = join(root, "next");
+  settings = await call("/settings/config", { editToken: settings.editToken,
+    config: { ...settings.saved, dataDir: next, port: 0, tokenEnv: "RENAMED_SERVICE_TOKEN" } });
+  const cli = JSON.parse(execFileSync(process.execPath, [resolve("bin/agent-task.mjs"), "restart", "--home", root], { encoding: "utf8" }));
+  assert.notEqual(cli.instanceId, restarted.instanceId);
+  child.origin = new URL(cli.url).origin;
+  settings = await call("/settings");
+  assert.equal(settings.running.dataDir, next);
+  assert.equal(settings.running.tokenEnv, "RENAMED_SERVICE_TOKEN");
+  assert.equal(settings.pendingRestart, false);
+  assert.equal((await call("/tasks")).items.length, 0, "history is not copied to the selected directory");
+  for (const file of ["config.json", "environment.json", "tasks.sqlite", "service.log"]) assert(existsSync(join(next, file)));
+  assert(existsSync(join(dataDir, "tasks.sqlite")), "old history must remain");
+  assert.equal(JSON.parse(readFileSync(join(next, "environment.json"), "utf8")).RENAMED_SERVICE_TOKEN, mcpToken);
   await child.stop();
+  // Return the locator offline only for the admin-disabled boundary check.
+  writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }));
+  writeFileSync(configPath, JSON.stringify({ ...changed, dataDir }));
   delete environment.AGENT_TASK_ADMIN_TOKEN;
   writeFileSync(environmentPath, JSON.stringify(environment));
-  child = await start(t, configPath, environmentPath); children.push(child);
+  child = await start(t, root); children.push(child);
   assert.equal((await raw("/api/tasks")).status, 404);
 });

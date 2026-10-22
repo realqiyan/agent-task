@@ -6,10 +6,10 @@ StartLimitBurst=3
 [Service]
 Type=simple
 WorkingDirectory=/absolute/path/to/agent-task
-ExecStart=/absolute/path/to/node /absolute/path/to/agent-task/dist/main.js --config %h/.config/agent-task/config.json --environment %h/.config/agent-task/environment.json
+ExecStart=/absolute/path/to/node /absolute/path/to/agent-task/scripts/service-runner.mjs %h/.local/share/agent-task
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=15
+TimeoutStopSec=45
 KillMode=control-group
 UMask=0077
 

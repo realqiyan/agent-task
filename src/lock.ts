@@ -2,6 +2,15 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+/** The stable installation lock prevents two launchers or uninstall during a directory switch. */
+export function acquireLauncherLock(home: string): () => void {
+  const db = new DatabaseSync(join(home, "launcher-lock.sqlite"));
+  try { db.exec("PRAGMA busy_timeout=0; BEGIN EXCLUSIVE"); }
+  catch { db.close(); throw new Error("Another launcher owns this installation"); }
+  let released = false;
+  return () => { if (!released) { db.close(); released = true; } };
+}
+
 /** A dedicated SQLite transaction owns an OS lock until close or process death.
  * Local filesystems only. Never unlink this file: that would create a second lock identity.
  */

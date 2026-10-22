@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ADMIN_TOKEN_ENV, configSchema, coordinatorCredentialEnv, validateConfig } from "./config.js";
 import type { Config } from "./config.js";
-import { parseEnvironment } from "./environment.js";
-import { FileCommitError, readPrivateText, replacePrivateText } from "./private-files.js";
+import { parseEnvironment, validateServiceEnvironment } from "./environment.js";
+import { checkDataDirectory, FileCommitError, readPrivateText, replacePrivateText } from "./private-files.js";
 import { credentialUpdateSchema, settingsConfigSchema } from "./settings-contract.js";
 
 export class SettingsError extends Error {
@@ -24,8 +24,7 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   return result.data;
 }
 function referenced(config: Config): Set<string> {
-  return new Set([...config.executors.flatMap(executor => executor.envKeys),
-    ...(config.coordinator ? [coordinatorCredentialEnv(config.coordinator)] : [])]);
+  return new Set(config.coordinator ? [coordinatorCredentialEnv(config.coordinator)] : []);
 }
 function editableKey(key: string, config: Config): boolean {
   return !protectedKeys.has(key) && key !== config.tokenEnv && !/^(NODE_|LD_|DYLD_)/.test(key) &&
@@ -71,7 +70,7 @@ export class Settings {
     const editToken = randomUUID();
     this.edits.set(editToken, { configText: snapshot.configText, environmentText: snapshot.environmentText, expires: now + 15 * 60_000 });
     const keys = new Set([...modelKeys, ...Object.keys(snapshot.environment), ...referenced(snapshot.config), ...referenced(this.running)]);
-    const credentials = [...keys].filter(key => editableKey(key, snapshot.config)).sort().map(key => ({
+    const credentials = [...keys].filter(key => editableKey(key, snapshot.config) && editableKey(key, this.running) && ![snapshot.environment[snapshot.config.tokenEnv], snapshot.environment[ADMIN_TOKEN_ENV]].includes(snapshot.environment[key])).sort().map(key => ({
       key, saved: Boolean(snapshot.environment[key]), running: Boolean(this.runningEnvironment[key]),
       pendingRestart: snapshot.environment[key] !== this.runningEnvironment[key],
       referenced: referenced(snapshot.config).has(key),
@@ -92,10 +91,11 @@ export class Settings {
     const environment = { ...this.base, ...snapshot.environment };
     let config: Config;
     try {
-      config = validateConfig({ ...snapshot.config, ...input.config, coordinator: input.config.coordinator }, environment);
+      config = validateConfig(input.config);
+      checkDataDirectory(config.dataDir);
     } catch (error) {
       if (error instanceof z.ZodError) throw new SettingsError("invalid", "Invalid configuration fields");
-      throw new SettingsError("invalid", "Local validation failed: check executable paths, dependencies, workspaces, read roots and credential isolation");
+      throw new SettingsError("invalid", "Local validation failed: check data directory, workspaces and credential isolation");
     }
     const previous = snapshot.config.coordinator, next = config.coordinator;
     const endpoint = (model: NonNullable<Config["coordinator"]>) => model.provider === "openai-compatible" ? model.baseUrl : model.provider;
@@ -105,17 +105,30 @@ export class Settings {
     for (const key of referenced(config)) {
       if (!environment[key]) throw new SettingsError("invalid", "A referenced environment value is missing; prepare credentials or native configuration first");
     }
+    const token = environment[config.tokenEnv] ?? environment[snapshot.config.tokenEnv];
+    try { validateServiceEnvironment(config, { ...environment, [config.tokenEnv]: token }); }
+    catch { throw new SettingsError("invalid", "Service, administrator and model credentials must be valid and distinct"); }
+    if (config.tokenEnv !== snapshot.config.tokenEnv && environment[config.tokenEnv] && environment[config.tokenEnv] !== environment[snapshot.config.tokenEnv]) {
+      throw new SettingsError("invalid", "tokenEnv already contains another value; use a new environment name");
+    }
     return config;
   }
   validate(value: unknown): Config { return this.candidate(value); }
   saveConfig(value: unknown) {
     const config = this.candidate(value);
+    const snapshot = this.editing(parse(settingsConfigSchema, value).editToken);
+    if (config.tokenEnv !== snapshot.config.tokenEnv) {
+      snapshot.environment[config.tokenEnv] = snapshot.environment[snapshot.config.tokenEnv]!;
+      // Publish an alias first. Either configuration still uses the same service token.
+      this.publish(this.environmentPath, snapshot.environment);
+    }
     this.publish(this.configPath, config);
     return this.get();
   }
   saveCredential(value: unknown) {
     const input = parse(credentialUpdateSchema, value), snapshot = this.editing(input.editToken);
-    if (!editableKey(input.key, snapshot.config)) throw new SettingsError("invalid", "This environment key is not console-managed; new credential names must end in _KEY, _TOKEN, _SECRET or _PASSWORD");
+    if (!editableKey(input.key, snapshot.config) || !editableKey(input.key, this.running) ||
+      [snapshot.environment[snapshot.config.tokenEnv], snapshot.environment[ADMIN_TOKEN_ENV]].includes(snapshot.environment[input.key])) throw new SettingsError("invalid", "This environment key is not console-managed; new credential names must end in _KEY, _TOKEN, _SECRET or _PASSWORD");
     if (input.action === "delete") {
       if (referenced(snapshot.config).has(input.key)) throw new SettingsError("invalid", "The saved configuration still references this credential");
       delete snapshot.environment[input.key];

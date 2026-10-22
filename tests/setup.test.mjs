@@ -41,11 +41,11 @@ test("real terminal setup requires confirmation, creates private tokens and leav
   assert(!existsSync(home), "Declining confirmation must not write configuration");
   const result = await wizard("yes");
   assert.equal(result.code, 0);
-  const config = JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
+  const config = JSON.parse(readFileSync(join(home, "data/config.json"), "utf8"));
   assert.deepEqual(config.executors, []);
   const manifest = JSON.parse(readFileSync(join(home, "installation.json"), "utf8"));
   assert.equal(manifest.serviceInstalled, false);
-  const credentials = JSON.parse(readFileSync(join(home, "environment.json"), "utf8"));
+  const credentials = JSON.parse(readFileSync(join(home, "data/environment.json"), "utf8"));
   const values = Object.values(credentials);
   assert(values.length === 2 && values[0] !== values[1] && values.every(value => value.length >= 32));
   for (const value of values) assert(!result.output.includes(value), "Setup must not print credentials");

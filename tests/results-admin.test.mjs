@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync, spawn } from "node:child_process";
 import { Results, readInputFile } from "../dist/results.js";
-import { executorSchema } from "../dist/model.js";
 import { acquireLock } from "../dist/lock.js";
 import { loadConfig } from "../dist/config.js";
 
@@ -14,19 +13,19 @@ function directory(t) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
-test("result reads require exact run files and approved scope, reject symlinks and invalid ranges", t => {
+test("result reads require exact upstream files inside results, never other dataDir files", t => {
   const dir = directory(t), results = new Results(dir);
-  const executor = executorSchema.parse({ id: "local", command: "/usr/bin/false", cwd: dir, resultReadRoots: [dir] });
   const path = results.save("round", "node", "run", "first\nsecond\n");
   assert.equal(statSync(path).mode & 0o777, 0o600);
-  assert.equal(readInputFile(executor, [path], path), "first\nsecond\n");
-  assert.equal(readInputFile(executor, [path], path, 2, 1), "second");
-  assert.throws(() => readInputFile(executor, [], path), /authorized/);
-  assert.throws(() => readInputFile({ ...executor, resultReadRoots: [] }, [path], path), /scope/);
-  assert.throws(() => readInputFile(executor, [path], path, 0), /range/);
+  assert.equal(readInputFile(results.root, [path], path), "first\nsecond\n");
+  assert.equal(readInputFile(results.root, [path], path, 2, 1), "second");
+  assert.throws(() => readInputFile(results.root, [], path), /authorized/);
+  const secret = join(dir, "environment.json"); writeFileSync(secret, "private");
+  assert.throws(() => readInputFile(results.root, [secret], secret), /scope/);
+  assert.throws(() => readInputFile(results.root, [path], path, 0), /range/);
   const link = join(dir, "link");
   symlinkSync(path, link);
-  assert.throws(() => readInputFile(executor, [link], link), /authorized/);
+  assert.throws(() => readInputFile(results.root, [link], link), /authorized/);
   assert.throws(() => results.save("round", "node", "run", "overwrite"));
   assert.throws(() => results.save("../escape", "node", "run", ""));
 });
@@ -49,9 +48,8 @@ test("OS-owned directory lock excludes another process and releases on SIGKILL",
 
 test("administrator CLI registers local profiles atomically, queries them and honors the service lock", async t => {
   const dir = directory(t), path = join(dir, "config.json"), profilePath = join(dir, "profile.json");
-  writeFileSync(path, JSON.stringify({ dataDir: join(dir, "state"), executors: [] }));
-  writeFileSync(profilePath, JSON.stringify({ id: "local", command: "/usr/bin/false", cwd: dir, args: [],
-    envKeys: ["LANG"], permissionAllowlist: [], unattendedApproved: true, resultReadRoots: [dir] }));
+  writeFileSync(path, JSON.stringify({ dataDir: dir, executors: [] }), { mode: 0o600 });
+  writeFileSync(profilePath, JSON.stringify({ id: "local", type: "codex", note: "reviewed", cwd: dir, unattendedApproved: true }));
   const call = action => spawnSync(process.execPath, [resolve("dist/admin.js"), action, path, profilePath], { encoding: "utf8", timeout: 10_000 });
   const registered = call("register");
   assert.equal(registered.status, 0, registered.stderr);
@@ -61,7 +59,7 @@ test("administrator CLI registers local profiles atomically, queries them and ho
   const original = readFileSync(path, "utf8");
   assert.notEqual(call("register").status, 0);
   assert.equal(readFileSync(path, "utf8"), original);
-  const release = await acquireLock(join(dir, "state"));
+  const release = await acquireLock(dir);
   try { assert.notEqual(call("list").status, 0); } finally { await release(); }
   writeFileSync(profilePath, JSON.stringify({ id: "remote", command: "https://remote.invalid", cwd: dir }));
   assert.notEqual(call("register").status, 0);

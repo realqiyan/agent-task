@@ -8,7 +8,6 @@ import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { loadConfig, executorEnv } from "../../dist/config.js";
 
 /** Real local service and remote agents only. No retry, alternate provider or synthetic delivery. */
 export async function startE2e(t, { dependencies = false } = {}) {
@@ -27,16 +26,15 @@ export async function startE2e(t, { dependencies = false } = {}) {
   const workspace = join(dir, "workspace"), dataDir = join(dir, "state");
   await mkdir(workspace, { mode: 0o700 });
   await mkdir(join(dataDir, "results"), { recursive: true, mode: 0o700 });
-  const configPath = join(dir, "config.json"), token = randomBytes(32).toString("hex");
+  const configPath = join(dataDir, "config.json"), environmentPath = join(dataDir, "environment.json"), token = randomBytes(32).toString("hex");
   const tokenEnv = "AGENT_TASK_E2E_TOKEN";
-  assert.ok(!(executor.envKeys ?? []).includes(tokenEnv), "Executor must not receive the service token");
-  await save("config.json", { dataDir, port: 0, tokenEnv,
+  await writeFile(environmentPath, JSON.stringify({ DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, [tokenEnv]: token }), { mode: 0o600 });
+  await save("state/config.json", { dataDir, port: 0, tokenEnv,
     coordinator: { provider: "deepseek", model: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash" },
-    executors: [{ ...executor, cwd: workspace, resultReadRoots: dependencies ? [join(dataDir, "results")] : [] }],
+    executors: [{ ...executor, cwd: workspace }],
   });
-  const config = loadConfig(configPath);
-  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", configPath], {
-    env: { ...executorEnv(config.executors[0].envKeys), DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, [tokenEnv]: token },
+  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", configPath, "--environment", environmentPath], {
+    env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let readyUrl, spawnError, client, taskId;

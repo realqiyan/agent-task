@@ -5,15 +5,19 @@ import { pathToFileURL } from "node:url";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { argumentsFor, installRoot, packages, createFile, json, run, operationLock, readManifest, saveManifest,
-  runtimeEnv, activate, inventory, verifyServiceFile, packageRoot, checkHealth } from "./install-lib.mjs";
+  runtimeBaseEnv, activate, inventory, verifyServiceFile, packageRoot, checkHealth } from "./install-lib.mjs";
 import { setupWizard } from "./setup-wizard.mjs";
+import { startupPaths } from "../dist/startup.js";
+import { readEnvironment } from "../dist/environment.js";
+import { executorCommand, executorEnvironment } from "../dist/executor-runtime.js";
+import { acquireLauncherLock } from "../dist/lock.js";
 
 process.umask(0o077);
 let unlock;
 try {
   const options = argumentsFor(process.argv.slice(2));
   if (options.help) {
-    console.log("Usage: agent-task setup [--home ABSOLUTE_PRIVATE_DIR]\nInteractive on a terminal for a new installation. Noninteractive: --executors pi,codex,opencode|none --cwd ABSOLUTE_DIR [--provider openai|anthropic|deepseek --model ID] [--port 8765]\nDefault: --prepare-only (no background service). --service explicitly installs/starts the background service.\nExisting installation: --check [--probe] | --resume. No credentials accepted on the command line. Existing configuration is never replaced.");
+    console.log("Usage: agent-task setup [--home ABSOLUTE_PRIVATE_DIR]\nInteractive on a terminal for a new installation. Noninteractive: --executors pi,codex,claude,opencode|none --cwd ABSOLUTE_DIR [--provider openai|anthropic|deepseek --model ID] [--port 8765]\nDefault: --prepare-only (no background service). --service explicitly installs/starts the background service.\nExisting installation: --check [--probe] | --resume. No credentials accepted on the command line. Existing configuration is never replaced.");
     process.exit(0);
   }
   if (options.service && (options["prepare-only"] || options.check)) throw new Error("--service cannot be combined with --prepare-only or --check");
@@ -30,7 +34,7 @@ try {
     if (manifest.phase !== "ready" && !options.resume) throw new Error("Incomplete or uninstalled components; use --resume explicitly (configuration will be preserved)");
   } else {
     if (options.check || options.probe || options.resume) throw new Error("No installation to check/resume");
-    if (!options.executors || !options.cwd) throw new Error("Select --executors pi,codex,opencode|none and --cwd ABSOLUTE_DIR");
+    if (!options.executors || !options.cwd) throw new Error("Select --executors pi,codex,claude,opencode|none and --cwd ABSOLUTE_DIR");
     const selected = options.executors === "none" ? [] : options.executors.split(",");
     if (selected.some(id => !Object.hasOwn(packages, id)) || new Set(selected).size !== selected.length) throw new Error("Invalid executor selection");
     if (!options.cwd.startsWith("/") || !lstatSync(realpathSync(options.cwd)).isDirectory()) throw new Error("cwd must be an existing absolute directory");
@@ -40,7 +44,7 @@ try {
     const port = Number(options.port ?? 8765);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid port");
     // Reject unowned artifacts. This script never adopts or clears an existing installation.
-    for (const name of ["components", "config.json", "environment.json", "data"]) {
+    for (const name of ["components", "launch.json", "data"]) {
       if (existsSync(join(root, name))) throw new Error("Existing unowned installation artifact: " + name);
     }
     manifest = { project: "agent-task", root, home: homedir(), platform: process.platform, node: process.execPath, app: packageRoot,
@@ -75,27 +79,26 @@ try {
         }
       }
       mkdirSync(join(root, "data/results"), { recursive: true, mode: 0o700 });
-      if (!existsSync(join(root, "environment.json"))) createFile(join(root, "environment.json"), JSON.stringify({ AGENT_TASK_TOKEN: randomBytes(32).toString("hex"), AGENT_TASK_ADMIN_TOKEN: randomBytes(32).toString("hex") }, null, 2) + "\n");
-      if (!existsSync(join(root, "config.json"))) createFile(join(root, "config.json"), JSON.stringify({ dataDir: join(root, "data"), port: manifest.port,
+      const dataDir = join(root, "data");
+      if (!existsSync(join(root, "launch.json"))) createFile(join(root, "launch.json"), JSON.stringify({ dataDir }) + "\n");
+      if (!existsSync(join(dataDir, "environment.json"))) createFile(join(dataDir, "environment.json"), JSON.stringify({ AGENT_TASK_TOKEN: randomBytes(32).toString("hex"), AGENT_TASK_ADMIN_TOKEN: randomBytes(32).toString("hex") }, null, 2) + "\n");
+      if (!existsSync(join(dataDir, "config.json"))) createFile(join(dataDir, "config.json"), JSON.stringify({ dataDir, port: manifest.port,
         tokenEnv: "AGENT_TASK_TOKEN", coordinator: manifest.coordinator,
-        executors: manifest.selected.map(id => ({ id, command: join(components, "node_modules/.bin", id === "pi" ? "pi-acp" : id === "codex" ? "codex-acp" : "opencode"),
-          args: id === "opencode" ? ["acp"] : [], cwd: manifest.cwd, envKeys: ["HOME"],
-          permissionAllowlist: [], unattendedApproved: false, resultReadRoots: [] })) }, null, 2) + "\n");
+        executors: manifest.selected.map(id => ({ id, type: id, note: "", cwd: manifest.cwd, unattendedApproved: false })) }, null, 2) + "\n");
       manifest.phase = "ready";
+      delete manifest.port; delete manifest.cwd; delete manifest.coordinator;
     } finally {
       manifest.files = ["components"].filter(name => existsSync(join(root, name))).flatMap(name => inventory(root, name));
       saveManifest(root, manifest);
     }
   }
-  const env = runtimeEnv(manifest);
-  // Config validation and probes run in the SAME explicit environment as the background service.
-  run(manifest.node, ["--input-type=module", "-e", `import {loadConfig} from ${JSON.stringify(pathToFileURL(join(app, "dist/config.js")).href)}; loadConfig(process.argv[1]);`, join(root, "config.json")], { env });
-  const config = json(join(root, "config.json"));
-  const { executorEnv } = await import(pathToFileURL(join(app, "dist/config.js")).href);
+  const paths = startupPaths(root), env = runtimeBaseEnv(manifest);
+  // Use the same native launch environment; private values are read separately, never passed to probes.
+  run(manifest.node, ["--input-type=module", "-e", `import {loadConfig} from ${JSON.stringify(pathToFileURL(join(app, "dist/config.js")).href)}; loadConfig(process.argv[1]);`, paths.configPath], { env });
+  const config = json(paths.configPath);
   for (const id of manifest.selected) {
-    const binary = id === "pi" ? "pi" : id;
-    const cliEnv = executorEnv(config.executors.find(executor => executor.id === id)?.envKeys ?? [], env);
-    run(join(components, "node_modules/.bin", binary), ["--version"], { env: cliEnv, timeout: 20000 });
+    const cliEnv = executorEnvironment(env, readEnvironment(paths.environmentPath), config);
+    executorCommand(id, cliEnv); // No native process is launched without an explicit --probe.
   }
   const report = { platform: process.platform, dependencies: "ready", configuration: "valid", background: "not-checked",
     coordinator: config.coordinator ? "configured; authentication not verified" : "not configured; task admission disabled",
@@ -103,11 +106,12 @@ try {
       handshake: "not checked", execution: "not verified by setup" })) };
   if (options.probe) {
     for (const entry of report.executors) {
-      try { run(manifest.node, [join(app, "scripts/probe-agent.mjs"), join(root, "config.json"), entry.id], { env, timeout: 20000 }); entry.handshake = "passed (initialize only)"; }
+      try { run(manifest.node, [join(app, "scripts/probe-agent.mjs"), paths.configPath, entry.id], { env, timeout: 20000 }); entry.handshake = "passed (initialize only)"; }
       catch { entry.handshake = "failed; inspect native dependencies/configuration separately"; process.exitCode = 1; }
     }
   }
   if (options.service) {
+    if (!manifest.serviceInstalled) acquireLauncherLock(root)(); // Refuse a live foreground owner.
     // Record intent before activating so a failed service start is still owned by uninstall.
     manifest.serviceInstalled = true; saveManifest(root, manifest);
     activate(manifest);
@@ -115,12 +119,12 @@ try {
   }
   if (manifest.serviceInstalled) {
     try {
-      await checkHealth(config, env, 15000);
+      await checkHealth(root, 15000);
       report.background = "authenticated MCP health check passed";
     } catch { report.background = "not ready; run --check after startup and inspect the service manager"; process.exitCode = 1; }
   }
   console.log(JSON.stringify(report, null, 2));
-  console.log(`Config: ${join(root, "config.json")}\nSecrets (never printed): ${join(root, "environment.json")}\nNative login: use ${join(components, "node_modules/.bin")} executables: pi then /login; codex login; opencode auth login. No login is performed by setup.\nConsole: http://127.0.0.1:${config.port}/admin/ (use the separate AGENT_TASK_ADMIN_TOKEN from the private environment file; never place it in a URL). Configure coordinator credentials there or in environment.json, and audit native executor permissions before setting unattendedApproved=true. No permissions are granted by setup. Restart the service manually after changes.\nLinux: user service requires lingering for logout survival (administrator decision). macOS: LaunchAgent survives terminal close, not user logout; log in again to restart. Neither platform executes during sleep/shutdown.`);
+  console.log(`Config: ${paths.configPath}\nSecrets (never printed): ${paths.environmentPath}\nInstalled ACP adapters: ${join(components, "node_modules/.bin")}. Prepare authentication with each executor\'s official native tools under the service OS user. No login is performed by setup.\nConsole: http://127.0.0.1:${config.port}/admin/ (use the separate AGENT_TASK_ADMIN_TOKEN from the private environment file; never place it in a URL). Configure coordinator credentials there or in environment.json, and audit native executor permissions before setting unattendedApproved=true. No permissions are granted by setup. Use Web restart or agent-task restart after changes.\nLinux: user service requires lingering for logout survival (administrator decision). macOS: LaunchAgent survives terminal close, not user logout; log in again to restart. Neither platform executes during sleep/shutdown.`);
 } catch (error) {
   console.error(error.message); process.exitCode = 1;
 } finally { unlock?.(); }

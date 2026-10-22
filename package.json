@@ -46,7 +46,7 @@
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/deepseek-acp.test.mjs",
     "test:e2e:human": "npm run build && node scripts/run-pi-human-e2e.mjs",
-    "start": "node dist/main.js",
+    "start": "node bin/agent-task.mjs start",
     "setup": "node bin/agent-task.mjs setup",
     "prepack": "npm run build",
     "pack:release": "node scripts/pack-release.mjs",

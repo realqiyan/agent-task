@@ -4,8 +4,7 @@ import { readFileSync } from "node:fs";
 const help = `Usage: agent-task <command>
   setup [options]           Interactive configuration (setup --help for flags)
   start [--home PATH]        Foreground service using the private installation
-  start --config PATH --environment PATH
-                            Foreground service with explicit private files
+  restart [--home PATH]      Restart foreground or managed runtime; verify readiness
   status [--home PATH]       Authenticated MCP health check; no token printed
   service install [--home PATH]
                             Install/start systemd user service or LaunchAgent
@@ -26,14 +25,10 @@ try {
   } else if (command === "setup" || command === "uninstall") {
     process.argv = [process.execPath, command, ...args];
     await import(`../scripts/${command}.mjs`);
-  } else if (command === "start" && args[0] === "--config") {
-    if (args.length !== 4 || args[2] !== "--environment") throw new Error("Use start --config PATH --environment PATH");
-    process.argv = [process.execPath, "agent-task", ...args];
-    await import("../dist/main.js");
   } else {
     const lib = await import("../scripts/install-lib.mjs");
     const action = command === "service" ? args.shift() : undefined;
-    if (!["start", "status", "service"].includes(command) || (command === "service" && !["install", "remove"].includes(action))) throw new Error(help);
+    if (!["start", "status", "restart", "service"].includes(command) || (command === "service" && !["install", "remove"].includes(action))) throw new Error(help);
     const options = lib.argumentsFor(args);
     if (Object.keys(options).some(key => key !== "home")) throw new Error("Only --home is accepted here");
     const root = lib.installRoot(options);
@@ -51,13 +46,13 @@ try {
         console.log("Owned service removed; configuration, credentials, components and data preserved.");
       } finally { unlock(); }
     } else if (command === "start") {
+      if (lib.readManifest(root).serviceInstalled) throw new Error("Remove the managed service before starting a foreground instance");
       process.argv = [process.execPath, "service-runner", root];
       await import("../scripts/service-runner.mjs");
     } else {
-      const manifest = lib.readManifest(root);
-      if (manifest.phase !== "ready") throw new Error("Installation is not ready");
-      await lib.checkHealth(lib.json(root + "/config.json"), lib.runtimeEnv(manifest));
-      console.log("Authenticated MCP health check passed.");
+      const { controlService } = await import("../dist/launcher.js");
+      const ready = await controlService(root, command);
+      console.log(JSON.stringify({ event: command === "restart" ? "restarted" : "healthy", ...ready }));
     }
   }
 } catch (error) {

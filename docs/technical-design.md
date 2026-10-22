@@ -6,17 +6,17 @@
 
 | 问题 | 代码入口 | 基础验证 |
 | --- | --- | --- |
-| 服务如何装配、启动和关闭 | [main.ts](../src/main.ts)、[lock.ts](../src/lock.ts) | [service.test.mjs](../tests/service.test.mjs)、[results-admin.test.mjs](../tests/results-admin.test.mjs) |
+| 服务如何装配、启动和关闭 | [main.ts](../src/main.ts)、[launcher.ts](../src/launcher.ts)、[lock.ts](../src/lock.ts) | [restart.test.mjs](../tests/restart.test.mjs)、[service.test.mjs](../tests/service.test.mjs) |
 | MCP 有哪些工具、输入是什么 | [mcp.ts](../src/mcp.ts)、[task-contract.ts](../src/task-contract.ts) | [service.test.mjs](../tests/service.test.mjs) |
 | Task、Run、节点的数据与推进规则 | [task-model.ts](../src/task-model.ts)、[tasks.ts](../src/tasks.ts) | [tasks.test.mjs](../tests/tasks.test.mjs) |
 | 人工等待、回复及续接 | [human-input.ts](../src/human-input.ts) | [human-input.test.mjs](../tests/human-input.test.mjs) |
 | durable 工具与模型接入 | [coordinator.ts](../src/coordinator.ts)、[coordinator-provider.ts](../src/coordinator-provider.ts) | [coordinator-provider.test.mjs](../tests/coordinator-provider.test.mjs) |
 | 持久数据校验和提交 | [task-storage.ts](../src/task-storage.ts)、[coordinator-storage.ts](../src/coordinator-storage.ts) | [durable.test.mjs](../tests/durable.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
 | ACP、worker 和进程关闭 | [acp.ts](../src/acp.ts)、[node-execution.ts](../src/node-execution.ts)、[worker.ts](../src/worker.ts) | [execution.test.mjs](../tests/execution.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
-| 审批、环境与结果文件范围 | [permissions.ts](../src/permissions.ts)、[config.ts](../src/config.ts)、[results.ts](../src/results.ts) | [policy.test.mjs](../tests/policy.test.mjs)、[results-admin.test.mjs](../tests/results-admin.test.mjs) |
+| 审批、环境与结果文件范围 | [permissions.ts](../src/permissions.ts)、[executor-runtime.ts](../src/executor-runtime.ts)、[results.ts](../src/results.ts) | [policy.test.mjs](../tests/policy.test.mjs)、[results-admin.test.mjs](../tests/results-admin.test.mjs) |
 | 配置、管理员注册和工作空间 | [config.ts](../src/config.ts)、[model.ts](../src/model.ts)、[admin.ts](../src/admin.ts)、[workspace.ts](../src/workspace.ts) | [config-preflight.test.mjs](../tests/config-preflight.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
 | 控制台 HTTP 边界与页面 | [web.ts](../src/web.ts)、[http-auth.ts](../src/http-auth.ts)、[页面模块](../src/web/) | [web.test.mjs](../tests/web.test.mjs) |
-| 配置和凭据的校验、保存与下次启动 | [settings.ts](../src/settings.ts)、[settings-contract.ts](../src/settings-contract.ts)、[private-files.ts](../src/private-files.ts)、[environment.ts](../src/environment.ts) | [settings.test.mjs](../tests/settings.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
+| 配置和凭据的校验、保存与下次启动 | [settings.ts](../src/settings.ts)、[settings-contract.ts](../src/settings-contract.ts)、[startup.ts](../src/startup.ts)、[private-files.ts](../src/private-files.ts)、[environment.ts](../src/environment.ts) | [settings.test.mjs](../tests/settings.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
 | npm 命令、安装、启动环境与卸载 | [agent-task.mjs](../bin/agent-task.mjs)、[setup-wizard.mjs](../scripts/setup-wizard.mjs)、[setup.mjs](../scripts/setup.mjs)、[install-lib.mjs](../scripts/install-lib.mjs)、[service-runner.mjs](../scripts/service-runner.mjs)、[uninstall.mjs](../scripts/uninstall.mjs) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[verify-install.mjs](../scripts/verify-install.mjs) |
 | npm 包清单与发布门禁 | [package.json](../package.json)、[pack-release.mjs](../scripts/pack-release.mjs)、[工作流](../.github/workflows/) | [发布说明](release.md) |
 
