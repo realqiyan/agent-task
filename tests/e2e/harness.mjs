@@ -12,9 +12,9 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 /** Real local service and remote agents only. No retry, alternate provider or synthetic delivery. */
 export async function startE2e(t, { dependencies = false } = {}) {
   assert.ok(process.env.DEEPSEEK_API_KEY, "Load DEEPSEEK_API_KEY in this shell before running E2E; never print it");
-  assert.ok(process.env.AGENT_TASK_E2E_EXECUTOR, "Set AGENT_TASK_E2E_EXECUTOR to a reviewed ACP profile. For Pi install pi-acp@0.0.34; pi --mode rpc is not ACP.");
-  const executor = JSON.parse(await readFile(process.env.AGENT_TASK_E2E_EXECUTOR, "utf8"));
-  assert.equal(executor.unattendedApproved, true, "Review native executor permissions before approving unattended use");
+  const type = process.env.AGENT_TASK_E2E_EXECUTOR;
+  assert.ok(["pi", "codex", "claude", "opencode"].includes(type), "Set AGENT_TASK_E2E_EXECUTOR to an approved native CLI type");
+  let executor;
   if (dependencies) assert.equal(process.env.AGENT_TASK_E2E_ALLOW_RESULT_READ, "1",
     "This case requires explicit approval: AGENT_TASK_E2E_ALLOW_RESULT_READ=1 and native read-only tools for the generated result directory");
   const dir = await mkdtemp(join(await realpath(tmpdir()), "agent-task-real-e2e-"));
@@ -31,7 +31,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
   await writeFile(environmentPath, JSON.stringify({ DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, [tokenEnv]: token }), { mode: 0o600 });
   await save("state/config.json", { dataDir, port: 0, tokenEnv,
     coordinator: { provider: "deepseek", model: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash" },
-    executors: [{ ...executor, cwd: workspace }],
+    disabledExecutors: ["pi", "codex", "claude", "opencode"].filter(value => value !== type),
   });
   const child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", configPath, "--environment", environmentPath], {
     env: process.env,
@@ -59,6 +59,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
     const timer = setTimeout(() => child.kill("SIGKILL"), 6000);
     await closed; clearTimeout(timer);
     log("service_closed", { exitCode: child.exitCode, signal: child.signalCode });
+    await writeFile(environmentPath, "{}\n", { mode: 0o600 });
   });
   async function until(fn, milliseconds = 200000) {
     const deadline = Date.now() + milliseconds;
@@ -82,7 +83,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
   }
   async function create(input) {
     const task = await call("task_create", { requestKey: "real-e2e", name: "Real ACP E2E",
-      schedule: { type: "now" }, maxRunSeconds: 300, maxSteps: 35, maxNodeTurns: 3, ...input });
+      workspace, schedule: { type: "now" }, maxRunSeconds: 300, maxSteps: 35, maxNodeTurns: 3, ...input });
     taskId = task.id;
     log("task_created", { taskId });
     await save("task.json", task);
@@ -112,6 +113,12 @@ export async function startE2e(t, { dependencies = false } = {}) {
   }
   await until(() => readyUrl, 15000);
   await connect();
+  executor = await until(async () => {
+    const state = (await call("executor_list", {})).executors.find(value => value.id === type);
+    assert.ok(state && state.nativePath, "Approved native CLI is missing");
+    assert.notEqual(state.state, "error", "Adapter preparation failed; inspect private state");
+    return state.state === "ready" ? state : undefined;
+  }, 300000);
   return { dir, executor, log, save, until, call, create, getRun, waitFor };
 }
 

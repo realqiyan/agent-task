@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 
 const help = `Usage: agent-task <command>
   setup [options]           Interactive configuration (setup --help for flags)
+  mcp [--home PATH]          MCP stdio connection; start or reuse the shared background service
   start [--home PATH]        Foreground service using the private installation
+  stop [--home PATH]         Stop the shared service
   restart [--home PATH]      Restart runtime; verify readiness
   status [--home PATH]       Health, active work and pending configuration
   config                    Show, edit, validate and apply configuration
-  executor                  Manage registrations and unattended authorization
+  executor                  Discover executors, upgrade adapters and configure enable/disable
   coordinator               Configure the coordination model
   credential                List, replace or delete private credentials
   task                      Inspect tasks and control future triggers
@@ -28,14 +30,24 @@ try {
     await import(`../scripts/${command}.mjs`);
   } else {
     const lib = await import("../scripts/install-lib.mjs");
-    if (command === "start") {
-      if (args.includes("--help")) { console.log("Usage: agent-task start [--home ABSOLUTE_DIR]"); }
+    if (["start", "mcp", "stop"].includes(command)) {
+      if (args.includes("--help")) { console.log("Usage: agent-task " + command + " [--home ABSOLUTE_DIR]" + (command === "stop" ? " [--json]" : "")); }
       else {
-        const options = lib.argumentsFor(args);
+        const json = command === "stop" && args.includes("--json");
+        if (args.filter(arg => arg === "--json").length > 1) throw new Error("Repeated option: --json");
+        const options = lib.argumentsFor(json ? args.filter(arg => arg !== "--json") : args);
         if (Object.keys(options).some(key => key !== "home")) throw new Error("Only --home is accepted here");
         const root = lib.installRoot(options);
-        process.argv = [process.execPath, "service-runner", root];
-        await import("../scripts/service-runner.mjs");
+        if (command === "mcp") {
+          const { runMcp } = await import("../dist/application/mcp-entry.js");
+          await runMcp(root);
+        } else if (command === "stop") {
+          const { controlService } = await import("../dist/integrations/local-service/control.js");
+          console.log(JSON.stringify({ event: "stopped", ...await controlService(root, "stop") }, null, json ? undefined : 2));
+        } else {
+          process.argv = [process.execPath, "service-runner", root];
+          await import("../scripts/service-runner.mjs");
+        }
       }
     } else {
       const { runCli } = await import("../dist/protocol/cli/commands.js");

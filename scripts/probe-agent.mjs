@@ -2,22 +2,23 @@
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { loadConfig } from "../dist/configuration/files.js";
+import { loadConfig, startupPaths } from "../dist/configuration/files.js";
 import { executorEnvironment } from "../dist/executors/environment.js";
-import { executorCommand } from "../dist/integrations/acp/runtime.js";
+import { executorLaunch } from "../dist/integrations/acp/runtime.js";
+import { LocalExecutors } from "../dist/integrations/acp/discovery.js";
 import { readEnvironment } from "../dist/configuration/files.js";
 import { join } from "node:path";
 import { terminateGroup } from "../dist/integrations/acp/connection.js";
 import { version } from "../dist/infrastructure/version.js";
-const [file, id] = process.argv.slice(2);
-if (!file || !id) { console.error("Usage: node scripts/probe-agent.mjs <config.json> <executorId>"); process.exit(2); }
-const config = loadConfig(file);
-const executor = config.executors.find(value => value.id === id);
-if (!executor) throw new Error("Executor not found");
+const [home, id] = process.argv.slice(2);
+if (!home || !id) { console.error("Usage: node scripts/probe-agent.mjs <installation-home> <pi|codex|claude|opencode>"); process.exit(2); }
+const config = loadConfig(startupPaths(home).configPath);
 const env = executorEnvironment(process.env, readEnvironment(join(config.dataDir, "environment.json")), config);
-const launch = executorCommand(executor.type, env);
+const executor = new LocalExecutors(join(home, "adapters"), env).discover().executors.find(value => value.id === id);
+if (!executor || config.disabledExecutors.includes(executor.type)) throw new Error("Executor unavailable; connect MCP to prepare its adapter first");
+const launch = executorLaunch(executor, env);
 const child = spawn(launch.command, launch.args, {
-  cwd: executor.cwd, env, detached: true, stdio: ["pipe", "pipe", "pipe"],
+  cwd: process.cwd(), env: launch.env, detached: true, stdio: ["pipe", "pipe", "pipe"],
 });
 child.stderr.resume();
 let connection;

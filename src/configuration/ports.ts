@@ -6,6 +6,5 @@ export interface SettingsFiles {
   publish(target: "config" | "environment", value: unknown): void;
 }
 export interface ConfigurationPaths {
-  resolveWorkspace(path: string): string;
   checkDataDirectory(path: string): void;
 }

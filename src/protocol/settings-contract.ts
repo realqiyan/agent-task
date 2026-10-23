@@ -1,25 +1,22 @@
 import { SettingsError } from "../configuration/settings.js";
 import { z } from "zod";
 import { configSchema } from "../configuration/contract.js";
-import { executorSchema } from "../executors/validation.js";
-import { identifier } from "../shared/validation.js";
+import { executorTypeSchema } from "../executors/validation.js";
 
 export const settingsConfigSchema = z.object({
   editToken: z.string().uuid(),
   config: configSchema,
-  approveExecutors: z.array(identifier).max(100).default([]),
 }).strict();
 export const settingsChangeSchema = z.object({
   editToken: z.string().uuid(),
   change: z.discriminatedUnion("action", [
-    z.object({ action: z.literal("executor-add"), executor: executorSchema.omit({ unattendedApproved: true }) }).strict(),
-    z.object({ action: z.literal("executor-update"), id: identifier,
-      patch: executorSchema.omit({ unattendedApproved: true }).extend({ note: executorSchema.shape.note.removeDefault() }).partial() }).strict(),
-    z.object({ action: z.enum(["executor-remove", "executor-approve", "executor-revoke"]), id: identifier }).strict(),
+    z.object({ action: z.enum(["executor-enable", "executor-disable"]), id: executorTypeSchema }).strict(),
     z.object({ action: z.literal("coordinator-set"), coordinator: configSchema.shape.coordinator.unwrap() }).strict(),
     z.object({ action: z.literal("coordinator-clear") }).strict(),
   ]),
 }).strict();
+export const executorRefreshSchema = z.object({}).strict();
+export const executorUpgradeSchema = z.object({ id: executorTypeSchema }).strict();
 const credential = {
   editToken: z.string().uuid(),
   key: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).max(200),

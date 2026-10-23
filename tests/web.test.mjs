@@ -12,6 +12,7 @@ import { TaskStore } from "../dist/tasks/storage/store.js";
 import { createTaskRuntime } from "../dist/application/task-runtime.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
+const executorTypes = ["pi", "codex", "claude", "opencode"];
 import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 
@@ -46,12 +47,13 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
   writeFileSync(configPath, JSON.stringify({ dataDir: join(root, "data"), port: 0,
     coordinator: { provider: "openai", model: "not-a-real-model" },
-    executors: [{ id: "local", type: "codex", cwd: root, unattendedApproved: true }] }), { mode: 0o600 });
+    disabledExecutors: executorTypes }), { mode: 0o600 });
   const config = loadConfig(configPath), store = new TaskStore(config.dataDir);
-  const service = createTaskRuntime(config.dataDir, config.executors, openExecution,
+  const executor = { id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null };
+  const service = createTaskRuntime(config.dataDir, [executor], openExecution,
     createCoordinator(config.dataDir, config.coordinator), error => { throw error; });
   const now = Date.now(), name = '<img src="https://untrusted.invalid" onerror="alert(1)">';
-  const task = service.definitions.create(taskSchema.parse({ requestKey: "web-boundary", name, prompt: "Inspect",
+  const task = service.definitions.create(taskSchema.parse({ requestKey: "web-boundary", name, prompt: "Inspect", workspace: root,
     nodes: [{ id: "inspect", prompt: "Inspect", executorId: "local" }],
     schedule: { type: "interval", startAt: new Date(now - 1000).toISOString(), seconds: 600 } }), now - 2000);
   service.runs.trigger(now);
@@ -139,7 +141,7 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   let settings = await call("/settings");
   const before = readFileSync(configPath, "utf8");
   const invalid = await raw("/api/settings/config", { method: "POST", headers: { Origin: child.origin, "Content-Type": "application/json" },
-    body: JSON.stringify({ editToken: settings.editToken, config: { executors: [{ id: "bad", command: "/absent", cwd: root }] } }) });
+    body: JSON.stringify({ editToken: settings.editToken, config: { ...settings.saved, disabledExecutors: ["arbitrary-command"] } }) });
   assert.equal(invalid.status, 400); assert.equal(readFileSync(configPath, "utf8"), before);
   const malformed = await raw("/api/settings/credential", { method: "POST", headers: { Origin: child.origin, "Content-Type": "application/json" }, body: '{"value":"' + newKey + '"' });
   assert.equal(malformed.status, 400); assert(!(await malformed.text()).includes(newKey));
@@ -153,29 +155,25 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   assert.equal(statSync(draftPath).mode & 0o777, 0o600);
   assert.notEqual(invoke(["config", "export", "--output", draftPath]).status, 0, "export never overwrites user files");
   const draft = JSON.parse(readFileSync(draftPath, "utf8"));
-  draft.config.executors[0].note = "CLI reviewed note";
+  draft.config.disabledExecutors = executorTypes.filter(type => type !== "codex");
   writeFileSync(draftPath, JSON.stringify(draft));
   const preview = cliCall("config", "validate", "--file", draftPath);
   assert.deepEqual(preview, await call("/settings/validate", draft));
-  assert.equal(preview.changes[0].field, "executors");
+  assert.equal(preview.changes[0].field, "disabledExecutors");
   assert.equal(cliCall("config", "apply", "--file", draftPath, "--yes").pendingRestart, true);
   assert.deepEqual(cliCall("config", "show"), (await call("/settings")).saved);
   assert.notEqual(invoke(["config", "apply", "--file", draftPath, "--yes"]).status, 0, "stale drafts cannot overwrite changes");
-  const extraWorkspace = join(root, "extra-workspace");
-  mkdirSync(extraWorkspace);
-  cliCall("executor", "add", "--id", "extra", "--type", "pi", "--cwd", extraWorkspace, "--yes");
-  assert.equal(cliCall("executor", "show", "extra").unattendedApproved, false);
-  cliCall("executor", "approve", "extra", "--yes");
-  assert.equal((await call("/settings")).saved.executors[1].unattendedApproved, true);
-  rmSync(extraWorkspace, { recursive: true });
-  assert.equal(cliCall("status").event, "healthy", "invalid next-start workspace must not block running health");
-  assert.equal(cliCall("config", "show").executors[1].cwd, extraWorkspace);
-  cliCall("executor", "update", "extra", "--type", "claude", "--cwd", root, "--yes");
-  assert.equal((await call("/settings")).saved.executors[1].unattendedApproved, false);
-  cliCall("executor", "approve", "extra", "--yes");
-  cliCall("executor", "revoke", "extra", "--yes");
-  assert.equal(cliCall("executor", "list")[1].unattendedApproved, false);
-  cliCall("executor", "remove", "extra", "--yes");
+  const discovered = await call("/executors");
+  assert.deepEqual(cliCall("executor", "list"), discovered);
+  assert(discovered.executors.every(executor => executor.state === "disabled"));
+  assert.deepEqual(cliCall("executor", "show", "codex"), discovered.executors.find(executor => executor.id === "codex"));
+  assert.deepEqual(cliCall("executor", "refresh"), await call("/executors/refresh", {}));
+  assert.notEqual(invoke(["executor", "upgrade", "codex", "--yes"]).status, 0, "disabled executors cannot install or upgrade adapters");
+  cliCall("executor", "enable", "pi", "--yes");
+  assert(!(await call("/settings")).saved.disabledExecutors.includes("pi"));
+  assert.equal(cliCall("executor", "show", "pi").state, "disabled", "saved enablement must not change live discovery");
+  cliCall("executor", "disable", "pi", "--yes");
+  assert((await call("/settings")).saved.disabledExecutors.includes("pi"));
   const savedCredential = invoke(["credential", "set", "EXTRA_API_KEY", "--stdin", "--yes"], newKey + "\n");
   assert.equal(savedCredential.status, 0, savedCredential.stderr);
   const rejectedCredential = invoke(["credential", "set", "AGENT_TASK_ADMIN_TOKEN", "--stdin", "--yes"], newKey);
@@ -189,23 +187,23 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   cliCall("credential", "delete", "EXTRA_API_KEY", "--yes");
   cliCall("coordinator", "set", "--provider", "openai", "--model", "not-a-real-model", "--yes");
   assert.equal(cliCall("status").settings.pendingRestart, true);
-  assert(cliCall("config", "diff").changes.some(change => change.field === "executors"));
+  assert(cliCall("config", "diff").changes.some(change => change.field === "disabledExecutors"));
   settings = await call("/settings");
   const changed = structuredClone(settings.saved);
-  changed.executors[0].unattendedApproved = false;
-  changed.executors[0].note = "native configuration reviewed separately";
+  changed.disabledExecutors = executorTypes;
   const input = { editToken: settings.editToken, config: changed };
   assert.deepEqual((await call("/settings/validate", input)).affectedTasks.map(item => item.id), [task.id]);
   settings = await call("/settings/config", input);
-  assert.equal(settings.running.executors[0].unattendedApproved, true);
+  assert.deepEqual(settings.running.disabledExecutors, executorTypes);
   assert.equal((await call("/status")).settings.pendingRestart, true);
-  assert.equal((await call("/tasks/" + task.id)).executors.local.unattendedApproved, true);
+  assert.deepEqual((await call("/tasks/" + task.id)).executors.local, executor);
   const previous = (await call("/status")).instanceId;
   const restarted = await call("/restart", {});
   assert.notEqual(restarted.instanceId, previous);
   child.origin = new URL(restarted.url).origin;
   settings = await call("/settings");
-  assert.equal(settings.running.executors[0].unattendedApproved, false);
+  assert.deepEqual(settings.running.disabledExecutors, executorTypes);
+  assert((await call("/executors")).executors.every(executor => executor.state === "disabled"));
   assert.equal(settings.pendingRestart, false);
   assert.equal(settings.credentials.find(item => item.key === "OPENAI_API_KEY").pendingRestart, false);
   assert.equal((await call("/runs/" + run.id)).status, "waiting_input");
@@ -226,7 +224,7 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   assert.equal(JSON.parse(readFileSync(join(next, "environment.json"), "utf8")).RENAMED_SERVICE_TOKEN, mcpToken);
   await child.stop();
   const stoppedConfig = readFileSync(join(next, "config.json"), "utf8");
-  assert.notEqual(invoke(["executor", "remove", "local", "--yes"]).status, 0);
+  assert.notEqual(invoke(["executor", "enable", "codex", "--yes"]).status, 0);
   assert.equal(readFileSync(join(next, "config.json"), "utf8"), stoppedConfig, "offline fallback must not write configuration");
   // Return the locator offline only for the admin-disabled boundary check.
   writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }));

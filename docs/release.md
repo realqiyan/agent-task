@@ -12,10 +12,10 @@ npm run check
 npm test
 git diff --check
 npm run pack:release
-npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.3.tgz
+npm run test:install -- ./realqiyan-agent-task-0.1.0-rc.1.tgz
 ```
 
-安装验证先检查当前 OS 和 Node.js 版本，再在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；随后配置、前台启动、调用 Web 配置接口、重启、进行认证健康检查。验证脚本不调用模型或启动 ACP 工作。
+安装验证先检查当前 OS 和 Node.js 版本，再在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；随后验证初始化、前台启动、Web 配置、重启和认证健康检查，再验证 stdio 自动启动后台、断开后后台仍可用及显式 stop。MCP 客户端使用安装包的 SDK 依赖。验证脚本不调用模型或启动 ACP 工作。
 
 输出报告只包含结果和证据目录，不包含 token；只将实际运行的宿主平台记为通过，其他平台明确记为未执行。临时目录权限为私有，内有验证专用随机凭据及空任务库，不上传这些目录。基础测试中的真实 PTY 用例先检查平台及 `script` 能否创建终端；能力不可用时明确跳过，不能把跳过当成终端验收通过。
 
@@ -30,7 +30,7 @@ npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.3.tgz
 首次启用前，由维护者完成以下配置：
 1. 创建 GitHub Environment **npm**，仅允许 master 部署；按仓库需要配置审核人。工作流中的 environment 名称本身**不自动创建审核保护**。
 2. 在 npm 包的 Trusted Publisher 设置中授权 GitHub 仓库 `realqiyan/agent-task`、工作流 `publish.yml`、Environment `npm`，允许 `npm publish`。认证与 2FA 在 npm 官方界面完成，不上传本机登录凭据。
-3. 核查分支保护及工作流修改权限，再在 Actions 选择 Publish npm，输入已验收的版本（本次为 `0.0.1-rc.3`）。认证/权限失败须停止，不能换账号或跳过验证。
+3. 核查分支保护及工作流修改权限，再在 Actions 选择 Publish npm，输入已验收的版本（本次为 `0.1.0-rc.1`）。认证/权限失败须停止，不能换账号或跳过验证。
 
 发布作业使用 Node 24 与支持 OIDC 的 npm；命令明确传 `--tag latest --access public --provenance`。Trusted Publisher 授权和 provenance 是不同条件，设置工作流不等于 npm 已授权。首次配置和有效期限制以 [npm 官方说明](https://docs.npmjs.com/trusted-publishers/)为准。
 
@@ -42,9 +42,9 @@ npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.3.tgz
 npm login --registry=https://registry.npmjs.org
 npm whoami --registry=https://registry.npmjs.org
 # 必须确认输出 realqiyan，再发布已检查的 tarball：
-npm publish ./realqiyan-agent-task-0.0.1-rc.3.tgz --ignore-scripts \
+npm publish ./realqiyan-agent-task-0.1.0-rc.1.tgz --ignore-scripts \
   --access public --tag latest --registry=https://registry.npmjs.org
-npm view @realqiyan/agent-task@0.0.1-rc.3 version license --registry=https://registry.npmjs.org
+npm view @realqiyan/agent-task@0.1.0-rc.1 version license --registry=https://registry.npmjs.org
 npm view @realqiyan/agent-task dist-tags --json --registry=https://registry.npmjs.org
 node scripts/verify-install.mjs --registry
 ```

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Executor } from "../executors/model.js";
-import { authorizedProfile } from "../executors/registry.js";
+import type { ExecutorType } from "../executors/model.js";
 import type { ExecutorRegistry } from "../executors/registry.js";
 import { iso } from "../shared/time.js";
 import type { Task, TaskInput, TaskUpdate } from "./model.js";
@@ -19,7 +18,10 @@ export class TaskDefinitions {
     this.check();
     if (!this.coordinatorConfigured) throw new Error("Coordinator is not configured");
     const input = taskData.parse(value), all = this.store.definitions();
-    const existing = all.find(item => item.input.requestKey === input.requestKey);
+    if (input.workspace === undefined) throw new Error("workspace is required without a local MCP launch directory");
+    const workspace = this.workspaces.resolve(input.workspace);
+    input.workspace = workspace;
+    const existing = all.find(item => item.workspace === workspace && item.input.requestKey === input.requestKey);
     if (existing) {
       if (JSON.stringify(existing.input) !== JSON.stringify(input)) throw new Error("requestKey already used with different parameters");
       return existing;
@@ -30,7 +32,7 @@ export class TaskDefinitions {
     const nextAt = initialTime(input.schedule, now);
     if (input.schedule.type !== "now" && nextAt < now) throw new Error("Schedule must start in the future");
     if (input.expiresAt && Date.parse(input.expiresAt) <= Math.max(now, nextAt)) throw new Error("Deadline must follow first trigger");
-    const task: Task = { id: randomUUID(), input, workspace: input.workspace === undefined ? null : this.workspaces.resolve(input.workspace),
+    const task: Task = { id: randomUUID(), input, workspace,
       executors, nextAt, status: "active", createdAt: iso(now) };
     this.store.saveDefinition(task); return task;
   }
@@ -54,11 +56,11 @@ export class TaskDefinitions {
     }
     this.store.saveDefinition(task); return task;
   }
-  executorImpact(profiles: readonly Executor[]) {
+  executorImpact(disabled: readonly ExecutorType[]) {
     this.check();
     return this.store.definitions().filter(task =>
       ((task.nextAt !== null && ["active", "paused"].includes(task.status)) || this.store.activeRounds(task.id).length > 0) &&
-      Object.entries(task.executors).some(([id, snapshot]) => !authorizedProfile(snapshot, profiles.find(profile => profile.id === id))))
+      Object.values(task.executors).some(snapshot => disabled.includes(snapshot.type)))
       .map(task => ({ id: task.id, name: task.input.name }));
   }
   close(): void { this.closed = true; }

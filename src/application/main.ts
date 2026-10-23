@@ -1,7 +1,7 @@
 import { HttpServer } from "../protocol/http/server.js";
 import { createTaskRuntime } from "./task-runtime.js";
 import { LocalSettingsFiles, configurationPaths } from "../configuration/files.js";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../configuration/files.js";
 import { baseEnvironment, validateServiceEnvironment } from "../configuration/environment.js";
@@ -12,6 +12,7 @@ import { errorText } from "../shared/errors.js";
 import { createExecution } from "../integrations/acp/execution.js";
 import { executorEnvironment } from "../executors/environment.js";
 import { createCoordinator } from "../integrations/coordinator/coordinator.js";
+import { LocalExecutors } from "../integrations/acp/discovery.js";
 
 process.umask(0o077);
 const args = process.argv.slice(2);
@@ -77,8 +78,10 @@ process.once("SIGINT", stop); process.once("SIGTERM", stop);
 process.once("disconnect", stop);
 try {
   release = await acquireLock(config.dataDir);
-  tasks = createTaskRuntime(config.dataDir, config.executors, createExecution(executorEnvironment(native, environment, config)),
-    config.coordinator ? createCoordinator(config.dataDir, config.coordinator) : undefined, fatal);
+  const executorEnv = executorEnvironment(native, environment, config);
+  const discovery = new LocalExecutors(join(native.AGENT_TASK_INSTALL_HOME ?? dirname(configPath), "adapters"), executorEnv);
+  tasks = createTaskRuntime(config.dataDir, [], createExecution(executorEnv),
+    config.coordinator ? createCoordinator(config.dataDir, config.coordinator) : undefined, fatal, discovery, config.disabledExecutors);
   if (adminToken) settings = new Settings(new LocalSettingsFiles(configPath, environmentPath), configurationPaths, config, base, process.env);
   http = new HttpServer({ tasks, settings, token, adminToken, fatal, restart, instanceId });
   const origin = await http.listen(config.port);

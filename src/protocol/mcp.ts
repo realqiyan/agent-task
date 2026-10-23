@@ -27,13 +27,13 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
   }
   register("service_status", "Service health and active node run IDs. MCP disconnection does not cancel tasks.",
     z.object({}).strict(), () => service.supervisor.status());
-  register("executor_list", "Registered local ACP execution profiles and authorization settings. Approval filtering is not a sandbox.",
+  register("executor_list", "Discovered local ACP executors and adapter preparation status. Ready means launch dependencies are present, not verified authentication or tool permissions.",
     z.object({}).strict(), () => service.executors.list());
-  register("task_create", "Create a task with a caller-defined DAG in nodes. Each node selects an administrator-registered ACP executorId. The coordinator advances this fixed DAG, reviews deliveries and requests missing user facts; it does not plan new nodes. Optional workspace selects an existing absolute directory; otherwise each executor uses its registered cwd. Path checks do not grant permissions; no uncertain-effect retries.", taskSchema,
+  register("task_create", "Create a task with a caller-defined DAG. Each node selects a ready local ACP executorId. The coordinator advances the fixed DAG, reviews deliveries and requests missing user facts. Workspace is an existing absolute directory; local stdio supplies its launch directory when omitted, direct HTTP requires workspace. The resolved directory is fixed for all future runs. requestKey deduplicates within that directory. Path checks do not grant permissions; no uncertain-effect retries.", taskSchema,
     input => service.definitions.create(input), false);
   register("task_list", "List persisted task definitions.", taskListSchema,
     input => service.definitions.list(input.after, input.limit));
-  register("task_get", "Get task goal, caller-defined DAG and assigned executor profiles, canonical workspace (null means executor cwd defaults), budgets and schedule.", taskIdSchema, input => service.definitions.get(input.id));
+  register("task_get", "Get task goal, caller-defined DAG and assigned executors, fixed canonical workspace, budgets and schedule.", taskIdSchema, input => service.definitions.get(input.id));
   register("task_update", "Pause, resume or cancel future triggers only; resume never catches up. To change a task, cancel it and create a new task. Use task_run_cancel to stop an active run; cancellation does not roll back external effects.",
     taskUpdateSchema, input => service.definitions.update(input), false);
   register("task_run_list", "List independent task runs with node progress and blocking reasons.",

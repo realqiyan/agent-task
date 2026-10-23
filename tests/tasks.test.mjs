@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { TaskStore } from "../dist/tasks/storage/store.js";
 import { createTaskRuntime } from "../dist/application/task-runtime.js";
-import { executorSchema } from "../dist/executors/validation.js";
+import { executorRecord } from "../dist/executors/validation.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
@@ -20,12 +20,12 @@ function fixture(t, command = "/usr/bin/false", args = [], nodes = [node("A"), n
   const store = new TaskStore(dir);
   // Real failing/waiting OS processes, not ACP protocol imitations.
   executable(dir, "codex-acp", command, args);
-  const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
+  const executor = executorRecord.parse({ id: "local", type: "codex", nativePath: "/usr/bin/false", command: join(dir, "codex-acp"), args: [], adapterVersion: null });
   const executors = [executor];
   let service = createTaskRuntime(dir, executors, createExecution({ PATH: dir }),
     createCoordinator(dir, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
   t.after(async () => { await service.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
-  const input = taskSchema.parse({ requestKey: "task", name: "task", prompt: "Inspect authorized data", nodes, schedule: { type: "now" } });
+  const input = taskSchema.parse({ workspace: dir, requestKey: "task", name: "task", prompt: "Inspect authorized data", nodes, schedule: { type: "now" } });
   const task = service.definitions.create(input); service.runs.trigger();
   const run = service.runs.list(task.id).items[0];
   return { dir, store, executor, executors, get service() { return service; }, task, run, input,
@@ -83,12 +83,12 @@ test("DAG admission validates structure, assigned executors and deduplication be
   for (const [nodes, error] of [
     [[], /Too small/], [[node("A"), node("A")], /duplicate/],
     [[node("A", ["B"]), node("B", ["A"])], /Cyclic/], [[node("A", ["missing"])], /Unknown dependency/],
-    [[{ ...node("A"), executorId: "unregistered" }], /not found or not approved/],
+    [[{ ...node("A"), executorId: "unregistered" }], /not ready/],
   ]) assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "invalid", nodes }), error);
-  f.executor.unattendedApproved = false;
+  f.executors.splice(0);
   await f.reopen();
-  assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "unapproved" }), /not found or not approved/);
-  await assert.rejects(f.service.supervisor.converse(f.run.id, "A"), /authorization/);
+  assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "unapproved" }), /not ready/);
+  await assert.rejects(f.service.supervisor.converse(f.run.id, "A"), /not ready/);
   assert.equal(f.service.runs.get(f.run.id).nodes[0].startedAt, null);
   assert.equal(f.service.definitions.list().items.length, 1);
   const actions = f.service.supervisor.actions(f.run.id);
@@ -101,7 +101,7 @@ test("each run retains the caller DAG and dispatches only to the node's assigned
   const f = fixture(t);
   // A real failing process proves executor selection, not successful ACP execution.
   executable(f.dir, "opencode", process.execPath, ["--eval", 'require("node:fs").writeFileSync("selected.txt", "other"); process.exit(1);']);
-  f.executors.push(executorSchema.parse({ ...f.executor, id: "other", type: "opencode" }));
+  f.executors.push(executorRecord.parse({ ...f.executor, id: "other", type: "opencode", nativePath: join(f.dir, "opencode"), command: join(f.dir, "opencode"), args: ["acp"] }));
   await f.reopen();
   const nodes = [node("A"), { ...node("B"), executorId: "other" }], now = Date.now();
   const task = f.service.definitions.create({ ...f.input, requestKey: "assigned", nodes,
@@ -189,15 +189,15 @@ test("task_update affects future slots only, resumes without catch-up and reject
   assert.throws(() => f.service.definitions.update({ id: task.id, action: "resume" }), /no future/);
 });
 
-test("task workspaces override registered cwd without changing authorization; actual failed process cwd persists", async t => {
+test("task workspaces are canonical and immutable; actual failed process cwd persists", async t => {
   // A real Node process writes its cwd and exits. This proves process cwd, not successful ACP execution.
   const f = fixture(t, process.execPath, ["--eval", 'require("node:fs").writeFileSync("cwd-record.txt", process.cwd()); process.exit(1);']);
   const selected = join(f.dir, "selected workspace"); mkdirSync(selected);
   const alias = join(f.dir, "alias"); symlinkSync(selected, alias);
-  for (const [key, workspace, expected] of [["override", alias, selected], ["default", undefined, f.dir]]) {
+  for (const [key, workspace, expected] of [["override", alias, selected], ["launch", f.dir, f.dir]]) {
     const task = f.service.definitions.create({ ...f.input, requestKey: key, workspace });
-    assert.equal(task.workspace, workspace ? selected : null);
-    assert.equal(task.executors.local.cwd, f.dir);
+    assert.equal(task.workspace, expected);
+    assert.equal(task.executors.local.nativePath, "/usr/bin/false");
     assert.equal(f.service.definitions.create({ ...f.input, requestKey: key, workspace }).id, task.id);
     f.service.runs.trigger();
     const run = f.service.runs.list(task.id).items[0];
@@ -219,6 +219,18 @@ test("task workspaces override registered cwd without changing authorization; ac
   rmSync(removed, { recursive: true }); symlinkSync(selected, removed);
   await assert.rejects(f.service.supervisor.converse(run.id, "A"), /changed/);
   assert.equal(f.service.runs.get(run.id).nodes[0].startedAt, null);
+});
+
+test("creation keys are scoped to the final workspace, including canonical aliases", t => {
+  const f = fixture(t);
+  const second = join(f.dir, "second"); mkdirSync(second);
+  const alias = join(f.dir, "second-alias"); symlinkSync(second, alias);
+  const task = f.service.definitions.create({ ...f.input, workspace: second });
+  assert.notEqual(task.id, f.task.id);
+  assert.equal(f.service.definitions.create({ ...f.input, workspace: alias }).id, task.id);
+  assert.throws(() => f.service.definitions.create({ ...f.input, workspace: second, prompt: "Changed" }), /requestKey/);
+  assert.throws(() => f.service.definitions.create({ ...f.input, workspace: undefined }), /workspace is required/);
+  assert.equal(f.store.definitions().length, 2);
 });
 
 test("an unrelated database is rejected without changing its records", t => {

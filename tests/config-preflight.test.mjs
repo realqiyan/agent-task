@@ -1,28 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { realpathSync, mkdtempSync, symlinkSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { validateConfig as validate } from "../dist/configuration/policy.js";
+import { realpathSync } from "node:fs";
 import { configSchema } from "../dist/configuration/contract.js";
-import { resolveWorkspace } from "../dist/infrastructure/workspace.js";
-const validateConfig = value => validate(configSchema.parse(value), resolveWorkspace);
-import { executorCommand } from "../dist/integrations/acp/runtime.js";
+import { executorLaunch } from "../dist/integrations/acp/runtime.js";
 
-test("only four native executor types are registered; ACP commands and arguments are system-owned", t => {
-  const directory = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-preflight-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
-  for (const name of ["pi", "pi-acp", "codex-acp", "claude-agent-acp", "opencode"]) symlinkSync("/usr/bin/false", join(directory, name));
-  for (const type of ["pi", "codex", "claude", "opencode"]) {
-    const config = validateConfig({ dataDir: directory, executors: [{ id: type, type, cwd: directory, note: "native" }] });
-    assert.equal(config.executors[0].type, type);
-    const launch = executorCommand(type, { PATH: directory });
-    assert.equal(launch.command, realpathSync("/usr/bin/false"));
-    assert.deepEqual(launch.args, type === "opencode" ? ["acp"] : []);
+test("configuration cannot supply executor commands and launch binds the discovered native executable", () => {
+  assert.deepEqual(configSchema.parse({ dataDir: "/tmp/agent-task" }).disabledExecutors, []);
+  for (const field of ["executors", "command", "args", "envKeys", "permissionAllowlist"]) {
+    assert.throws(() => configSchema.parse({ dataDir: "/tmp/agent-task", [field]: [] }));
   }
-  for (const field of ["command", "args", "envKeys", "permissionAllowlist", "resultReadRoots"]) {
-    assert.throws(() => validateConfig({ dataDir: directory, executors: [{ id: "x", type: "pi", cwd: directory, [field]: [] }] }));
+  assert.throws(() => configSchema.parse({ dataDir: "/tmp/agent-task", disabledExecutors: ["other"] }));
+  const binary = realpathSync("/usr/bin/false");
+  for (const [type, key] of [["pi", "PI_ACP_PI_COMMAND"], ["codex", "CODEX_PATH"], ["claude", "CLAUDE_CODE_EXECUTABLE"]]) {
+    const executor = { id: type, type, nativePath: binary, command: binary, args: [], adapterVersion: null };
+    const launch = executorLaunch(executor, { PATH: "/usr/bin", PI_ACP_PI_COMMAND: "/different", CODEX_PATH: "/different", CLAUDE_CODE_EXECUTABLE: "/different" });
+    assert.equal(launch.env[key], binary);
+    assert.equal(Object.keys(launch.env).filter(name => ["PI_ACP_PI_COMMAND", "CODEX_PATH", "CLAUDE_CODE_EXECUTABLE"].includes(name)).length, 1);
+    assert.throws(() => executorLaunch({ ...executor, args: ["--widen-permissions"] }, {}));
   }
-  assert.throws(() => validateConfig({ dataDir: directory, executors: [{ id: "x", type: "other", cwd: directory }] }));
-  assert.throws(() => executorCommand("pi", { PATH: "/missing" }), /Missing ACP dependency/);
 });

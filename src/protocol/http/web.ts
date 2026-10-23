@@ -7,10 +7,11 @@ import type { Settings } from "../../configuration/settings.js";
 import { previewSettings } from "../../configuration/management.js";
 import { StorageError } from "../../shared/errors.js";
 import type { TaskApi } from "../services.js";
-import { parseSettings, settingsConfigSchema, settingsChangeSchema, credentialUpdateSchema } from "../settings-contract.js";
+import { parseSettings, settingsConfigSchema, settingsChangeSchema, credentialUpdateSchema,
+  executorRefreshSchema, executorUpgradeSchema } from "../settings-contract.js";
 import { taskIdSchema, taskListSchema, taskRunListSchema, taskUpdateSchema } from "../task-contract.js";
 
-type ConsoleTasks = Pick<TaskApi, "definitions" | "runs" | "supervisor">;
+type ConsoleTasks = Pick<TaskApi, "definitions" | "runs" | "supervisor" | "executors">;
 function query<T>(schema: z.ZodType<T>, request: express.Request): T {
   const value = { ...request.query };
   for (const key of ["after", "limit"]) {
@@ -74,6 +75,12 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
   }));
   router.get("/api/runs/:id", respond(req => tasks.runs.get(taskIdSchema.parse(req.params).id)));
   router.post("/api/task-update", respond(req => tasks.definitions.update(taskUpdateSchema.parse(req.body))));
+  router.get("/api/executors", respond(() => tasks.executors.list()));
+  router.post("/api/executors/refresh", respond(req => {
+    parseSettings(executorRefreshSchema, req.body);
+    return tasks.executors.refresh();
+  }));
+  router.post("/api/executors/upgrade", respond(req => tasks.executors.upgrade(parseSettings(executorUpgradeSchema, req.body).id)));
   router.get("/api/settings", respond(() => settings.get()));
   router.get("/api/settings/diff", respond(() => settings.diff()));
   router.post("/api/settings/prepare", respond(req => settings.prepareChange(parseSettings(settingsChangeSchema, req.body))));

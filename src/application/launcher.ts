@@ -54,34 +54,45 @@ function logFile(path: string): number {
 export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv): Promise<void> {
   process.umask(0o077);
   startupPaths(home); // Also checks private ownership of the locator.
-  const unlock = acquireLauncherLock(home);
+  const unlock = await acquireLauncherLock(home);
   const socket = join(home, "control.sock"), children = new Set<ChildProcess>();
   let current: ChildProcess | undefined, ready: { info: Ready; token: string } | undefined, restarting = true, closing = false;
+  let shutting: Promise<void> | undefined;
   let release!: () => void;
   const finished = new Promise<void>(resolve => { release = resolve; });
   const control = createServer(async (req, res) => {
     try {
-      if (req.method !== "POST" || !["/status", "/restart"].includes(req.url ?? "")) { res.writeHead(404).end(); return; }
+      if (req.method !== "POST" || !["/status", "/restart", "/stop"].includes(req.url ?? "")) { res.writeHead(404).end(); return; }
+      if (req.url === "/stop") {
+        await shutdown(true);
+        res.setHeader("Content-Type", "application/json"); res.setHeader("Connection", "close");
+        res.end(JSON.stringify({ stopped: true })); return;
+      }
       const result = req.url === "/restart" ? await restart() : await status();
       res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(result));
     } catch { res.writeHead(503).end(JSON.stringify({ error: "Service unavailable; inspect private logs and startup files" })); }
   });
-  const shutdown = async () => {
-    if (closing) return;
+  const shutdown = (drain = false): Promise<void> => {
+    if (shutting) return shutting;
     closing = true;
-    control.close(); control.closeAllConnections();
-    await Promise.all([...children].map(stop));
-    try { removeSocket(socket); } finally { unlock(); release(); }
+    return shutting = (async () => {
+      control.close();
+      if (!drain) control.closeAllConnections();
+      await Promise.all([...children].map(stop));
+      try { removeSocket(socket); } finally { unlock(); release(); }
+    })();
   };
   const signal = () => { void shutdown(); };
+  const hangup = () => {}; // A detached launcher survives the originating terminal closing.
   process.on("SIGINT", signal); process.on("SIGTERM", signal);
+  process.on("SIGHUP", hangup);
   const start = async (): Promise<Ready> => {
     const inputs = await prepareStartup(home);
     if (closing) throw new Error("Launcher is closing");
     const log = logFile(join(inputs.dataDir, "service.log"));
     const child = fork(fileURLToPath(new URL("./main.js", import.meta.url)),
       ["--config", inputs.configPath, "--environment", inputs.environmentPath], {
-        env: { ...nativeEnvironment, AGENT_TASK_INSTANCE_ID: randomUUID() }, execArgv: [], stdio: ["ignore", "pipe", "pipe", "ipc"],
+        env: { ...nativeEnvironment, AGENT_TASK_INSTANCE_ID: randomUUID(), AGENT_TASK_INSTALL_HOME: home }, execArgv: [], stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
     children.add(child);
     const output = (chunk: Buffer) => { appendFileSync(log, chunk); process.stdout.write(chunk); };
@@ -150,5 +161,6 @@ export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv)
   } finally {
     await shutdown();
     process.off("SIGINT", signal); process.off("SIGTERM", signal);
+    process.off("SIGHUP", hangup);
   }
 }

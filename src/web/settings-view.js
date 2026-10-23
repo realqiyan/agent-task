@@ -1,31 +1,28 @@
 import { request } from "./api.js";
-import { element, field, select, button, submit, block, table, notice } from "./dom.js";
+import { element, field, select, button, submit, block, table, notice, report } from "./dom.js";
 
-function executorEditor(host, executor) {
-  const card = element("fieldset"), fields = {};
-  card.append(element("legend", "ACP 执行端"));
-  const type = select("类型", ["pi", "codex", "claude", "opencode"].map(value => [value, value]), executor.type ?? "pi");
-  fields.type = type.input; card.append(type.row);
-  for (const [key, label, kind, value] of [
-    ["id", "注册 ID", "text", executor.id],
-    ["note", "备注", "textarea", executor.note],
-    ["cwd", "默认工作空间（绝对路径）", "text", executor.cwd],
-  ]) {
-    const item = field(label, value, kind); fields[key] = item.input; card.append(item.row);
-  }
-  const approved = field("已由管理员审核原生授权，允许无人值守执行", executor.unattendedApproved, "checkbox");
-  let explicitlyApproved = false;
-  approved.input.addEventListener("change", () => { explicitlyApproved = approved.input.checked; });
-  for (const [key, input] of Object.entries(fields)) if (key !== "note") input.addEventListener("input", () => {
-    approved.input.checked = false; explicitlyApproved = false;
-  });
-  card.append(approved.row, element("p", "按类型从用户原生 PATH 查找 ACP 适配器。继承用户原生环境，但过滤服务私密变量；额外 ACP 审批一律拒绝。结果固定保存在 dataDir/results，只向节点提供指定上游文件，不提供整个数据目录读取。"),
-    button("从待保存配置中移除", () => { card.remove(); host.dispatchEvent(new Event("input", { bubbles: true })); }));
-  host.append(card);
-  return () => card.parentNode === host ? [{ explicitlyApproved, executor: {
-    id: fields.id.value, type: fields.type.value, note: fields.note.value,
-    cwd: fields.cwd.value, unattendedApproved: approved.input.checked,
-  } }] : [];
+function executorStatus(host, initial) {
+  let state = initial, timer;
+  const labels = { missing: "未安装", disabled: "已禁用", installing: "准备中", ready: "可派发", error: "准备失败" };
+  const draw = () => {
+    clearTimeout(timer);
+    host.replaceChildren(table(["执行端", "状态", "本机路径", "ACP 适配器版本", "错误", "操作"], state.executors.map(executor => [
+      executor.id, executor.state === "missing" && executor.nativePath ? "已发现，待准备" : labels[executor.state],
+      executor.nativePath, executor.adapterVersion ?? (executor.type === "opencode" ? "原生 ACP" : "—"), executor.error,
+      executor.type === "opencode" ? "通过原生 CLI 更新" : button("升级 ACP 适配器", async () => {
+        if (!confirm("升级 " + executor.id + " 的托管 ACP 适配器？准备期间暂停向此执行端派发新工作。")) return;
+        state = await request("/executors/upgrade", { id: executor.id }); draw();
+        notice("适配器升级已开始，完成后更新状态。");
+      }, !executor.nativePath || ["disabled", "installing"].includes(executor.state)),
+    ])));
+    if (state.executors.some(executor => executor.state === "installing")) timer = setTimeout(async () => {
+      if (!host.isConnected) return;
+      try { state = await request("/executors"); if (host.isConnected) draw(); }
+      catch (error) { if (host.isConnected) report(error); }
+    }, 2000);
+  };
+  draw();
+  return async () => { state = await request("/executors/refresh", {}); draw(); };
 }
 function coordinatorEditor(host, config) {
   const provider = select("协调模型提供方", [["", "未配置"], ["openai", "OpenAI"], ["anthropic", "Anthropic"],
@@ -56,12 +53,18 @@ function coordinatorEditor(host, config) {
   };
 }
 export async function renderSettings(root, navigate) {
-  let state = await request("/settings");
+  const initial = await Promise.all([request("/settings"), request("/executors")]);
+  let state = initial[0];
   root.append(element("h2", "配置与凭据"), element("p", "配置和密钥分别保存。保存不修改当前进程；每次重新启动（包括故障后拉起）读取已保存值。"),
     element("p", "先保存新密钥，再保存引用它的配置。执行端原生登录和原生权限仍通过官方工具管理；这里不编辑其认证文件。"),
     block("当前运行配置（只读，无密钥值）", state.running));
   if (state.writeBlocked) root.append(element("p", "上次文件提交结果不确定。请停服核查；当前禁止继续保存。"));
-  const form = element("form"), modelHost = element("fieldset"), executors = element("div"), readers = [];
+  const executorHost = element("div");
+  const refreshExecutors = executorStatus(executorHost, initial[1]);
+  root.append(element("h3", "本机执行端"),
+    element("p", "自动检测 pi、codex、claude 和 opencode。可派发表示启动依赖已准备，不代表原生认证或工具权限已验收。"),
+    button("重新检测并准备执行端", refreshExecutors), executorHost);
+  const form = element("form"), modelHost = element("fieldset"), executorOptions = element("fieldset");
   modelHost.append(element("legend", "协调模型"));
   const readModel = coordinatorEditor(modelHost, state.saved.coordinator);
   const startup = {
@@ -69,18 +72,21 @@ export async function renderSettings(root, navigate) {
     port: field("下次启动的监听端口（0 为自动分配）", state.saved.port, "number"),
     tokenEnv: field("MCP 令牌环境变量名（改名保留令牌值）", state.saved.tokenEnv),
   };
-  form.append(element("h3", "启动配置"), ...Object.values(startup).map(item => item.row),
-    modelHost, element("h3", "执行端注册与权限"), executors);
-  for (const executor of state.saved.executors) readers.push(executorEditor(executors, executor));
-  form.append(button("添加执行端", () => {
-    readers.push(executorEditor(executors, { id: "", type: "pi", note: "", cwd: "", unattendedApproved: false }));
-  }, state.writeBlocked));
+  executorOptions.append(element("legend", "下次启动启用的执行端"),
+    element("p", "默认使用所有检测到的执行端。取消勾选后保存并重启；已有任务不会自动改派。"));
+  const enabled = ["pi", "codex", "claude", "opencode"].map(type => {
+    const item = field(type, !state.saved.disabledExecutors.includes(type), "checkbox");
+    executorOptions.append(item.row); return { type, input: item.input };
+  });
+  const advanced = element("details"); advanced.dataset.key = "advanced-settings";
+  advanced.append(element("summary", "高级设置"), element("h3", "启动配置"),
+    ...Object.values(startup).map(item => item.row), executorOptions);
+  form.append(modelHost, advanced);
   const preview = element("div");
   const save = submit(form, "校验并预览配置变更", async () => {
-    const entries = readers.flatMap(read => read());
-    const input = { editToken: state.editToken, approveExecutors: entries.filter(item => item.explicitlyApproved).map(item => item.executor.id),
+    const input = { editToken: state.editToken,
       config: { dataDir: startup.dataDir.input.value, port: startup.port.input.valueAsNumber, tokenEnv: startup.tokenEnv.input.value,
-      coordinator: readModel(), executors: entries.map(item => item.executor) } };
+      coordinator: readModel(), disabledExecutors: enabled.filter(item => !item.input.checked).map(item => item.type) } };
     const checked = await request("/settings/validate", input);
     preview.replaceChildren(block("校验后的待保存配置", checked.config),
       block("配置变更", checked.changes),

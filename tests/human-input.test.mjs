@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TaskStore } from "../dist/tasks/storage/store.js";
 import { createTaskRuntime } from "../dist/application/task-runtime.js";
-import { executorSchema } from "../dist/executors/validation.js";
+import { executorRecord } from "../dist/executors/validation.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
@@ -18,10 +18,10 @@ import { createModels } from "@earendil-works/pi-ai/models";
 
 function fixture(t) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-input-"));
-  const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
+  const executor = executorRecord.parse({ id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null });
   const coordinate = createCoordinator(dir, { provider: "openai", model: "not-a-real-model" });
   let store = new TaskStore(dir), service = createTaskRuntime(dir, [executor], openExecution, coordinate, error => { throw error; });
-  const input = taskSchema.parse({ requestKey: "task", name: "task", prompt: "Inspect authorized data",
+  const input = taskSchema.parse({ workspace: dir, requestKey: "task", name: "task", prompt: "Inspect authorized data",
     nodes: [{ id: "A", prompt: "Inspect", executorId: "local" }], schedule: { type: "interval", startAt: new Date(Date.now() + 1000).toISOString(), seconds: 60 } });
   const task = service.definitions.create(input);
   service.runs.trigger(task.nextAt);

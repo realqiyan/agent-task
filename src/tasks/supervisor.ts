@@ -103,7 +103,7 @@ export class RunSupervisor {
   }
   start(): void {
     this.check(); if (this.timer) throw new Error("Run supervisor already started");
-    this.recover(); this.timer = setInterval(() => this.tick(), 500); this.tick();
+    this.recover(); this.timer = setInterval(() => this.tick(), 10_000); this.tick();
   }
   tick(): void {
     this.check();

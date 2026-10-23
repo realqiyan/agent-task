@@ -16,7 +16,7 @@ export const taskUpdateSchema = taskUpdateData;
 export const taskSchema = taskData.extend({
   name: z.string().trim().min(1).max(200),
   prompt: z.string().trim().min(1).max(64_000).describe("Overall goal; the caller supplies the fixed DAG."),
-  nodes: z.array(nodeSchema).min(1).max(20).describe("Fixed DAG with an administrator-registered ACP executorId on every node."),
+  nodes: z.array(nodeSchema).min(1).max(20).describe("Fixed DAG with a ready local ACP executorId on every node."),
   schedule: z.discriminatedUnion("type", [
     z.object({ type: z.literal("now") }).strict(),
     z.object({ type: z.literal("once"), at: requestTimestamp }).strict(),

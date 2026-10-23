@@ -1,7 +1,8 @@
 // Real source-free npm install and local HTTP acceptance. No model calls.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, realpathSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, readFileSync, writeFileSync, existsSync, statSync, symlinkSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
@@ -25,7 +26,7 @@ writeFileSync(userConfig, "", { mode: 0o600 });
 console.log("Installation validation directory: " + root);
 const env = { PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(":"), HOME: isolatedHome, LANG: "en_US.UTF-8",
   npm_config_userconfig: userConfig, npm_config_cache: process.env.npm_config_cache ?? join(root, "npm-cache"), npm_config_registry: registry ? "https://registry.npmjs.org/" : (process.env.npm_config_registry ?? "https://registry.npmjs.org/") };
-let logs = "", child, closed, secrets = [];
+let logs = "", child, closed, mcpClient, backgroundStarted = false, secrets = [];
 function run(command, argv) {
   const result = spawnSync(command, argv, { cwd: workspace, env, encoding: "utf8", timeout: 1800000 });
   logs += (result.stdout ?? "") + (result.stderr ?? "");
@@ -75,7 +76,7 @@ try {
   const installed = join(prefix, "lib/node_modules", packageName);
   const pkg = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
   assert.equal(pkg.name, packageName);
-  assert.equal(pkg.version, "0.0.1-rc.3");
+  assert.equal(pkg.version, "0.1.0-rc.1");
   assert.equal(pkg.license, "MIT");
   assert(!existsSync(join(installed, "src")) && !existsSync(join(installed, "node_modules/typescript")), "Source/compiler must not be required");
   assert.equal(invoke("--version").trim(), pkg.version);
@@ -84,7 +85,7 @@ try {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => { const port = server.address().port; server.close(() => resolve(port)); });
   });
-  invoke("setup", "--home", home, "--executors", "none", "--cwd", workspace, "--port", String(port));
+  invoke("setup", "--home", home, "--data-dir", join(home, "data"), "--port", String(port), "--generate-tokens", "--yes");
   const environmentPath = join(home, "data/environment.json"), configPath = join(home, "data/config.json");
   config = JSON.parse(readFileSync(configPath, "utf8"));
   credentials = JSON.parse(readFileSync(environmentPath, "utf8"));
@@ -92,7 +93,7 @@ try {
   assert(secrets.length === 2 && secrets[0] !== secrets[1] && secrets.every(secret => secret.length >= 32), "Distinct strong tokens required");
   assert.equal(statSync(home).mode & 0o777, 0o700);
   for (const file of [configPath, environmentPath]) assert.equal(statSync(file).mode & 0o777, 0o600);
-  assert(config.executors.every(executor => !executor.unattendedApproved), "Setup must not authorize executors");
+  assert.deepEqual(config.disabledExecutors, [], "Native discovery is enabled by default");
   const originalEnvironment = readFileSync(environmentPath, "utf8");
   invoke("setup", "--home", home);
   assert(readFileSync(environmentPath, "utf8") === originalEnvironment, "Repeated setup must preserve credentials");
@@ -106,28 +107,51 @@ try {
   const testSecret = randomBytes(32).toString("hex");
   secrets.push(testSecret);
   settings = await admin("/settings/credential", { editToken: settings.editToken, key: "INSTALL_CHECK_SECRET", action: "replace", value: testSecret });
-  // Registered but NOT approved; no ACP invocation or model request.
-  const executor = { id: "unapproved", type: "claude", note: "installation check", cwd: workspace, unattendedApproved: false };
-  await admin("/settings/config", { editToken: settings.editToken, config: { ...settings.saved, executors: [executor] } });
+  // Exercise advanced discovery policy without launching ACP or a model.
+  await admin("/settings/config", { editToken: settings.editToken, config: { ...settings.saved, disabledExecutors: ["claude"] } });
   assert((await admin("/settings")).pendingRestart);
   const before = JSON.parse(invoke("status", "--home", home));
   const webRestart = await admin("/restart", {});
   assert.notEqual(webRestart.pid, before.pid);
   assert.notEqual(JSON.parse(invoke("restart", "--home", home)).pid, webRestart.pid);
   settings = await admin("/settings");
-  assert(!settings.pendingRestart && settings.running.executors.length === 1 && !settings.running.executors[0].unattendedApproved);
+  assert(!settings.pendingRestart && settings.running.disabledExecutors.length === 1 && settings.running.disabledExecutors[0] === "claude");
   assert(settings.credentials.some(credential => credential.key === "INSTALL_CHECK_SECRET" && credential.running));
+  await admin("/settings/config", { editToken: settings.editToken,
+    config: { ...settings.saved, disabledExecutors: ["pi", "codex", "claude"] } });
   await stop();
+  // Exercise the installed stdio entry without native ACP or model work.
+  const nativeBin = join(root, "native-bin");
+  mkdirSync(nativeBin, { mode: 0o700 }); symlinkSync("/usr/bin/false", join(nativeBin, "opencode"));
+  const require = createRequire(join(installed, "package.json"));
+  const { Client } = await import(require.resolve("@modelcontextprotocol/sdk/client/index.js"));
+  const { StdioClientTransport } = await import(require.resolve("@modelcontextprotocol/sdk/client/stdio.js"));
+  mcpClient = new Client({ name: "agent-task-install-check", version: "1.0.0" });
+  const transport = new StdioClientTransport({ command: process.execPath, args: [cli, "mcp", "--home", home],
+    cwd: workspace, env: { ...env, PATH: nativeBin + ":" + env.PATH }, stderr: "pipe" });
+  transport.stderr.on("data", data => { logs += data; });
+  backgroundStarted = true;
+  await mcpClient.connect(transport, { timeout: 20_000 });
+  assert((await mcpClient.listTools()).tools.some(tool => tool.name === "task_create"));
+  const discovered = await mcpClient.callTool({ name: "executor_list", arguments: {} });
+  assert(discovered.structuredContent?.data?.executors.some(executor => executor.id === "opencode" && executor.state === "ready"));
+  const background = JSON.parse(invoke("status", "--home", home));
+  await mcpClient.close(); mcpClient = undefined;
+  assert.equal(JSON.parse(invoke("status", "--home", home)).pid, background.pid, "Background must outlive the MCP process");
+  assert.equal(JSON.parse(invoke("stop", "--home", home)).stopped, true);
+  backgroundStarted = false;
   for (const secret of secrets) assert(!logs.includes(secret), "Credentials appeared in command/service output");
   const report = { name: pkg.name, version: pkg.version, platform: process.platform, arch: process.arch, node: process.version,
     platformValidation: Object.fromEntries(["linux", "darwin"].map(platform => [platform,
       platform === process.platform ? "passed" : `not run (host is ${process.platform})`])),
     source: registry ? "npm latest (default install)" : "local npm tarball", dependencyRegistry: env.npm_config_registry, foreground: "passed",
-    webConfiguration: "passed (HTTP, not browser)",
+    webConfiguration: "passed (HTTP, not browser)", stdioBackground: "passed (startup, discovery, disconnect and stop)",
     authenticatedHealth: "passed", credentialsInOutput: false,
     modelAndExecutorExecution: "not tested", evidenceDirectory: root };
   writeFileSync(join(root, "report.json"), JSON.stringify(report, null, 2) + "\n", { mode: 0o600 });
   console.log(JSON.stringify(report, null, 2));
 } finally {
+  await mcpClient?.close().catch(() => {});
+  if (backgroundStarted) { try { invoke("stop", "--home", home); } catch {} }
   await stop();
 }

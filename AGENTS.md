@@ -26,16 +26,16 @@ Business capabilities live in tasks, executors, configuration and results. Proto
 
 ## Runtime and safety
 
-- MCP callers define the Task DAG and assign each node to a registered ACP executor. Pi durable runs one coordinator conversation per TaskRun to advance that fixed DAG, review results and request missing user facts; it does not decompose tasks or change the plan. ACP agents perform domain work. Reuse the SDK model loop; do not add another planner or parallel node scheduler.
+- MCP callers define the Task DAG and assign each node to a ready local ACP executor. Pi durable runs one coordinator conversation per TaskRun to advance that fixed DAG, review results and request missing user facts; it does not decompose tasks or change the plan. ACP agents perform domain work. Reuse the SDK model loop; do not add another planner or parallel node scheduler.
 - A protocol turn ending is not task completion. Only explicitly accepted executor deliveries can unlock dependencies. Unknown external outcomes block new dispatch, including fresh model-issued calls.
 - Use official protocol SDKs and native execution-agent configuration where possible.
 - Persist admission/dispatch intent before external work. Keep Task, Run, Session and external business records distinct.
 - Do not automatically retry interrupted work, replay external side effects or switch agents after an uncertain outcome.
 - Deadlines stop new starts; execution timeouts are separate. Client disconnection does not cancel persisted tasks.
 - Resources have explicit ownership and idempotent close behavior. Reject operations against closed instances.
-- Only administrator-registered executors may launch. MCP task creation may select an existing absolute workspace; commands, credentials and capability endpoints remain administrator-only. Workspace validation is not authorization or a sandbox.
+- Only discovered, enabled local executors with prepared ACP dependencies may launch. The service owns launch commands; MCP callers cannot supply commands, credentials or capability endpoints. Task creation selects an existing absolute workspace, resolved from the request or local MCP launch directory and fixed for future runs. Workspace validation is not authorization or a sandbox.
 - Keep discovered capability facts, authorization and validation evidence separate.
-- ACP permission requests are optional. Rely on native executor authorization and reject requests for additional ACP approval. The unattendedApproved flag is not a sandbox or proof of complete tool authorization. Never infer permission from prompts, roles, tool titles or protocol success.
+- ACP permission requests are optional. Rely on native executor authorization and reject requests for additional ACP approval. Discovery and adapter readiness are not proof of complete tool authorization. Never infer permission from prompts, roles, tool titles or protocol success.
 - No interactive approvals for unattended execution. Reject requests that lack sufficient authorization; never silently widen access.
 - Executors inherit the OS user’s native environment only after filtering private service variables and credential aliases. Do not inherit service credentials into executors. Do not intentionally log secrets. Agent outputs may still be sensitive.
 - Never delete user history or workspaces to repair state. Do not add file hash verification in code, tests or checks.

@@ -1,17 +1,16 @@
 import { join } from "node:path";
 import { z } from "zod";
 import { checkDataDirectory, readPrivateText, replacePrivateText } from "../infrastructure/private-files.js";
-import { resolveWorkspace } from "../infrastructure/workspace.js";
 import { configSchema } from "./contract.js";
 import { parseEnvironment } from "./environment.js";
 import { validateConfig } from "./policy.js";
 import type { ConfigurationPaths, SettingsFiles } from "./ports.js";
 
-export const configurationPaths: ConfigurationPaths = { resolveWorkspace, checkDataDirectory };
+export const configurationPaths: ConfigurationPaths = { checkDataDirectory };
 export function loadConfig(path: string) {
   let value: unknown;
   try { value = JSON.parse(readPrivateText(path)); } catch { throw new Error("Cannot read configuration JSON"); }
-  return validateConfig(configSchema.parse(value), resolveWorkspace);
+  return validateConfig(configSchema.parse(value));
 }
 export function readEnvironment(path: string): Record<string, string> { return parseEnvironment(readPrivateText(path)); }
 export class LocalSettingsFiles implements SettingsFiles {

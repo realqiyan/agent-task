@@ -95,7 +95,7 @@ export class TaskRuns {
     if (opening) {
       if (task.input.expiresAt && Date.now() >= Date.parse(task.input.expiresAt)) throw new Error("Deadline reached before node start");
       if (sessions.size >= 8) throw new Error("ACP session capacity reached; accept existing results first");
-      node.workspace = task.workspace ?? executor.cwd;
+      node.workspace = task.workspace;
       this.workspaces.check(node.workspace);
       node.inputFiles = parents.map(parent => parent.resultFile!);
     } else if (!sessions.has(node.id)) {
@@ -109,7 +109,7 @@ export class TaskRuns {
     // The no-replay barrier precedes worker creation, not just the ACP prompt.
     this.store.commitRun(run);
     return opening ? { kind: "open", nodeRunId: node.id, text, seconds: node.definition.maxRunSeconds,
-      input: { executor: { ...executor, cwd: node.workspace! }, inputFiles: node.inputFiles, resultsRoot: this.results.root } }
+      input: { executor, workspace: node.workspace!, inputFiles: node.inputFiles, resultsRoot: this.results.root } }
       : { kind: "continue", nodeRunId: node.id, text };
   }
   beforeStart(id: string, nodeId: string): void {

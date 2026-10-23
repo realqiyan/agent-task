@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { executorSchema } from "../executors/validation.js";
+import { executorTypeSchema } from "../executors/validation.js";
 import { baseEnvKeys } from "./policy.js";
 const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 const modelId = z.string().min(1).max(200);
@@ -25,5 +25,6 @@ export const configSchema = z.object({
   port: z.number().int().min(0).max(65535).default(8765),
   tokenEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).default("AGENT_TASK_TOKEN"),
   coordinator: coordinatorSchema.optional(),
-  executors: z.array(executorSchema).max(100).default([]),
+  disabledExecutors: z.array(executorTypeSchema).max(4).refine(types => new Set(types).size === types.length,
+    "Disabled executor types must be unique").default([]),
 }).strict();

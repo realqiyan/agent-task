@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { realpath, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { realpath, mkdtemp, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -10,14 +10,15 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { TaskStore } from "../dist/tasks/storage/store.js";
 import { createTaskRuntime } from "../dist/application/task-runtime.js";
-import { executorSchema } from "../dist/executors/validation.js";
+import { executorRecord } from "../dist/executors/validation.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
 import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
 
-async function until(fn) {
-  for (let i = 0; i < 100; i++) { const result = await fn(); if (result) return result; await delay(100); }
+async function until(fn, timeout = 10_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) { const result = await fn(); if (result) return result; await delay(100); }
   throw new Error("Timed out");
 }
 async function call(client, name, args = {}) {
@@ -25,27 +26,27 @@ async function call(client, name, args = {}) {
   assert.equal(result.isError, false, JSON.stringify(result));
   return result.structuredContent.data;
 }
-test("MCP admission survives client disconnect; an unconfigured model fails without ACP dispatch or false success", { timeout: 20000 }, async t => {
+test("MCP checks native CLIs on connection, keeps management available and preserves tasks after disconnect", { timeout: 45_000 }, async t => {
   const dir = await mkdtemp(join(await realpath(tmpdir()), "agent-task-http-")), config = join(dir, "config.json");
-  const token = randomBytes(32).toString("hex");
+  const token = randomBytes(32).toString("hex"), adminToken = randomBytes(32).toString("hex");
   await writeFile(config, JSON.stringify({ dataDir: join(dir, "state"), port: 0,
     coordinator: { provider: "openai", model: "not-a-real-model" },
-    executors: [{ id: "local", type: "codex", cwd: dir, unattendedApproved: true }] }), { mode: 0o600 });
+    disabledExecutors: [] }), { mode: 0o600 });
   // Persist a real waiting run before starting the HTTP owner; no model or ACP output is fabricated.
   const state = join(dir, "state"), store = new TaskStore(state);
-  const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
+  const executor = executorRecord.parse({ id: "opencode", type: "opencode", nativePath: await realpath("/usr/bin/false"), command: await realpath("/usr/bin/false"), args: ["acp"], adapterVersion: null });
   const service = createTaskRuntime(state, [executor], openExecution,
     createCoordinator(state, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
-  const waitingTask = service.definitions.create(taskSchema.parse({ requestKey: "waiting", name: "waiting", prompt: "Inspect",
-    nodes: [{ id: "inspect", prompt: "Inspect", executorId: "local" }], schedule: { type: "now" } }));
+  const waitingTask = service.definitions.create(taskSchema.parse({ workspace: dir, requestKey: "waiting", name: "waiting", prompt: "Inspect",
+    nodes: [{ id: "inspect", prompt: "Inspect", executorId: "opencode" }], schedule: { type: "now" } }));
   service.runs.trigger();
   const waitingRun = service.runs.list(waitingTask.id).items[0];
   const question = service.supervisor.actions(waitingRun.id).ask({ question: "Which source?", completedWork: "None" });
   await service.close(); store.close();
   const environmentPath = join(dir, "environment.json");
-  await writeFile(environmentPath, JSON.stringify({ AGENT_TASK_TOKEN: token }), { mode: 0o600 });
+  await writeFile(environmentPath, JSON.stringify({ AGENT_TASK_TOKEN: token, AGENT_TASK_ADMIN_TOKEN: adminToken }), { mode: 0o600 });
   const child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", config, "--environment", environmentPath], {
-    env: { PATH: process.env.PATH, AGENT_TASK_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"],
+    env: { PATH: dir, AGENT_TASK_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "", stderr = "";
   child.stdout.on("data", chunk => stdout += chunk); child.stderr.on("data", chunk => stderr += chunk);
@@ -71,6 +72,14 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
     await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: "Bearer " + token } } }));
     return client;
   };
+  await assert.rejects(connect(), /No local executor CLI found.*pi, codex, claude or opencode/);
+  const adminHeaders = { Authorization: "Bearer " + adminToken };
+  const adminUrl = new URL(url).origin + "/admin/api";
+  assert.equal((await fetch(adminUrl + "/settings", { headers: adminHeaders })).status, 200);
+  const missing = await (await fetch(adminUrl + "/executors", { headers: adminHeaders })).json();
+  assert(missing.data.executors.every(executor => executor.state === "missing" && executor.nativePath === null));
+  // A later connection discovers a newly installed binary without restarting the service.
+  await symlink("/usr/bin/false", join(dir, "opencode"));
   const client = await connect();
   const tools = (await client.listTools()).tools;
   const names = tools.map(tool => tool.name);
@@ -81,16 +90,17 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
   }
   assert.equal((await client.callTool({ name: "task_update", arguments: { id: waitingTask.id, action: "edit" } })).isError, true);
   const nodes = [
-    { id: "inspect", prompt: "Inspect project", executorId: "local", dependsOn: [], maxRunSeconds: 60 },
-    { id: "review", prompt: "Review the inspection", executorId: "local", dependsOn: ["inspect"], maxRunSeconds: 60 },
+    { id: "inspect", prompt: "Inspect project", executorId: "opencode", dependsOn: [], maxRunSeconds: 60 },
+    { id: "review", prompt: "Review the inspection", executorId: "opencode", dependsOn: ["inspect"], maxRunSeconds: 60 },
   ];
   const future = await call(client, "task_create", { requestKey: "future", name: "future", prompt: "Inspect",
     workspace: dir, nodes: [nodes[0]], schedule: { type: "once", at: new Date(Date.now() + 60000).toISOString() } });
   assert.deepEqual((await call(client, "task_get", { id: future.id })).input.nodes, [nodes[0]]);
   const invalid = await client.callTool({ name: "task_create", arguments: {
-    requestKey: "invalid", name: "invalid", prompt: "Inspect", schedule: { type: "now" }, nodes: [nodes[1]],
+    requestKey: "invalid", name: "invalid", prompt: "Inspect", schedule: { type: "now" }, nodes: [nodes[0]],
   } });
   assert.equal(invalid.isError, true);
+  assert.match(JSON.stringify(invalid), /workspace is required/);
   assert.equal(future.workspace, dir);
   for (const [action, status] of [["pause", "paused"], ["resume", "active"], ["cancel", "cancelled"]]) {
     assert.equal((await call(client, "task_update", { id: future.id, action })).status, status);
@@ -98,11 +108,11 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
   assert.equal((await call(client, "task_run_get", { id: waitingRun.id })).status, "waiting_input");
   // Admit a complete DAG through MCP. Read scope is validated even before model work.
   const task = await call(client, "task_create", { requestKey: "one", name: "one", prompt: "Inspect project",
-    nodes, schedule: { type: "once", at: new Date(Date.now() + 1000).toISOString() } });
+    workspace: dir, nodes, schedule: { type: "once", at: new Date(Date.now() + 1000).toISOString() } });
   assert.deepEqual(task.input.nodes, nodes);
   await client.close();
   const reader = await connect();
-  const run = await until(async () => (await call(reader, "task_run_list", { taskId: task.id })).items.find(run => run.status === "failed"));
+  const run = await until(async () => (await call(reader, "task_run_list", { taskId: task.id })).items.find(run => run.status === "failed"), 20_000);
   assert.match(run.error, /no_model/);
   assert.deepEqual(run.nodes.map(node => node.definition), nodes);
   assert.ok(run.nodes.every(node => node.status === "blocked" && node.sessionId === null && node.turns.length === 0));
@@ -112,7 +122,7 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
   const replied = await call(reader, "task_run_reply", answer);
   assert.equal(replied.id, waitingRun.id);
   assert.equal(replied.questions[0].reply.answer, "Source X");
-  await until(async () => (await call(reader, "task_run_get", { id: waitingRun.id })).status === "failed");
+  await until(async () => (await call(reader, "task_run_get", { id: waitingRun.id })).status === "failed", 20_000);
   const duplicate = await call(reader, "task_run_reply", answer);
   assert.equal(duplicate.status, "failed");
   assert.equal(duplicate.questions.length, 1);

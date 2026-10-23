@@ -4,10 +4,10 @@ import { absolutePath, identifier, text, timestamp } from "../../shared/validati
 import { nodeData, questionData, taskData } from "../validation.js";
 
 export const definitionSchema = z.object({
-  id: z.string().uuid(), input: taskData, workspace: absolutePath.nullable(), executors: z.record(identifier, executorRecord),
+  id: z.string().uuid(), input: taskData, workspace: absolutePath, executors: z.record(identifier, executorRecord),
   status: z.enum(["active", "paused", "cancelled", "completed", "expired"]),
   nextAt: z.number().finite().nullable(), createdAt: timestamp,
-}).strict();
+}).strict().refine(task => task.input.workspace === task.workspace, "Task workspace must match the canonical request");
 export const roundSchema = z.object({
   id: z.string().uuid(), taskId: z.string().uuid(), scheduledAt: z.number().finite(),
   status: z.enum(["running", "succeeded", "failed", "interrupted", "skipped", "cancelled", "timed_out", "waiting_input"]),

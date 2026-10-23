@@ -19,7 +19,7 @@ function fixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const configPath = join(root, "config.json"), environmentPath = join(root, "environment.json");
   const environment = { AGENT_TASK_TOKEN: randomBytes(32).toString("hex"), [ADMIN_TOKEN_ENV]: randomBytes(32).toString("hex") };
-  writeFileSync(configPath, JSON.stringify({ dataDir: root, executors: [] }), { mode: 0o600 });
+  writeFileSync(configPath, JSON.stringify({ dataDir: root, disabledExecutors: [] }), { mode: 0o600 });
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
   const settings = new Settings(new LocalSettingsFiles(configPath, environmentPath), configurationPaths, loadConfig(configPath), {}, environment);
   t.after(() => settings.close());
@@ -30,7 +30,7 @@ test("startup edits are next-start only; secrets stay private, missing credentia
   const initial = settings.get(), original = readFileSync(configPath, "utf8"), secret = randomBytes(32).toString("hex");
   const config = { ...initial.saved, port: 9876, tokenEnv: "NEXT_SERVICE_TOKEN", dataDir: join(root, "next"),
     coordinator: { provider: "openai", model: "not-a-real-model" },
-    executors: [{ id: "local", type: "claude", note: "native authorization", cwd: root }] };
+    disabledExecutors: ["claude"] };
   assert.throws(() => settings.validate(parseSettings(settingsConfigSchema, { editToken: initial.editToken, config })), /missing/);
   assert.equal(readFileSync(configPath, "utf8"), original);
   assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: ADMIN_TOKEN_ENV, action: "replace", value: secret })), /not console-managed/);
@@ -42,7 +42,8 @@ test("startup edits are next-start only; secrets stay private, missing credentia
   assert.equal(saved.running.dataDir, root);
   assert.equal(saved.running.port, 8765);
   assert.equal(saved.saved.dataDir, config.dataDir);
-  assert.equal(saved.saved.executors[0].note, "native authorization");
+  assert.deepEqual(saved.saved.disabledExecutors, ["claude"]);
+  assert.deepEqual(saved.running.disabledExecutors, []);
   assert.equal(settings.status().pendingRestart, true);
   assert.equal(readEnvironment(environmentPath).NEXT_SERVICE_TOKEN, environment.AGENT_TASK_TOKEN);
   assert.equal(readEnvironment(environmentPath).OPENAI_API_KEY, secret);
@@ -86,7 +87,7 @@ test("changing a model endpoint requires separately prepared credentials", t => 
 });
 test("private files reject insecure boundaries and out-of-band overwrites without repairing data", t => {
   const { root, configPath, settings } = fixture(t), edit = settings.get();
-  const external = JSON.stringify({ dataDir: root, executors: [], port: 8766 });
+  const external = JSON.stringify({ dataDir: root, disabledExecutors: [], port: 8766 });
   writeFileSync(configPath, external);
   assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: edit.editToken, config: edit.saved })), /changed/);
   assert.equal(readFileSync(configPath, "utf8"), external);
@@ -100,28 +101,22 @@ test("private files reject insecure boundaries and out-of-band overwrites withou
   settings.close(); settings.close();
   assert.throws(() => settings.get(), /closed/);
 });
-test("executor identity changes require fresh approval in the service; convenience edits cannot retain it", t => {
-  const { settings, root, configPath } = fixture(t);
+test("executor enable and disable edits share validation and apply only at next start", t => {
+  const { settings, configPath } = fixture(t);
   let view = settings.get();
   const change = value => settings.prepareChange(parseSettings(settingsChangeSchema, { editToken: view.editToken, change: value }));
-  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-add", executor: { id: "local", type: "codex", cwd: root } })));
-  assert.equal(view.saved.executors[0].unattendedApproved, false);
-  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-approve", id: "local" })));
-  assert.equal(view.saved.executors[0].unattendedApproved, true);
-  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-update", id: "local", patch: { note: "reviewed" } })));
-  assert.equal(view.saved.executors[0].unattendedApproved, true);
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-disable", id: "codex" })));
+  assert.deepEqual(view.saved.disabledExecutors, ["codex"]);
+  assert.deepEqual(view.running.disabledExecutors, []);
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-disable", id: "codex" })));
+  assert.deepEqual(view.saved.disabledExecutors, ["codex"]);
   const original = readFileSync(configPath, "utf8");
-  for (const patch of [{ id: "renamed" }, { type: "pi" }, { cwd: realpathSync(tmpdir()) }]) {
-    const config = structuredClone(view.saved); Object.assign(config.executors[0], patch);
-    assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: view.editToken, config })), /explicit approval/);
-    assert.equal(readFileSync(configPath, "utf8"), original);
-  }
-  const draft = change({ action: "executor-update", id: "local", patch: { type: "pi" } });
-  assert.equal(draft.config.executors[0].unattendedApproved, false);
-  assert.equal(draft.config.executors[0].note, "reviewed", "partial edits preserve omitted fields");
-  // The same reviewed candidate can explicitly renew authorization through either client.
-  draft.config.executors[0].unattendedApproved = true; draft.approveExecutors = ["local"];
-  view = settings.saveConfig(parseSettings(settingsConfigSchema, draft));
-  assert.equal(view.saved.executors[0].type, "pi");
-  assert.equal(view.saved.executors[0].unattendedApproved, true);
+  assert.throws(() => change({ action: "executor-disable", id: "arbitrary-command" }), /Invalid fields/);
+  assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, {
+    editToken: view.editToken, config: { ...view.saved, disabledExecutors: ["codex", "codex"] },
+  })), /Invalid fields/);
+  assert.equal(readFileSync(configPath, "utf8"), original);
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-enable", id: "codex" })));
+  assert.deepEqual(view.saved.disabledExecutors, []);
+  assert.deepEqual(view.running.disabledExecutors, []);
 });

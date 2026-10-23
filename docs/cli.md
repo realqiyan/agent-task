@@ -1,6 +1,6 @@
 # 本机管理 CLI
 
-CLI 覆盖 Web 的配置、凭据、任务查询、未来触发控制及重启操作。两端通过同一管理 API 使用配置和任务服务；重启由同一启动器处理。命令入口见 [命令实现](../src/protocol/cli/commands.ts)，管理传输见 [admin-client.ts](../src/protocol/cli/admin-client.ts)。
+CLI 覆盖 Web 的配置、凭据、执行端管理、任务查询、未来触发控制及重启操作。两端通过同一管理 API 使用配置、执行端和任务服务；重启由同一启动器处理。命令入口见 [命令实现](../src/protocol/cli/commands.ts)，管理传输见 [admin-client.ts](../src/protocol/cli/admin-client.ts)。
 
 ## 连接与命令
 
@@ -16,9 +16,9 @@ agent-task task --help
 agent-task run --help
 ```
 
-逐级帮助是命令与参数的完整入口。管理命令支持 `--json`，结果写入 stdout，预览和诊断写入 stderr；失败退出码非零。非交互保存与任务变更须使用 `--yes`，它只确认本次操作，不替代校验或执行端授权。
+逐级帮助是命令与参数的完整入口。管理命令支持 `--json`，结果写入 stdout，预览和诊断写入 stderr；失败退出码非零。非交互保存、适配器升级与任务变更须使用 `--yes`，它只确认本次操作，不授予执行端原生工具权限。
 
-服务不可用时，管理命令失败，不自动离线写文件。首次安装仍使用 `setup`；启动故障按[部署说明](deployment.md#前台重启与健康检查)停服核查。CLI 不迁移数据或修复历史。
+服务不可用时，管理命令失败，不自动离线写文件。首次安装仍使用 `setup`；启动故障按[部署说明](deployment.md#后台前台与健康检查)停服核查。CLI 不迁移数据或修复历史。
 
 ## 配置流程
 
@@ -38,9 +38,17 @@ agent-task config show --running
 
 导出文件不包含密钥值，以私有权限创建，拒绝覆盖已有文件。编辑令牌过期、服务重启或任一客户端保存配置/凭据后，旧草稿不能提交；重新读取并人工核对，不自动合并。草稿契约见 [settings-contract.ts](../src/protocol/settings-contract.ts)。
 
-`executor` 和 `coordinator` 提供便捷操作，配置服务负责生成候选配置，再走同一预览、校验和保存流程。新执行端默认未批准；修改 ID、类型或工作空间后清除批准。原生授权审核完成后，显式运行 `executor approve ID`。完整草稿新增或变更已批准的执行端时，也须明确声明对候选配置的授权。
+`executor enable/disable` 和 `coordinator` 提供便捷配置操作。配置服务生成候选配置，再走同一预览、校验和保存流程。执行端自动发现，无须手工注册、设置默认工作目录或另行批准。启用与禁用在下次启动生效，不改写已有任务的执行端指派。
 
 配置与凭据均在下次启动生效。影响预览不修改旧任务快照，也不证明模型认证或 ACP 执行成功。保存顺序、端点与凭据隔离、重启影响见[控制台说明](web-console.md#保存与重启)。
+
+## 执行端发现与更新
+
+`agent-task executor list` 查看当前发现和准备结果；`executor show codex` 查看单个执行端。安装新的原生 CLI 后，运行 `executor refresh` 重新检测并在后台准备缺少的 ACP 适配器。该操作无需重启。准备失败时先检查报告的原因，修正后显式刷新或升级。
+
+已准备的适配器不会随普通启动或刷新自动升级。需要更新时运行 `agent-task executor upgrade codex --yes`，再用 `executor list` 检查结果。升级期间暂停向该执行端派发新工作；它不修改已有任务指派。OpenCode 使用原生 ACP 命令，通过原生 CLI 的安装渠道更新。
+
+就绪状态只表示启动依赖已准备。原生登录和权限仍由执行端管理；首次准备、版本来源及运行边界见[部署说明](deployment.md)。
 
 ## 凭据与任务
 

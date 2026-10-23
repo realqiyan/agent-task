@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import * as acp from "@agentclientprotocol/sdk";
-import { executorCommand } from "./runtime.js";
+import { executorLaunch } from "./runtime.js";
 import type { Executor } from "../../executors/model.js";
 import { Results } from "../../results/service.js";
 import { LocalResultFiles } from "../../results/files.js";
@@ -49,12 +49,12 @@ export async function terminateGroup(child: ChildProcess): Promise<void> {
   child.stdout?.destroy();
   child.stderr?.destroy();
 }
-export async function openAcp(executor: Executor, signal: AbortSignal, emit: Progress, resultsRoot: string, inputFiles: string[] = []) {
+export async function openAcp(executor: Executor, workspace: string, signal: AbortSignal, emit: Progress, resultsRoot: string, inputFiles: string[] = []) {
   signal.throwIfAborted();
   const results = new Results(new LocalResultFiles(resultsRoot));
-  const launch = executorCommand(executor.type, process.env);
+  const launch = executorLaunch(executor, process.env);
   const child = spawn(launch.command, launch.args, {
-    cwd: executor.cwd, env: process.env, detached: true, stdio: ["pipe", "pipe", "pipe"],
+    cwd: workspace, env: launch.env, detached: true, stdio: ["pipe", "pipe", "pipe"],
   });
   const controller = new AbortController();
   const cancel = AbortSignal.any([signal, controller.signal]);
@@ -127,7 +127,7 @@ export async function openAcp(executor: Executor, signal: AbortSignal, emit: Pro
     cancel.throwIfAborted();
     if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");
     await report("agent", { name: init.agentInfo?.name ?? null, version: init.agentInfo?.version ?? null });
-    const session = await connection.agent.request(acp.methods.agent.session.new, { cwd: executor.cwd, mcpServers: [] });
+    const session = await connection.agent.request(acp.methods.agent.session.new, { cwd: workspace, mcpServers: [] });
     sessionId = session.sessionId;
     await report("session", sessionId);
     cancel.throwIfAborted();

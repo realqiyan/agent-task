@@ -47,8 +47,7 @@ test("loadConfig isolates DeepSeek and custom coordinator credentials from token
       const base = { dataDir: directory, coordinator };
       writeFileSync(path, JSON.stringify({ ...base, tokenEnv: key }), { mode: 0o600 });
       assert.throws(() => loadConfig(path), /tokenEnv must be separate/);
-      const executor = { id: "agent", type: "codex", cwd: directory };
-      writeFileSync(path, JSON.stringify({ ...base, executors: [executor] }), { mode: 0o600 });
+      writeFileSync(path, JSON.stringify({ ...base, disabledExecutors: [] }), { mode: 0o600 });
       const config = loadConfig(path);
       assert.equal(config.coordinator.provider, coordinator.provider);
       assert.equal(executorEnvironment({ [key]: "private" }, {}, config)[key], undefined);

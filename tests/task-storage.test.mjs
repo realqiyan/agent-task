@@ -12,11 +12,11 @@ import { taskSchema } from "../dist/protocol/task-contract.js";
 
 function fixture(t) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-store-"));
-  const executor = { id: "local", type: "codex", cwd: dir, note: "", unattendedApproved: true };
+  const executor = { id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null };
   const failures = [];
   const runtime = createTaskRuntime(dir, [executor], createExecution({ PATH: "/missing" }),
     createCoordinator(dir, { provider: "openai", model: "not-a-real-model" }), error => { failures.push(error); });
-  const input = taskSchema.parse({ requestKey: "task", name: "  task  ", prompt: "Inspect",
+  const input = taskSchema.parse({ workspace: dir, requestKey: "task", name: "  task  ", prompt: "Inspect",
     nodes: [{ id: "A", executorId: "local", prompt: "Inspect" }], schedule: { type: "now" } });
   const task = runtime.definitions.create(input);
   t.after(async () => { await runtime.close(); rmSync(dir, { recursive: true, force: true }); });

@@ -18,13 +18,14 @@ export class TaskStore implements DefinitionStore, RunStore {
     try {
       const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
       if (tables.length) {
-        this.db.prepare("SELECT seq,id,request_key,data FROM definitions LIMIT 0").all();
+        this.db.prepare("SELECT seq,id,workspace,request_key,data FROM definitions LIMIT 0").all();
         this.db.prepare("SELECT seq,id,task_id,scheduled_at,data FROM rounds LIMIT 0").all();
         this.definitions(); this.rounds();
       }
       this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON");
       if (!tables.length) this.db.exec(`BEGIN IMMEDIATE;
-        CREATE TABLE definitions(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, request_key TEXT UNIQUE NOT NULL, data TEXT NOT NULL);
+        CREATE TABLE definitions(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, workspace TEXT NOT NULL,
+          request_key TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(workspace,request_key));
         CREATE TABLE rounds(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, task_id TEXT NOT NULL REFERENCES definitions(id),
           scheduled_at REAL NOT NULL, data TEXT NOT NULL, UNIQUE(task_id,scheduled_at));
         COMMIT;`);
@@ -79,8 +80,8 @@ export class TaskStore implements DefinitionStore, RunStore {
     if (round) roundSchema.parse(round);
     try {
       this.db.exec("BEGIN IMMEDIATE");
-      if (definition) this.db.prepare(`INSERT INTO definitions(id,request_key,data) VALUES(?,?,?)
-        ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(definition.id, definition.input.requestKey, JSON.stringify(definition));
+      if (definition) this.db.prepare(`INSERT INTO definitions(id,workspace,request_key,data) VALUES(?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(definition.id, definition.workspace, definition.input.requestKey, JSON.stringify(definition));
       if (round) this.db.prepare(`INSERT INTO rounds(id,task_id,scheduled_at,data) VALUES(?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(round.id, round.taskId, round.scheduledAt, JSON.stringify(round));
       this.db.exec("COMMIT");

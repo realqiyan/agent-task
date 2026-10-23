@@ -3,5 +3,5 @@
   "port": 8765,
   "tokenEnv": "AGENT_TASK_TOKEN",
   "coordinator": { "provider": "openai", "model": "YOUR_AVAILABLE_MODEL_ID" },
-  "executors": []
+  "disabledExecutors": []
 }

@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import type { Executor } from "../executors/model.js";
+import type { Executor, ExecutorType } from "../executors/model.js";
+import type { ExecutorDiscovery } from "../executors/ports.js";
 import { ExecutorRegistry } from "../executors/registry.js";
 import { checkWorkspace, resolveWorkspace } from "../infrastructure/workspace.js";
 import { LocalResultFiles } from "../results/files.js";
@@ -12,10 +13,11 @@ import type { Coordinate, OpenExecution } from "../tasks/ports.js";
 
 /** Creates and owns the business store and services; callers must stop ingress before closing. */
 export function createTaskRuntime(directory: string, profiles: readonly Executor[], openExecution: OpenExecution,
-  coordinate: Coordinate | undefined, fatal: (error: unknown) => void) {
+  coordinate: Coordinate | undefined, fatal: (error: unknown) => void,
+  discovery?: ExecutorDiscovery, disabled: readonly ExecutorType[] = []) {
   const store = new TaskStore(directory);
   try {
-    const executors = new ExecutorRegistry(profiles);
+    const executors = new ExecutorRegistry(profiles, discovery, disabled);
     const workspaces = { resolve: resolveWorkspace, check: checkWorkspace };
     const results = new Results(new LocalResultFiles(join(directory, "results"), true));
     const definitions = new TaskDefinitions(store, executors, workspaces, Boolean(coordinate));
@@ -28,7 +30,7 @@ export function createTaskRuntime(directory: string, profiles: readonly Executor
           definitions.close();
           const stopped = supervisor.close();
           runs.close();
-          try { await stopped; } finally { store.close(); }
+          try { await Promise.all([stopped, executors.close()]); } finally { store.close(); }
         })();
       },
     };

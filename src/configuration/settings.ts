@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from "node:util";
 import { ADMIN_TOKEN_ENV, coordinatorCredentialEnv, validateConfig } from "./policy.js";
 import type { Config, ConfigEdit, CredentialEdit, Environment, SettingsChange, SettingsSnapshot } from "./model.js";
 import type { ConfigurationPaths, SettingsFiles } from "./ports.js";
-import { sameExecutor } from "../executors/registry.js";
 import { parseEnvironment, validateServiceEnvironment } from "./environment.js";
 import { FileCommitError } from "../shared/errors.js";
 
@@ -86,17 +85,10 @@ export class Settings {
     const environment = { ...this.base, ...snapshot.environment };
     let config: Config;
     try {
-      config = validateConfig(input.config, this.paths.resolveWorkspace);
+      config = validateConfig(input.config);
       this.paths.checkDataDirectory(config.dataDir);
     } catch {
-      throw new SettingsError("invalid", "Local validation failed: check data directory, workspaces and credential isolation");
-    }
-    for (const executor of config.executors) {
-      const previous = snapshot.config.executors.find(item => item.id === executor.id);
-      if (executor.unattendedApproved && (!previous?.unattendedApproved || !sameExecutor(previous, executor)) &&
-        !input.approveExecutors.includes(executor.id)) {
-        throw new SettingsError("invalid", "Executor changes require explicit approval of the new configuration: " + executor.id);
-      }
+      throw new SettingsError("invalid", "Local validation failed: check data directory, executor selection and credential isolation");
     }
     const previous = snapshot.config.coordinator, next = config.coordinator;
     const endpoint = (model: NonNullable<Config["coordinator"]>) => model.provider === "openai-compatible" ? model.baseUrl : model.provider;
@@ -126,25 +118,15 @@ export class Settings {
   /** Convenience commands create a draft; all publication still uses saveConfig. */
   prepareChange(value: SettingsChange) {
     const { editToken, change } = value;
-    const config = structuredClone(this.editing(editToken).config), approveExecutors: string[] = [];
-    if (change.action === "executor-add") {
-      config.executors.push({ ...change.executor, unattendedApproved: false });
-    } else if (change.action === "coordinator-set") config.coordinator = change.coordinator;
+    const config = structuredClone(this.editing(editToken).config);
+    if (change.action === "coordinator-set") config.coordinator = change.coordinator;
     else if (change.action === "coordinator-clear") delete config.coordinator;
-    else {
-      const executor = config.executors.find(item => item.id === change.id);
-      if (!executor) throw new SettingsError("invalid", "Executor not found");
-      if (change.action === "executor-remove") config.executors = config.executors.filter(item => item !== executor);
-      else if (change.action === "executor-update") {
-        const updated = { ...executor, ...change.patch };
-        if (!sameExecutor(executor, updated)) updated.unattendedApproved = false;
-        config.executors[config.executors.indexOf(executor)] = updated;
-      } else {
-        executor.unattendedApproved = change.action === "executor-approve";
-        if (executor.unattendedApproved) approveExecutors.push(executor.id);
-      }
+    else if (change.action === "executor-enable") {
+      config.disabledExecutors = config.disabledExecutors.filter(type => type !== change.id);
+    } else if (!config.disabledExecutors.includes(change.id)) {
+      config.disabledExecutors.push(change.id);
     }
-    const input = { editToken, config, approveExecutors };
+    const input = { editToken, config };
     return { ...input, config: this.candidate(input) };
   }
   saveConfig(input: ConfigEdit) {

@@ -11,7 +11,7 @@ function files(directory) {
 }
 const roles = {
   model: ["tasks/model.ts", "executors/model.ts", "configuration/model.ts"],
-  port: ["tasks/ports.ts", "configuration/ports.ts", "results/ports.ts"],
+  port: ["tasks/ports.ts", "configuration/ports.ts", "results/ports.ts", "executors/ports.ts"],
   rule: ["shared/time.ts", "shared/limits.ts", "shared/errors.ts", "tasks/graph.ts", "tasks/schedule.ts", "tasks/human-input.ts",
     "executors/permissions.ts", "executors/environment.ts", "configuration/policy.ts", "configuration/environment.ts"],
   schema: ["shared/validation.ts", "tasks/validation.ts", "tasks/storage/records.ts", "executors/validation.ts", "configuration/contract.ts"],
@@ -39,6 +39,7 @@ const adapterEdges = new Set([
   "protocol/cli/admin-client.ts -> integrations/local-service/control.ts",
   "protocol/cli/commands.ts -> integrations/local-service/control.ts",
   "protocol/mcp.ts -> infrastructure/version.ts",
+  "protocol/stdio.ts -> infrastructure/version.ts",
 ]);
 const modules = {
   shared: ["shared"], tasks: ["tasks", "executors", "shared"],
@@ -58,7 +59,7 @@ function dependency(source, specifier, typeOnly = false) {
     if (!pure && !utility && !outer) errors.push(source + " cannot import " + specifier);
     if (specifier.startsWith("@") && !((source.startsWith("integrations/coordinator/") && specifier.startsWith("@earendil-works/")) ||
       (source.startsWith("integrations/acp/") && specifier.startsWith("@agentclientprotocol/")) ||
-      (["protocol/mcp.ts", "protocol/http/server.ts"].includes(source) && specifier.startsWith("@modelcontextprotocol/")))) {
+      (["protocol/mcp.ts", "protocol/http/server.ts", "protocol/stdio.ts"].includes(source) && specifier.startsWith("@modelcontextprotocol/")))) {
       errors.push("SDK outside its adapter: " + source + " -> " + specifier);
     }
     return;

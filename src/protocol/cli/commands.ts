@@ -8,6 +8,7 @@ import { connectAdmin } from "./admin-client.js";
 import { controlService } from "../../integrations/local-service/control.js";
 import type { Settings } from "../../configuration/settings.js";
 import type { previewSettings } from "../../configuration/management.js";
+import type { ExecutorStatus } from "../../executors/model.js";
 
 const common = "Common: --home ABSOLUTE_DIR --json --help. Writes: --yes for noninteractive confirmation.";
 const help: Record<string, string> = {
@@ -17,18 +18,19 @@ config edit [--editor EXECUTABLE] [--yes]
 config export --output FILE
 config validate --file FILE
 config apply --file FILE [--yes]
-Drafts contain {editToken, config, approveExecutors}; no credential values.
-Edit tokens expire after 15 minutes or a save/restart. Explicit approvals name executor IDs in the candidate configuration.
+Drafts contain {editToken, config}; no credential values.
+Edit tokens expire after 15 minutes or a save/restart.
 Saving applies on next start; it does not restart the service.`,
-  executor: `executor list [--saved | --running]
-executor show ID [--saved | --running]
-executor add --id ID --type pi|codex|claude|opencode --cwd ABSOLUTE_DIR [--note TEXT] [--yes]
-executor update ID [--id NEW_ID] [--type TYPE] [--cwd ABSOLUTE_DIR] [--note TEXT] [--yes]
-executor remove ID [--yes]
-executor approve ID [--yes]
-executor revoke ID [--yes]
-Changes apply on next start. New registrations are unapproved; changing ID, type or workspace clears approval.
-approve records the administrator's review of native authorization; --yes alone does not grant it.`,
+  executor: `executor list
+executor show pi|codex|claude|opencode
+executor refresh
+executor upgrade pi|codex|claude [--yes]
+executor enable pi|codex|claude|opencode [--yes]
+executor disable pi|codex|claude|opencode [--yes]
+list/show report current discovery and adapter preparation; native authentication is not verified.
+refresh discovers installed CLIs and prepares missing adapters in the background.
+upgrade explicitly updates a managed ACP adapter; existing tasks keep their native executor assignment.
+enable/disable apply on next start. Native CLI authentication and permissions remain native configuration.`,
   coordinator: `coordinator show [--saved | --running]
 coordinator set --provider openai|anthropic|deepseek|openai-compatible --model ID [--yes]
   Compatible provider also requires: --base-url URL --api-key-env NAME
@@ -142,9 +144,9 @@ export async function runCli(command: string, args: string[], resolveHome: (home
       else throw new Error("Unknown config action");
       break;
     case "executor":
-      if (action === "list" || action === "show") { allowed = ["saved", "running"]; count = action === "show" ? 2 : 1; }
-      else if (action === "add" || action === "update") { allowed = ["id", "type", "cwd", "note", "yes"]; count = action === "update" ? 2 : 1; }
-      else if (["remove", "approve", "revoke"].includes(action!)) { count = 2; allowed = ["yes"]; }
+      if (action === "list" || action === "refresh") allowed = [];
+      else if (action === "show") count = 2;
+      else if (["enable", "disable", "upgrade"].includes(action!)) { count = 2; allowed = ["yes"]; }
       else throw new Error("Unknown executor action");
       break;
     case "coordinator":
@@ -177,6 +179,21 @@ export async function runCli(command: string, args: string[], resolveHome: (home
   }
   const client = await connectAdmin(home);
   if (command === "status") { output({ event: "healthy", ...client.ready, ...await client.request<object>("/status") }); return; }
+  if (command === "executor" && ["list", "show", "refresh", "upgrade"].includes(action!)) {
+    if (action === "refresh") { output(await client.request("/executors/refresh", {})); return; }
+    if (action === "upgrade") {
+      await confirm(options, "Upgrade the managed ACP adapter for " + id + "?");
+      output(await client.request("/executors/upgrade", { id })); return;
+    }
+    const result = await client.request<{ executors: ExecutorStatus[] }>("/executors");
+    if (action === "list") output(result);
+    else {
+      const executor = result.executors.find(item => item.id === id);
+      if (!executor) throw new Error("Executor not found");
+      output(executor);
+    }
+    return;
+  }
   if (command === "task" || command === "run") {
     if (action === "list") {
       const query = new URLSearchParams();
@@ -208,7 +225,7 @@ export async function runCli(command: string, args: string[], resolveHome: (home
     }
     const view = await client.request<View>("/settings");
     if (action === "show") { output(options.running ? view.running : view.saved); return; }
-    const draft = { editToken: view.editToken, config: view.saved, approveExecutors: [] };
+    const draft = { editToken: view.editToken, config: view.saved };
     if (action === "export") {
       const path = text(options, "output", true)!; writeDraft(path, draft); output({ file: path }); return;
     }
@@ -234,27 +251,13 @@ export async function runCli(command: string, args: string[], resolveHome: (home
     output(await client.request("/settings/credential", input)); return;
   }
   const selected = options.running ? view.running : view.saved;
-  if (action === "list") { output(selected.executors); return; }
   if (action === "show") {
-    if (command === "coordinator") output(selected.coordinator ?? null);
-    else {
-      const executor = selected.executors.find(item => item.id === id);
-      if (!executor) throw new Error("Executor not found");
-      output(executor);
-    }
+    output(selected.coordinator ?? null);
     return;
   }
   let change: object;
   if (command === "executor") {
-    if (action === "add" || action === "update") {
-      const fields: Record<string, string> = {};
-      for (const key of ["id", "type", "cwd", "note"]) {
-        const value = text(options, key, action === "add" && key !== "note");
-        if (value !== undefined) fields[key] = value;
-      }
-      if (!Object.keys(fields).length) throw new Error("Specify at least one executor field to update");
-      change = action === "add" ? { action: "executor-add", executor: fields } : { action: "executor-update", id, patch: fields };
-    } else change = { action: "executor-" + action, id };
+    change = { action: "executor-" + action, id };
   } else if (action === "clear") change = { action: "coordinator-clear" };
   else {
     const provider = text(options, "provider", true), model = text(options, "model", true);

@@ -1,9 +1,11 @@
 import { openAcp } from "./connection.js";
 import { z } from "zod";
 import { errorText } from "../../shared/errors.js";
-import { executorSchema } from "../../executors/validation.js";
+import { executorRecord } from "../../executors/validation.js";
+import { absolutePath } from "../../shared/validation.js";
 
-const inputSchema = z.object({ executor: executorSchema, inputFiles: z.array(z.string()).max(20), resultsRoot: z.string().min(1) }).strict();
+const inputSchema = z.object({ executor: executorRecord, workspace: absolutePath,
+  inputFiles: z.array(z.string()).max(20), resultsRoot: z.string().min(1) }).strict();
 const controller = new AbortController();
 const pending = new Map<number, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 let sequence = 0, started = false, busy = false;
@@ -49,7 +51,7 @@ process.on("message", (message: { type?: string; input?: unknown; seq?: number; 
     started = true;
     opening = (async () => {
       const input = inputSchema.parse(message.input);
-      session = await openAcp(input.executor, controller.signal, emit, input.resultsRoot, input.inputFiles);
+      session = await openAcp(input.executor, input.workspace, controller.signal, emit, input.resultsRoot, input.inputFiles);
       void session.closed.then(() => { if (!closing) void fail(new Error("ACP process exited")); });
       if (!controller.signal.aborted) await send({ type: "opened" });
     })();

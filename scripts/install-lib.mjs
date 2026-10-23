@@ -1,25 +1,18 @@
-import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "../dist/infrastructure/sqlite.js";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync, readdirSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync } from "node:fs";
 import { dirname, join, resolve, isAbsolute, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 export const packageRoot = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
 
-export const packages = {
-  pi: ["@earendil-works/pi-coding-agent@1.3.0", "pi-acp@0.0.34"],
-  codex: ["@agentclientprotocol/codex-acp@2.2.2"],
-  claude: ["@zed-industries/claude-agent-acp@0.23.1"],
-  opencode: ["opencode-ai@1.19.3"],
-};
 export function argumentsFor(argv) {
-  const flags = new Set(["check", "probe", "resume", "help"]), options = {};
+  const flags = new Set(["check", "resume", "help", "yes", "generate-tokens"]), options = {};
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, "");
     if (!argv[i].startsWith("--") || key in options) throw new Error("Invalid or repeated option");
     if (flags.has(key)) options[key] = true;
-    else if (["home", "executors", "cwd", "provider", "model", "port"].includes(key) && argv[i + 1] && !argv[i + 1].startsWith("--")) options[key] = argv[++i];
+    else if (["home", "data-dir", "provider", "model", "port", "token-env", "credentials-file", "base-url", "api", "api-key-env", "context-window", "max-tokens"].includes(key) && argv[i + 1] && !argv[i + 1].startsWith("--")) options[key] = argv[++i];
     else throw new Error("Unknown option or missing value: " + key);
   }
   return options;
@@ -48,12 +41,6 @@ export function createFile(path, text) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, text, { flag: "wx", mode: 0o600 });
 }
-export function run(command, args, options = {}) {
-  const env = Object.fromEntries(["HOME", "PATH", "LANG", "LC_ALL", "TZ", "TMPDIR"].filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
-  const result = spawnSync(command, args, { encoding: "utf8", timeout: 300000, stdio: "pipe", env, ...options });
-  if (result.error || result.status !== 0) throw new Error("Command failed (diagnostics withheld; may contain credentials): " + command + " " + args[0]);
-  return result.stdout?.trim();
-}
 export function operationLock(root) {
   const db = new DatabaseSync(join(root, "setup-lock.sqlite"));
   try { db.exec("PRAGMA busy_timeout=0; BEGIN EXCLUSIVE"); }
@@ -67,7 +54,7 @@ export function readManifest(root) {
   return value;
 }
 export function saveManifest(root, manifest) {
-  // Preserve the last committed inventory even if a disk-full write fails.
+  // Preserve the last committed initialization record if a write fails.
   const temporary = join(root, `installation-${process.pid}.tmp`);
   let fd;
   try {
@@ -84,10 +71,5 @@ export function saveManifest(root, manifest) {
 }
 export function runtimeBaseEnv(manifest) {
   // Capture the OS user environment; the runtime isolates private service values before worker creation.
-  return { ...process.env, HOME: manifest.home, PATH: [join(manifest.root, "components/node_modules/.bin"), dirname(manifest.node), process.env.PATH ?? "", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":"), LANG: process.env.LANG ?? "en_US.UTF-8" };
-}
-export function inventory(root, relative) {
-  const path = join(root, relative), stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) return [relative];
-  return readdirSync(path).flatMap(name => inventory(root, join(relative, name))).concat(relative);
+  return { ...process.env, HOME: manifest.home, PATH: [process.env.PATH ?? "", dirname(manifest.node), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":"), LANG: process.env.LANG ?? "en_US.UTF-8" };
 }

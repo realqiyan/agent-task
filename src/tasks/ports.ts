@@ -28,7 +28,7 @@ export type ExecutionSession = {
   close(): Promise<void>;
   closed: Promise<void>;
 };
-export type OpenExecution = (input: { executor: Executor; inputFiles: string[]; resultsRoot: string },
+export type OpenExecution = (input: { executor: Executor; workspace: string; inputFiles: string[]; resultsRoot: string },
   event: (kind: string, data: unknown, text: string) => void, beforeStart: () => void) => ExecutionSession;
 
 /** The coordinator has no process, database, credentials, or general filesystem capability. */
