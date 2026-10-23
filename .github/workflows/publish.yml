@@ -7,6 +7,10 @@ on:
         description: "Exact reviewed package version; publishes with latest"
         required: true
         type: string
+      verify_only:
+        description: "Verify an already published version without uploading again"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,11 +56,11 @@ jobs:
           assert.equal(pkg.publishConfig.tag, "latest");
           JS
       - name: Publish with npm trusted publishing (no rebuild or package scripts)
+        if: ${{ !inputs.verify_only }}
         run: |
           npm publish realqiyan-agent-task-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
       - name: Verify public latest and default global install
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
-          test "$(npm view @realqiyan/agent-task dist-tags.latest --registry=https://registry.npmjs.org)" = "$EXPECTED_VERSION"
           node scripts/verify-install.mjs --registry

@@ -21,11 +21,15 @@ npm run test:install -- ./realqiyan-agent-task-0.1.0-rc.1.tgz
 
 脚本只验证当前环境，不在 Linux 上推断 macOS 行为；需要 macOS 证据时，在相应环境单独运行同一命令。本地可设置 `npm_config_cache` 复用下载缓存，tarball 验证可用 `npm_config_registry` 指定依赖镜像，报告会记录其地址；`--registry` 发布后验收固定使用 npmjs。不能以复制项目的 node_modules 替代安装验证。
 
+npm 接收发布后可能仍在处理包。发布后验收最多等待五分钟，确认公开 `latest` 指向目标版本，再执行默认全局安装；等待只读取 registry。超时先核对版本状态，不重复上传。
+
 ## GitHub Actions 门禁与受控发布
 
 - [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时在 Ubuntu 执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，在当前 Linux runner 验证启动、重启及认证检查。常规 CI 不再要求 macOS runner；这不代表 macOS 已验证或不受支持。
 - [Publish npm](../.github/workflows/publish.yml)：仅手动触发，限制 master 和账号 realqiyan，输入须匹配已验收包版本。再次执行全部门禁，再发布同一 tarball，不重建、不执行包脚本。发布后核查 latest 并执行默认全局安装验证。
 - 普通 CI 没有 npm 凭据。发布作业使用 npm Trusted Publisher 和 GitHub OIDC，不读取 `NPM_TOKEN`；并发发布被串行化。
+
+包已发布但后续验收失败时，在同一工作流选择相同版本并启用 `verify_only`。该模式仍执行验证门禁和公开安装验收，跳过上传，适用于 registry 处理延迟后的复核。
 
 首次启用前，由维护者完成以下配置：
 1. 创建 GitHub Environment **npm**，仅允许 master 部署；按仓库需要配置审核人。工作流中的 environment 名称本身**不自动创建审核保护**。

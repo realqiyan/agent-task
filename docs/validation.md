@@ -120,13 +120,17 @@ Linux x64、Node 24.15.0 的本机记录：
 
 ## npm 发布候选验证
 
-### 0.1.0-rc.1（本地验收完成，等待发布）
+### 0.1.0-rc.1（已发布）
 
 本候选包含 stdio 共用后台、本机执行端发现与适配器准备、固定任务目录和按目录去重，以及调度周期调整。初始化须确认目录、端口、令牌及协调模型；普通启动不转换旧配置或业务数据。
 
 2026-10-23，Linux x64、Node 24.15.0：锁定依赖重装、类型与依赖边界检查、49 项基础测试、两项真实模型测试、包清单门禁及独立安装验收均通过。真实模型范围见 [0.1.0-rc.1 复验](#010-rc1-复验)。
 
 本地候选包安装报告：`/tmp/agent-task-npm-SxC74r/report.json`。使用独立 prefix 与原生 HOME，不依赖源码或 TypeScript；前台、Web/CLI 重启、stdio 自动启动、断开后后台健康和 stop 均通过。此次依赖下载使用 npm 镜像；发布后的默认安装须另以 npmjs 验证。报告仅把本机 Linux 记为通过，未执行 macOS 验收。发布完成以工作流结果和 registry 核对为准。
+
+[GitHub 发布运行 40005739943](https://github.com/realqiyan/agent-task/actions/runs/40005739943)验证提交 `b6d138d`：Node 22.19.0/24.x 检查与 49 项测试、包门禁及 Linux 独立安装全部通过。GitHub OIDC 发布步骤成功，npm 随后提示包正在处理；即时 latest 检查仍读到旧版本，导致该运行最终失败。此失败发生在发布后的校验阶段。
+
+后续匿名 npmjs 核对确认 **[@realqiyan/agent-task@0.1.0-rc.1](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0-rc.1)** 存在、`latest=0.1.0-rc.1`，并包含 GitHub provenance。未指定版本的默认全局安装及前台、Web/CLI、stdio 后台验收通过，报告：`/tmp/agent-task-npm-lTc9FG/report.json`。捕获输出未发现验证凭据，无模型或 ACP 工作。发布后校验现已加入有限等待和 `verify_only` 入口，后续复核无需再次上传同一版本。
 
 ### 0.0.1-rc.3（历史证据）
 

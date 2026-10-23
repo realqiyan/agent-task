@@ -17,6 +17,7 @@ if (!["linux", "darwin"].includes(process.platform)) throw new Error(`Installati
 const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
 if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 19)) throw new Error(`Installation validation requires Node.js 22.19+; current version is ${process.version}`);
 const packageName = "@realqiyan/agent-task";
+const expectedVersion = "0.1.0-rc.1";
 const spec = registry ? packageName : resolve(positional[0]);
 const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-npm-"));
 const prefix = join(root, "prefix"), workspace = join(root, "workspace"), home = join(root, "private");
@@ -71,12 +72,25 @@ async function admin(path, body) {
   assert(response.ok && !result.error, "Authenticated Web configuration request failed");
   return result.data;
 }
+async function waitForPublicRelease() {
+  const deadline = Date.now() + 300_000;
+  while (Date.now() < deadline) {
+    const result = spawnSync("npm", ["view", packageName, "dist-tags.latest", "--prefer-online"], {
+      cwd: workspace, env, encoding: "utf8", timeout: 15000,
+    });
+    logs += (result.stdout ?? "") + (result.stderr ?? "");
+    if (!result.error && result.status === 0 && result.stdout.trim() === expectedVersion) return;
+    await delay(10000);
+  }
+  throw new Error("Expected npm latest was not visible within five minutes; inspect registry state before another publication");
+}
 try {
+  if (registry) await waitForPublicRelease();
   run("npm", ["install", "--global", "--prefix", prefix, "--ignore-scripts", "--no-audit", "--no-fund", "--prefer-offline", spec]);
   const installed = join(prefix, "lib/node_modules", packageName);
   const pkg = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
   assert.equal(pkg.name, packageName);
-  assert.equal(pkg.version, "0.1.0-rc.1");
+  assert.equal(pkg.version, expectedVersion);
   assert.equal(pkg.license, "MIT");
   assert(!existsSync(join(installed, "src")) && !existsSync(join(installed, "node_modules/typescript")), "Source/compiler must not be required");
   assert.equal(invoke("--version").trim(), pkg.version);
