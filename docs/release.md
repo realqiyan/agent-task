@@ -15,25 +15,24 @@ npm run pack:release
 npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.3.tgz
 ```
 
-安装验证在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；再配置、前台启动、调用 Web 配置接口、重启、进行认证健康检查。验证脚本不调用模型或启动 ACP 工作。
+安装验证先检查当前 OS 和 Node.js 版本，再在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；随后配置、前台启动、调用 Web 配置接口、重启、进行认证健康检查。验证脚本不调用模型或启动 ACP 工作。
 
-输出报告只包含结果和证据目录，不包含 token。临时目录权限为私有，内有验证专用随机凭据及空任务库，不上传这些目录。基础测试中的真实 PTY 用例验证交互式向导的确认和取消；仍需人工核查目标终端体验。
+输出报告只包含结果和证据目录，不包含 token；只将实际运行的宿主平台记为通过，其他平台明确记为未执行。临时目录权限为私有，内有验证专用随机凭据及空任务库，不上传这些目录。基础测试中的真实 PTY 用例先检查平台及 `script` 能否创建终端；能力不可用时明确跳过，不能把跳过当成终端验收通过。
 
-在 Linux 和 macOS 分别运行；本地可设置 `npm_config_cache` 复用下载缓存，tarball 验证可用 `npm_config_registry` 指定依赖镜像，报告会记录其地址；`--registry` 发布后验收固定使用 npmjs。不能以复制项目的 node_modules 替代安装验证。
+脚本只验证当前环境，不在 Linux 上推断 macOS 行为；需要 macOS 证据时，在相应环境单独运行同一命令。本地可设置 `npm_config_cache` 复用下载缓存，tarball 验证可用 `npm_config_registry` 指定依赖镜像，报告会记录其地址；`--registry` 发布后验收固定使用 npmjs。不能以复制项目的 node_modules 替代安装验证。
 
 ## GitHub Actions 门禁与受控发布
 
-- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。Linux 和 macOS 安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，验证启动、重启及认证检查。
+- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时在 Ubuntu 执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，在当前 Linux runner 验证启动、重启及认证检查。常规 CI 不再要求 macOS runner；这不代表 macOS 已验证或不受支持。
 - [Publish npm](../.github/workflows/publish.yml)：仅手动触发，限制 master 和账号 realqiyan，输入须匹配已验收包版本。再次执行全部门禁，再发布同一 tarball，不重建、不执行包脚本。发布后核查 latest 并执行默认全局安装验证。
-- 普通 CI 没有 npm 凭据。发布作业单独获得凭据及 provenance 所需权限。并发发布被串行化。
+- 普通 CI 没有 npm 凭据。发布作业使用 npm Trusted Publisher 和 GitHub OIDC，不读取 `NPM_TOKEN`；并发发布被串行化。
 
-首次启用前，由仓库管理员创建 GitHub Environment **npm**：
-1. 配置必要审核人及仅允许 master 部署。若要禁止发起人自审，需要另一个审核人。
-2. 在该 Environment 中添加 **NPM_TOKEN**，使用 realqiyan 的最小发布权限、短有效期 token，允许直接发布（publish and stage），并满足 npm 的 2FA/自动发布策略。不要放入仓库文件或普通 CI 环境。
-3. 核查分支保护及工作流修改权限。工作流中的 environment 名称本身**不自动创建审核保护**。
-4. 将代码审查后提交到 master，再在 Actions 选择 Publish npm，输入已验收的版本（本次为 `0.0.1-rc.3`）。包尚不存在时，应确认账号允许首次创建此名称；认证/权限失败须停止，不能换账号或跳过验证。
+首次启用前，由维护者完成以下配置：
+1. 创建 GitHub Environment **npm**，仅允许 master 部署；按仓库需要配置审核人。工作流中的 environment 名称本身**不自动创建审核保护**。
+2. 在 npm 包的 Trusted Publisher 设置中授权 GitHub 仓库 `realqiyan/agent-task`、工作流 `publish.yml`、Environment `npm`，允许 `npm publish`。认证与 2FA 在 npm 官方界面完成，不上传本机登录凭据。
+3. 核查分支保护及工作流修改权限，再在 Actions 选择 Publish npm，输入已验收的版本（本次为 `0.0.1-rc.3`）。认证/权限失败须停止，不能换账号或跳过验证。
 
-发布命令明确传 `--tag latest --access public --provenance`。provenance 依赖 GitHub OIDC，不代替 npm 发布授权。当前流程要求 Environment token 并检查 `npm whoami` 为 realqiyan；不宣称已经配置 npm trusted publishing。
+发布作业使用 Node 24 与支持 OIDC 的 npm；命令明确传 `--tag latest --access public --provenance`。Trusted Publisher 授权和 provenance 是不同条件，设置工作流不等于 npm 已授权。首次配置和有效期限制以 [npm 官方说明](https://docs.npmjs.com/trusted-publishers/)为准。
 
 ## 经授权的本机发布
 

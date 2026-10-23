@@ -7,9 +7,13 @@ import { tmpdir } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 
 test("real terminal setup requires confirmation, creates private tokens and leaves executors unauthorized", { timeout: 20000 }, async t => {
+  if (!["linux", "darwin"].includes(process.platform)) { t.skip(`PTY validation is unavailable on ${process.platform}`); return; }
+  const env = Object.fromEntries(["PATH", "HOME", "LANG"].filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
+  const probe = spawnSync("script", process.platform === "linux" ? ["-q", "-e", "-c", "true", "/dev/null"]
+    : ["-q", "/dev/null", "/usr/bin/true"], { env, encoding: "utf8", timeout: 5000 });
+  if (probe.error || probe.status !== 0) { t.skip("The script utility cannot open a PTY in this environment"); return; }
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-wizard-")), cli = resolve("bin/agent-task.mjs");
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const env = Object.fromEntries(["PATH", "HOME", "LANG"].filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
   const home = join(root, "private");
   const noninteractive = spawnSync(process.execPath, [cli, "setup", "--home", home], { cwd: root, env, encoding: "utf8", timeout: 5000 });
   assert.notEqual(noninteractive.status, 0);

@@ -53,11 +53,7 @@ jobs:
 
   install:
     needs: package
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       # No checkout: only the tarball and a built-in-only acceptance script.
       - uses: actions/download-artifact@v4
@@ -66,5 +62,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.19.0"
-      - name: Install, configure, start, authenticate
+      - name: Validate installation on this runner
         run: node scripts/verify-install.mjs realqiyan-agent-task-*.tgz

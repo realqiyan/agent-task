@@ -33,7 +33,7 @@ jobs:
           name: npm-candidate
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.19.0"
+          node-version: "24.x"
           registry-url: https://registry.npmjs.org
       - name: Check reviewed artifact version
         env:
@@ -51,11 +51,8 @@ jobs:
           assert.equal(pkg.license, "MIT");
           assert.equal(pkg.publishConfig.tag, "latest");
           JS
-      - name: Publish as realqiyan (no rebuild or package scripts)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish with npm trusted publishing (no rebuild or package scripts)
         run: |
-          test "$(npm whoami --registry=https://registry.npmjs.org)" = realqiyan
           npm publish realqiyan-agent-task-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
       - name: Verify public latest and default global install
         env:

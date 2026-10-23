@@ -12,6 +12,9 @@ process.umask(0o077);
 const args = process.argv.slice(2), registry = args.includes("--registry");
 const positional = args.filter(arg => arg !== "--registry");
 if ((registry && positional.length) || (!registry && positional.length !== 1)) throw new Error("Usage: node scripts/verify-install.mjs TARBALL | --registry");
+if (!["linux", "darwin"].includes(process.platform)) throw new Error(`Installation validation is unavailable on ${process.platform}; use Linux or macOS`);
+const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
+if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 19)) throw new Error(`Installation validation requires Node.js 22.19+; current version is ${process.version}`);
 const packageName = "@realqiyan/agent-task";
 const spec = registry ? packageName : resolve(positional[0]);
 const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-npm-"));
@@ -117,6 +120,8 @@ try {
   await stop();
   for (const secret of secrets) assert(!logs.includes(secret), "Credentials appeared in command/service output");
   const report = { name: pkg.name, version: pkg.version, platform: process.platform, arch: process.arch, node: process.version,
+    platformValidation: Object.fromEntries(["linux", "darwin"].map(platform => [platform,
+      platform === process.platform ? "passed" : `not run (host is ${process.platform})`])),
     source: registry ? "npm latest (default install)" : "local npm tarball", dependencyRegistry: env.npm_config_registry, foreground: "passed",
     webConfiguration: "passed (HTTP, not browser)",
     authenticatedHealth: "passed", credentialsInOutput: false,
