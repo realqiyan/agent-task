@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { realpathSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, statSync, readFileSync } from "node:fs";
+import { realpathSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { spawnSync, spawn } from "node:child_process";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
 import { Results, readInputFile } from "../dist/results.js";
 import { acquireLock } from "../dist/lock.js";
-import { loadConfig } from "../dist/config.js";
 
 function directory(t) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-artifacts-"));
@@ -46,22 +45,3 @@ test("OS-owned directory lock excludes another process and releases on SIGKILL",
   await release(); await release();
 });
 
-test("administrator CLI registers local profiles atomically, queries them and honors the service lock", async t => {
-  const dir = directory(t), path = join(dir, "config.json"), profilePath = join(dir, "profile.json");
-  writeFileSync(path, JSON.stringify({ dataDir: dir, executors: [] }), { mode: 0o600 });
-  writeFileSync(profilePath, JSON.stringify({ id: "local", type: "codex", note: "reviewed", cwd: dir, unattendedApproved: true }));
-  const call = action => spawnSync(process.execPath, [resolve("dist/admin.js"), action, path, profilePath], { encoding: "utf8", timeout: 10_000 });
-  const registered = call("register");
-  assert.equal(registered.status, 0, registered.stderr);
-  assert.equal(loadConfig(path).executors[0].id, "local");
-  assert.equal(statSync(path).mode & 0o777, 0o600);
-  assert.equal(JSON.parse(call("list").stdout)[0].transport, "stdio");
-  const original = readFileSync(path, "utf8");
-  assert.notEqual(call("register").status, 0);
-  assert.equal(readFileSync(path, "utf8"), original);
-  const release = await acquireLock(dir);
-  try { assert.notEqual(call("list").status, 0); } finally { await release(); }
-  writeFileSync(profilePath, JSON.stringify({ id: "remote", command: "https://remote.invalid", cwd: dir }));
-  assert.notEqual(call("register").status, 0);
-  assert.equal(readFileSync(path, "utf8"), original);
-});

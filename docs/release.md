@@ -12,18 +12,18 @@ npm run check
 npm test
 git diff --check
 npm run pack:release
-npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.2.tgz --service
+npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.2.tgz
 ```
 
-安装验证在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；再配置、前台启动、调用 Web 配置接口、重启、运行用户服务、进行认证健康检查并卸载。验证脚本不调用模型或启动 ACP 工作。仅 `--service` 会触及真实用户服务管理器，遇到已有同名服务会拒绝，不覆盖其他安装。
+安装验证在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；再配置、前台启动、调用 Web 配置接口、重启、进行认证健康检查。验证脚本不调用模型或启动 ACP 工作。
 
-输出报告只包含结果和证据目录，不包含 token。临时目录权限为私有，内有验证专用随机凭据及空任务库，不上传这些目录。若只验证前台可省略 `--service`，但不能据此宣称后台已通过。基础测试中的真实 PTY 用例验证交互式向导的确认和取消；仍需人工核查目标终端体验。
+输出报告只包含结果和证据目录，不包含 token。临时目录权限为私有，内有验证专用随机凭据及空任务库，不上传这些目录。基础测试中的真实 PTY 用例验证交互式向导的确认和取消；仍需人工核查目标终端体验。
 
-在 Linux 和 macOS 分别运行；平台缺失、网络失败或后台启动失败都不能被模板检查替代。平台限制见[部署说明](deployment.md#后台运行)。本地可设置 `npm_config_cache` 复用下载缓存，tarball 验证可用 `npm_config_registry` 指定依赖镜像，报告会记录其地址；`--registry` 发布后验收固定使用 npmjs。不能以复制项目的 node_modules 替代安装验证。
+在 Linux 和 macOS 分别运行；本地可设置 `npm_config_cache` 复用下载缓存，tarball 验证可用 `npm_config_registry` 指定依赖镜像，报告会记录其地址；`--registry` 发布后验收固定使用 npmjs。不能以复制项目的 node_modules 替代安装验证。
 
 ## GitHub Actions 门禁与受控发布
 
-- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时执行 TypeScript 检查、基础测试及构建；检查包清单。Linux 和 macOS 安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，要求真实服务管理器及认证检查通过。
+- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时执行 TypeScript 检查、基础测试及构建；检查包清单。Linux 和 macOS 安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，验证启动、重启及认证检查。
 - [Publish npm](../.github/workflows/publish.yml)：仅手动触发，限制 master 和账号 realqiyan，输入须匹配已验收包版本。再次执行全部门禁，再发布同一 tarball，不重建、不执行包脚本。发布后核查 latest 并执行默认全局安装验证。
 - 普通 CI 没有 npm 凭据。发布作业单独获得凭据及 provenance 所需权限。并发发布被串行化。
 
@@ -47,7 +47,7 @@ npm publish ./realqiyan-agent-task-0.0.1-rc.2.tgz --ignore-scripts \
   --access public --tag latest --registry=https://registry.npmjs.org
 npm view @realqiyan/agent-task@0.0.1-rc.2 version license --registry=https://registry.npmjs.org
 npm view @realqiyan/agent-task dist-tags --json --registry=https://registry.npmjs.org
-node scripts/verify-install.mjs --registry --service
+node scripts/verify-install.mjs --registry
 ```
 
 登录成功不等于发布授权已完成。若 registry 返回需要 2FA 的 E403，停止发布；维护者须在自己的终端完成发布时认证，或配置有目标包发布权限、短有效期且获准 bypass 2FA 的 granular token。不要关闭账号 2FA，不在聊天、命令参数或日志中传递一次性验证码或 token；不把本机登录凭据自动上传到 GitHub。

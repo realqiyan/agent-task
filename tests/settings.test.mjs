@@ -96,3 +96,28 @@ test("private files reject insecure boundaries and out-of-band overwrites withou
   settings.close(); settings.close();
   assert.throws(() => settings.get(), /closed/);
 });
+test("executor identity changes require fresh approval in the service; convenience edits cannot retain it", t => {
+  const { settings, root, configPath } = fixture(t);
+  let view = settings.get();
+  const change = value => settings.prepareChange({ editToken: view.editToken, change: value });
+  view = settings.saveConfig(change({ action: "executor-add", executor: { id: "local", type: "codex", cwd: root } }));
+  assert.equal(view.saved.executors[0].unattendedApproved, false);
+  view = settings.saveConfig(change({ action: "executor-approve", id: "local" }));
+  assert.equal(view.saved.executors[0].unattendedApproved, true);
+  view = settings.saveConfig(change({ action: "executor-update", id: "local", patch: { note: "reviewed" } }));
+  assert.equal(view.saved.executors[0].unattendedApproved, true);
+  const original = readFileSync(configPath, "utf8");
+  for (const patch of [{ id: "renamed" }, { type: "pi" }, { cwd: realpathSync(tmpdir()) }]) {
+    const config = structuredClone(view.saved); Object.assign(config.executors[0], patch);
+    assert.throws(() => settings.saveConfig({ editToken: view.editToken, config }), /explicit approval/);
+    assert.equal(readFileSync(configPath, "utf8"), original);
+  }
+  const draft = change({ action: "executor-update", id: "local", patch: { type: "pi" } });
+  assert.equal(draft.config.executors[0].unattendedApproved, false);
+  assert.equal(draft.config.executors[0].note, "reviewed", "partial edits preserve omitted fields");
+  // The same reviewed candidate can explicitly renew authorization through either client.
+  draft.config.executors[0].unattendedApproved = true; draft.approveExecutors = ["local"];
+  view = settings.saveConfig(draft);
+  assert.equal(view.saved.executors[0].type, "pi");
+  assert.equal(view.saved.executors[0].unattendedApproved, true);
+});

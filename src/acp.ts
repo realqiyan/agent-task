@@ -39,7 +39,7 @@ function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
   }
 }
-/** Kill the whole group even if its leader already exited; Linux systemd additionally owns a cgroup; macOS does not. */
+/** Kill the whole group even if its leader already exited. */
 export async function terminateGroup(child: ChildProcess): Promise<void> {
   signalGroup(child, "SIGTERM");
   await delay(300);

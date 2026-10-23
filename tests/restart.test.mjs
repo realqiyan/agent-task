@@ -22,7 +22,7 @@ test("foreground CLI and Web restart on the same port verify a new process; fail
   const invoke = (...args) => execFileSync(process.execPath, [cli, ...args, "--home", home], { env, encoding: "utf8", stdio: "pipe" });
   const reservation = createServer(), port = await listen(reservation);
   await new Promise(resolve => reservation.close(resolve));
-  invoke("setup", "--executors", "none", "--cwd", workspace, "--port", String(port), "--prepare-only");
+  invoke("setup", "--executors", "none", "--cwd", workspace, "--port", String(port));
   const dataDir = join(home, "data"), configPath = join(dataDir, "config.json");
   const config = JSON.parse(readFileSync(configPath, "utf8")), secrets = JSON.parse(readFileSync(join(dataDir, "environment.json"), "utf8"));
   const executor = executorSchema.parse({ id: "local", type: "codex", cwd: workspace, unattendedApproved: true });

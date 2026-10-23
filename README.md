@@ -8,8 +8,9 @@
 
 | 目的 | 入口 |
 | --- | --- |
-| 安装、认证、后台运行、卸载 | [部署说明](docs/deployment.md) |
+| 安装、配置、运行 | [部署说明](docs/deployment.md) |
 | 本机控制台、配置保存与 Web/CLI 重启 | [控制台说明](docs/web-console.md) |
+| 命令行配置、凭据和任务管理 | [CLI 说明](docs/cli.md) |
 | 理解产品目标和架构选择 | [总体方案](docs/design-proposal.md) |
 | 查找实现与对应测试 | [代码导航](docs/technical-design.md) |
 | 查询测试命令、真实验收及缺口 | [验证说明](docs/validation.md) |
@@ -32,7 +33,7 @@ agent-task status
 agent-task restart
 ```
 
-npm 包名为 `@realqiyan/agent-task`，安装后的命令仍为 `agent-task`。setup 提供交互配置；启动后可使用本机 Web 控制台。先停止前台实例，再用 `agent-task service install` 安装并启动用户后台服务。安装器不会替用户登录或批准执行端；详细操作见[部署说明](docs/deployment.md)。
+npm 包名为 `@realqiyan/agent-task`，安装后的命令仍为 `agent-task`。setup 提供交互配置；启动后可使用本机 Web 控制台或 [CLI](docs/cli.md)，两端共用管理服务。安装器不会替用户登录或批准执行端；详细操作见[部署说明](docs/deployment.md)。
 
 MCP 客户端使用独立服务 token。源码开发辅助命令（凭据须安全注入环境，不写命令行）：
 

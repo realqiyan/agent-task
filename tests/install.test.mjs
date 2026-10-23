@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createFile, json, saveManifest, inventory, removeInventory, operationLock, run } from "../scripts/install-lib.mjs";
+import { createFile, json, saveManifest, inventory, operationLock, run } from "../scripts/install-lib.mjs";
 
 import { readEnvironment } from "../dist/environment.js";
 
-test("installer preserves credentials and uninventoried files, rejects escaping paths and serializes operations", t => {
+test("setup preserves credentials, records component inventory and serializes operations", t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-install-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const previous = process.env.AGENT_TASK_INSTALL_TEST_SECRET;
@@ -35,16 +35,8 @@ test("installer preserves credentials and uninventoried files, rejects escaping 
   const files = [...inventory(root, "components")];
   createFile(join(root, "components/user-work.txt"), "preserve");
   createFile(join(root, "data/history.txt"), "preserve");
-  removeInventory(root, files);
-  removeInventory(root, files);
-  assert.equal(existsSync(join(root, "components/bin/agent")), false);
-  assert.equal(readFileSync(join(root, "app/module.js"), "utf8"), "installed code");
+  assert(files.includes("components/bin/agent"));
+  assert(!files.includes("components/user-work.txt"));
   assert.equal(readFileSync(join(root, "components/user-work.txt"), "utf8"), "preserve");
   assert.equal(readFileSync(join(root, "data/history.txt"), "utf8"), "preserve");
-  assert.equal(json(join(root, "environment.json")).AGENT_TASK_TOKEN, "private-test-token");
-  assert.throws(() => removeInventory(root, ["components/../environment.json"]), /Invalid/);
-  mkdirSync(join(root, "outside")); writeFileSync(join(root, "outside/keep"), "preserve");
-  symlinkSync(join(root, "outside"), join(root, "components/link"));
-  assert.throws(() => removeInventory(root, ["components/link/keep"]), /parent path changed/);
-  assert.equal(readFileSync(join(root, "outside/keep"), "utf8"), "preserve");
 });

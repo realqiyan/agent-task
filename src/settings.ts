@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { ADMIN_TOKEN_ENV, configSchema, coordinatorCredentialEnv, validateConfig } from "./config.js";
 import type { Config } from "./config.js";
 import { parseEnvironment, validateServiceEnvironment } from "./environment.js";
 import { checkDataDirectory, FileCommitError, readPrivateText, replacePrivateText } from "./private-files.js";
-import { credentialUpdateSchema, settingsConfigSchema } from "./settings-contract.js";
+import { credentialUpdateSchema, settingsChangeSchema, settingsConfigSchema } from "./settings-contract.js";
 
 export class SettingsError extends Error {
   constructor(readonly code: "invalid" | "conflict" | "unavailable", message: string) { super(message); }
@@ -29,6 +30,15 @@ function referenced(config: Config): Set<string> {
 function editableKey(key: string, config: Config): boolean {
   return !protectedKeys.has(key) && key !== config.tokenEnv && !/^(NODE_|LD_|DYLD_)/.test(key) &&
     (/(?:_KEY|_TOKEN|_SECRET|_PASSWORD)$/.test(key) || referenced(config).has(key));
+}
+function sameExecutor(a: Config["executors"][number], b: Config["executors"][number]): boolean {
+  return a.id === b.id && a.type === b.type && a.cwd === b.cwd;
+}
+
+export function configChanges(before: Config, after: Config) {
+  return (Object.keys(after) as (keyof Config)[]).concat(Object.keys(before) as (keyof Config)[])
+    .filter((key, index, keys) => keys.indexOf(key) === index && !isDeepStrictEqual(before[key], after[key]))
+    .map(field => ({ field, before: before[field] ?? null, after: after[field] ?? null }));
 }
 
 /** Disk settings are next-start inputs only. This service never mutates live objects or process.env. */
@@ -97,6 +107,13 @@ export class Settings {
       if (error instanceof z.ZodError) throw new SettingsError("invalid", "Invalid configuration fields");
       throw new SettingsError("invalid", "Local validation failed: check data directory, workspaces and credential isolation");
     }
+    for (const executor of config.executors) {
+      const previous = snapshot.config.executors.find(item => item.id === executor.id);
+      if (executor.unattendedApproved && (!previous?.unattendedApproved || !sameExecutor(previous, executor)) &&
+        !input.approveExecutors.includes(executor.id)) {
+        throw new SettingsError("invalid", "Executor changes require explicit approval of the new configuration: " + executor.id);
+      }
+    }
     const previous = snapshot.config.coordinator, next = config.coordinator;
     const endpoint = (model: NonNullable<Config["coordinator"]>) => model.provider === "openai-compatible" ? model.baseUrl : model.provider;
     if (previous && next && endpoint(previous) !== endpoint(next) && coordinatorCredentialEnv(previous) === coordinatorCredentialEnv(next)) {
@@ -114,6 +131,38 @@ export class Settings {
     return config;
   }
   validate(value: unknown): Config { return this.candidate(value); }
+  preview(value: unknown) {
+    const config = this.candidate(value), input = parse(settingsConfigSchema, value);
+    return { config, changes: configChanges(this.editing(input.editToken).config, config) };
+  }
+  diff() {
+    const saved = this.snapshot().config;
+    return { changes: configChanges(this.running, saved), ...this.status() };
+  }
+  /** Convenience commands create a draft; all publication still uses saveConfig. */
+  prepareChange(value: unknown) {
+    const { editToken, change } = parse(settingsChangeSchema, value);
+    const config = structuredClone(this.editing(editToken).config), approveExecutors: string[] = [];
+    if (change.action === "executor-add") {
+      config.executors.push({ ...change.executor, unattendedApproved: false });
+    } else if (change.action === "coordinator-set") config.coordinator = change.coordinator;
+    else if (change.action === "coordinator-clear") delete config.coordinator;
+    else {
+      const executor = config.executors.find(item => item.id === change.id);
+      if (!executor) throw new SettingsError("invalid", "Executor not found");
+      if (change.action === "executor-remove") config.executors = config.executors.filter(item => item !== executor);
+      else if (change.action === "executor-update") {
+        const updated = { ...executor, ...change.patch };
+        if (!sameExecutor(executor, updated)) updated.unattendedApproved = false;
+        config.executors[config.executors.indexOf(executor)] = updated;
+      } else {
+        executor.unattendedApproved = change.action === "executor-approve";
+        if (executor.unattendedApproved) approveExecutors.push(executor.id);
+      }
+    }
+    const input = { editToken, config, approveExecutors };
+    return { ...input, config: this.candidate(input) };
+  }
   saveConfig(value: unknown) {
     const config = this.candidate(value);
     const snapshot = this.editing(parse(settingsConfigSchema, value).editToken);

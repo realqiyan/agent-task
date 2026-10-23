@@ -21,11 +21,9 @@
     "scripts/setup-wizard.mjs",
     "scripts/install-lib.mjs",
     "scripts/service-runner.mjs",
-    "scripts/uninstall.mjs",
     "scripts/probe-agent.mjs",
     "scripts/mcp-call.mjs",
     "docs/*.md",
-    "deploy/*.example",
     "config.example.json",
     "LICENSE"
   ],
@@ -34,7 +32,10 @@
     "registry": "https://registry.npmjs.org/",
     "tag": "latest"
   },
-  "os": ["linux", "darwin"],
+  "os": [
+    "linux",
+    "darwin"
+  ],
   "type": "module",
   "description": "Durable intelligent task coordination over MCP with ACP executors",
   "engines": {
@@ -50,8 +51,7 @@
     "setup": "node bin/agent-task.mjs setup",
     "prepack": "npm run build",
     "pack:release": "node scripts/pack-release.mjs",
-    "test:install": "node scripts/verify-install.mjs",
-    "uninstall:service": "node scripts/uninstall.mjs"
+    "test:install": "node scripts/verify-install.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.0",

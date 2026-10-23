@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, existsSync, realpathSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, realpathSync, writeFileSync, readFileSync, statSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, execFileSync, spawnSync } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../dist/config.js";
@@ -36,7 +36,7 @@ async function start(t, home) {
   }
   throw new Error("Service startup timed out");
 }
-test("console enforces its HTTP boundary, restricts task writes and applies private settings only after restart", { timeout: 60000 }, async t => {
+test("Web and CLI share task/configuration rules, preserve HTTP boundaries and apply settings only after restart", { timeout: 60000 }, async t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-web-"));
   const dataDir = join(root, "data"); mkdirSync(dataDir, { mode: 0o700 });
   writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }), { mode: 0o600 });
@@ -79,6 +79,17 @@ test("console enforces its HTTP boundary, restricts task writes and applies priv
     assert.equal(response.status, 200, JSON.stringify(result));
     return result.data;
   };
+  const invoke = (args, input) => {
+    const result = spawnSync(process.execPath, [resolve("bin/agent-task.mjs"), ...args, "--home", root, "--json"],
+      { input, encoding: "utf8", timeout: 15000 });
+    for (const secret of secrets) assert(!(result.stdout + result.stderr).includes(secret), "CLI must not print credentials");
+    return result;
+  };
+  const cliCall = (...args) => {
+    const result = invoke(args);
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
   const shell = await fetch(child.origin + "/admin/");
   assert.equal(shell.status, 200);
   assert.match(shell.headers.get("content-security-policy"), /frame-ancestors 'none'/);
@@ -112,8 +123,15 @@ test("console enforces its HTTP boundary, restricts task writes and applies priv
   assert.equal((await fetch(child.origin + "/mcp", { method: "POST", headers: { Authorization: "Bearer " + adminToken } })).status, 401);
   assert.equal((await call("/tasks")).items[0].name, name);
   const currentRun = await call("/runs/" + run.id);
+  assert.deepEqual(cliCall("task", "show", task.id), await call("/tasks/" + task.id));
+  assert.deepEqual(cliCall("run", "show", run.id), currentRun);
+  assert.deepEqual(cliCall("task", "list", "--after", "0", "--limit", "1"), await call("/tasks?after=0&limit=1"));
+  assert.deepEqual(cliCall("run", "list", "--task", task.id), await call("/runs?taskId=" + task.id));
+  assert.notEqual(invoke(["task", "pause", task.id]).status, 0, "noninteractive changes require explicit confirmation");
   for (const [action, status] of [["pause", "paused"], ["resume", "active"], ["cancel", "cancelled"]]) {
-    assert.equal((await call("/task-update", { id: task.id, action })).status, status);
+    const updated = action === "pause" ? await call("/task-update", { id: task.id, action }) : cliCall("task", action, task.id, "--yes");
+    assert.equal(updated.status, status);
+    assert.equal((await call("/tasks/" + task.id)).status, status);
     assert.deepEqual(await call("/runs/" + run.id), currentRun);
   }
   for (const path of ["/api/tasks", "/api/task-create", "/api/task-run-reply", "/api/runs/" + run.id + "/cancel"]) {
@@ -129,6 +147,51 @@ test("console enforces its HTTP boundary, restricts task writes and applies priv
   settings = await call("/settings/credential", { editToken: settings.editToken, key: "OPENAI_API_KEY", action: "replace", value: newKey });
   for (const secret of secrets) assert(!JSON.stringify(settings).includes(secret));
   assert.equal(settings.credentials.find(item => item.key === "OPENAI_API_KEY").pendingRestart, true);
+  assert.deepEqual(cliCall("config", "show", "--running"), settings.running);
+  assert.deepEqual(cliCall("credential", "list"), settings.credentials);
+  const draftPath = join(root, "draft.json");
+  cliCall("config", "export", "--output", draftPath);
+  assert.equal(statSync(draftPath).mode & 0o777, 0o600);
+  assert.notEqual(invoke(["config", "export", "--output", draftPath]).status, 0, "export never overwrites user files");
+  const draft = JSON.parse(readFileSync(draftPath, "utf8"));
+  draft.config.executors[0].note = "CLI reviewed note";
+  writeFileSync(draftPath, JSON.stringify(draft));
+  const preview = cliCall("config", "validate", "--file", draftPath);
+  assert.deepEqual(preview, await call("/settings/validate", draft));
+  assert.equal(preview.changes[0].field, "executors");
+  assert.equal(cliCall("config", "apply", "--file", draftPath, "--yes").pendingRestart, true);
+  assert.deepEqual(cliCall("config", "show"), (await call("/settings")).saved);
+  assert.notEqual(invoke(["config", "apply", "--file", draftPath, "--yes"]).status, 0, "stale drafts cannot overwrite changes");
+  const extraWorkspace = join(root, "extra-workspace");
+  mkdirSync(extraWorkspace);
+  cliCall("executor", "add", "--id", "extra", "--type", "pi", "--cwd", extraWorkspace, "--yes");
+  assert.equal(cliCall("executor", "show", "extra").unattendedApproved, false);
+  cliCall("executor", "approve", "extra", "--yes");
+  assert.equal((await call("/settings")).saved.executors[1].unattendedApproved, true);
+  rmSync(extraWorkspace, { recursive: true });
+  assert.equal(cliCall("status").event, "healthy", "invalid next-start workspace must not block running health");
+  assert.equal(cliCall("config", "show").executors[1].cwd, extraWorkspace);
+  cliCall("executor", "update", "extra", "--type", "claude", "--cwd", root, "--yes");
+  assert.equal((await call("/settings")).saved.executors[1].unattendedApproved, false);
+  cliCall("executor", "approve", "extra", "--yes");
+  cliCall("executor", "revoke", "extra", "--yes");
+  assert.equal(cliCall("executor", "list")[1].unattendedApproved, false);
+  cliCall("executor", "remove", "extra", "--yes");
+  const savedCredential = invoke(["credential", "set", "EXTRA_API_KEY", "--stdin", "--yes"], newKey + "\n");
+  assert.equal(savedCredential.status, 0, savedCredential.stderr);
+  const rejectedCredential = invoke(["credential", "set", "AGENT_TASK_ADMIN_TOKEN", "--stdin", "--yes"], newKey);
+  assert.notEqual(rejectedCredential.status, 0);
+  cliCall("coordinator", "set", "--provider", "openai-compatible", "--model", "example", "--base-url", "https://untrusted.invalid/v1",
+    "--api-key-env", "EXTRA_API_KEY", "--context-window", "4096", "--max-tokens", "1024", "--reasoning", "false", "--yes");
+  assert.deepEqual(cliCall("coordinator", "show"), (await call("/settings")).saved.coordinator);
+  assert.notEqual(invoke(["credential", "delete", "EXTRA_API_KEY", "--yes"]).status, 0, "referenced credentials cannot be deleted");
+  cliCall("coordinator", "clear", "--yes");
+  assert.equal(cliCall("coordinator", "show"), null);
+  cliCall("credential", "delete", "EXTRA_API_KEY", "--yes");
+  cliCall("coordinator", "set", "--provider", "openai", "--model", "not-a-real-model", "--yes");
+  assert.equal(cliCall("status").settings.pendingRestart, true);
+  assert(cliCall("config", "diff").changes.some(change => change.field === "executors"));
+  settings = await call("/settings");
   const changed = structuredClone(settings.saved);
   changed.executors[0].unattendedApproved = false;
   changed.executors[0].note = "native configuration reviewed separately";
@@ -163,6 +226,9 @@ test("console enforces its HTTP boundary, restricts task writes and applies priv
   assert(existsSync(join(dataDir, "tasks.sqlite")), "old history must remain");
   assert.equal(JSON.parse(readFileSync(join(next, "environment.json"), "utf8")).RENAMED_SERVICE_TOKEN, mcpToken);
   await child.stop();
+  const stoppedConfig = readFileSync(join(next, "config.json"), "utf8");
+  assert.notEqual(invoke(["executor", "remove", "local", "--yes"]).status, 0);
+  assert.equal(readFileSync(join(next, "config.json"), "utf8"), stoppedConfig, "offline fallback must not write configuration");
   // Return the locator offline only for the admin-disabled boundary check.
   writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }));
   writeFileSync(configPath, JSON.stringify({ ...changed, dataDir }));

@@ -1,9 +1,22 @@
 import { z } from "zod";
 import { configSchema } from "./config.js";
+import { executorSchema, identifier } from "./model.js";
 
 export const settingsConfigSchema = z.object({
   editToken: z.string().uuid(),
   config: configSchema,
+  approveExecutors: z.array(identifier).max(100).default([]),
+}).strict();
+export const settingsChangeSchema = z.object({
+  editToken: z.string().uuid(),
+  change: z.discriminatedUnion("action", [
+    z.object({ action: z.literal("executor-add"), executor: executorSchema.omit({ unattendedApproved: true }) }).strict(),
+    z.object({ action: z.literal("executor-update"), id: identifier,
+      patch: executorSchema.omit({ unattendedApproved: true }).extend({ note: executorSchema.shape.note.removeDefault() }).partial() }).strict(),
+    z.object({ action: z.enum(["executor-remove", "executor-approve", "executor-revoke"]), id: identifier }).strict(),
+    z.object({ action: z.literal("coordinator-set"), coordinator: configSchema.shape.coordinator.unwrap() }).strict(),
+    z.object({ action: z.literal("coordinator-clear") }).strict(),
+  ]),
 }).strict();
 const credential = {
   editToken: z.string().uuid(),

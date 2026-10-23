@@ -14,15 +14,15 @@ git diff --check
 
 ## 控制台验证
 
-[HTTP 用例](../tests/web.test.mjs)使用真实本机服务进程验证独立管理员认证、Host/Origin/请求类型边界、有限任务写入、密钥不回显或进入日志，以及 Web/CLI 重启后的配置差异和目录切换不复制历史。[重启用例](../tests/restart.test.mjs)验证前台 CLI、固定端口进程更换、绑定失败不能报成功，以及持久化的不确定派发在重复重启后仍被阻断。实际任务记录来自业务服务，不使用假模型输出。
+[Web/CLI 用例](../tests/web.test.mjs)使用真实本机服务进程验证两端查询与保存的互通、旧草稿拒绝、执行端授权清除、凭据引用保护、离线失败不写文件，以及独立管理员认证、Host/Origin/请求类型边界、有限任务写入、密钥不回显或进入日志。也验证重启后的配置差异和目录切换不复制历史。[重启用例](../tests/restart.test.mjs)验证前台 CLI、固定端口进程更换、绑定失败不能报成功，以及持久化的不确定派发在重复重启后仍被阻断。实际任务记录来自业务服务，不使用假模型输出。
 
 [配置用例](../tests/settings.test.mjs)验证私有文件边界、旧编辑拒绝、显式凭据环境、端点与密钥引用分离、服务令牌别名不能作为模型凭据、失败时保留文件，以及关闭后拒绝操作。这些用例不构成断电、磁盘满或目录同步失败窗口的完整证据。
 
-尚未完成真实浏览器交互、CSP 执行和跨浏览器缓存/自动填充验收。需在浏览器核对：不可信任务文本不执行脚本或加载外链；离开、刷新和退出后无令牌残留；配置草稿不被轮询覆盖；密钥保存与配置保存的提示明确。HTTP 头检查不能替代这些验证，也不证明模型认证或 ACP 执行成功。
+尚未完成真实浏览器交互、CSP 执行和跨浏览器缓存/自动填充验收；CLI 的编辑器交互和隐藏终端凭据输入也未做终端验收，凭据测试使用 stdin。需在浏览器核对：不可信任务文本不执行脚本或加载外链；离开、刷新和退出后无令牌残留；配置草稿不被轮询覆盖；密钥保存与配置保存的提示明确。HTTP 头检查不能替代这些验证，也不证明模型认证或 ACP 执行成功。
 
 ### 启动与注册调整
 
-新启动器的 Linux/systemd、macOS/launchd 和 Web/CLI 重启证据见下文 [rc.2 发布验收](#001-rc2当前-latest)。四类执行端的固定命令映射和凭据过滤有本地契约测试；Claude ACP 新增注册目标没有真实握手、认证或任务证据。其他执行端的历史结果也不能代替新原生环境和审批策略下的真实复验。
+Web/CLI 重启证据见下文 [rc.2 发布验收](#001-rc2当前-latest)。四类执行端的固定命令映射和凭据过滤有本地契约测试；Claude ACP 新增注册目标没有真实握手、认证或任务证据。其他执行端的历史结果也不能代替新原生环境和审批策略下的真实复验。
 
 ## 真实模型验收入口
 
@@ -64,14 +64,12 @@ git diff --check
 
 Linux x64、Node 24.15.0 的本机记录：
 
-- 专属目录安装、重复安装、真实 systemd 用户服务及带 token 的 MCP 健康检查通过。
+- 专属目录安装、重复安装及带 token 的 MCP 健康检查通过。
 - Pi 1.3.0 + pi-acp 0.0.34、codex-acp 2.2.2、OpenCode 1.19.3 在独立无认证 HOME 下均通过 initialize；没有发送 session/new 或模型任务，也未自动批准执行端。
-- 经 MCP 保存并暂停未来任务，两次卸载后保留任务记录、配置、环境、工作空间和未入清单文件；服务已移除。
 - 首次安装实验遭遇磁盘满并损坏实验清单；未删除任务数据修复。修正后在新的专属目录完成上述部署复验，不构成业务运行时磁盘满恢复的证据。
 
 证据目录：`/tmp/agent-task-deploy-verified`、`/tmp/agent-task-deploy-final`；工作空间：`/tmp/agent-task-deploy-workspace`；空认证 HOME：`/tmp/agent-task-deploy-native-home`。临时文件可能被系统清理，长期留存需管理员安全归档。
 
-macOS 的 npm 安装、LaunchAgent 启停及卸载保留数据已在 GitHub macOS ARM64 runner 验证，见下文。原生认证与权限、真实任务、终端关闭/用户注销后的存续，以及执行端取消和进程清理仍未验收；CI 服务启动不能替代这些证据。
 
 ## npm 发布候选验证
 
@@ -80,8 +78,8 @@ macOS 的 npm 安装、LaunchAgent 启停及卸载保留数据已在 GitHub macO
 2026-10-22，`realqiyan` 已将 **[@realqiyan/agent-task@0.0.1-rc.2](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.0.1-rc.2)** 发布到 npmjs。匿名 registry 查询确认版本、发布账号、MIT 许可证及 `latest=0.0.1-rc.2`。本机直接发布了下述 CI 已验收的同一 tarball，没有重新构建，也没有 GitHub provenance。
 
 - [Validate 运行 39829900075](https://github.com/realqiyan/agent-task/actions/runs/39829900075)在提交 `48549ea` 上全部通过：Node 22.19.0/24.x 类型检查、35 项基础测试、构建和包清单门禁。
-- Ubuntu x64 与 macOS ARM64 的 Node 22.19.0 安装任务不 checkout 源码，使用同一 CI tarball 验证前台、真实 systemd/LaunchAgent、Web/CLI 重启、启动目录/端口/token 变量名切换、认证健康检查及卸载保留数据。macOS 证据来自 hosted runner，不包括 Intel Mac、浏览器、休眠或用户注销场景。
-- 发布后在 Linux x64、Node 24.15.0 以独立空 npm 配置匿名执行默认 `npm install -g @realqiyan/agent-task`，未指定版本或使用本地 tarball；固定使用 npmjs。前台、Web HTTP 配置、真实 systemd 用户服务、重启、健康检查和重复卸载均通过。
+- Ubuntu x64 与 macOS ARM64 的 Node 22.19.0 安装任务不 checkout 源码，使用同一 CI tarball 验证前台、Web/CLI 重启、启动目录/端口/token 变量名切换、认证健康检查。macOS 证据来自 hosted runner，不包括 Intel Mac、浏览器、休眠或用户注销场景。
+- 发布后在 Linux x64、Node 24.15.0 以独立空 npm 配置匿名执行默认 `npm install -g @realqiyan/agent-task`，未指定版本或使用本地 tarball；固定使用 npmjs。前台、Web HTTP 配置、重启、健康检查均通过。
 
 发布后安装报告：`/tmp/agent-task-npm-vseswA/report.json`。捕获输出未发现验证凭据，测试服务已移除。没有模型调用或 ACP 任务，不替代原生认证、权限或真实模型复验。临时目录可能被系统清理；包内文档是打包时快照，后续证据以本仓库为准。
 
@@ -95,13 +93,12 @@ npm 因包名保护拒绝了未加 scope 的 `agent-task`：名称被判定与 `
 
 - Node 22.19.0 和 24.15.0 的 TypeScript 检查、33 项基础测试及构建均通过；真实 PTY 用例验证 setup 的确认/取消、生成独立 token 和不输出凭据。
 - [包清单门禁](../scripts/pack-release.mjs)通过：仅包含预编译 JS、Web 资源、明确列出的操作脚本、示例及公开文档；不包含源码、开发工具、凭据文件、运行数据库或本地记录。
-- Node 22.19.0 先验收 scoped tarball，再从 npmjs 按 `npm install -g @realqiyan/agent-task` 的默认版本选择全局安装到独立临时 prefix；没有指定版本或使用本地 tarball 替代 registry 安装。禁用 lifecycle scripts，不使用项目源码或 TypeScript。前台启动、Web HTTP 配置保存/重启、真实 systemd 用户服务及带认证的健康检查均通过。
-- 重复 setup 保留 token；重复卸载保留配置、凭据、任务库和工作空间。显式注册的执行端仍未授权，没有 ACP 工作或模型调用。捕获的命令、前台输出及用户服务日志未出现验证用凭据，测试服务已移除。
+- Node 22.19.0 先验收 scoped tarball，再从 npmjs 按 `npm install -g @realqiyan/agent-task` 的默认版本选择全局安装到独立临时 prefix；没有指定版本或使用本地 tarball 替代 registry 安装。禁用 lifecycle scripts，不使用项目源码或 TypeScript。前台启动、Web HTTP 配置保存/重启及带认证的健康检查均通过。
 - tarball 预验收使用 npm 镜像依赖；发布后验收固定使用 `https://registry.npmjs.org/`，通过独立空 npm 配置文件进行匿名安装。复用 npm 下载缓存，没有复制项目 node_modules；不构成空缓存下载时延的保证。
 
 Linux 22.19.0 的发布后 registry 安装报告：`/tmp/agent-task-npm-uM8FT5/report.json`；scoped tarball 预验收报告：`/tmp/agent-task-npm-Zgkggc/report.json`。临时目录包含验证专用随机凭据和空业务库，不上传或打包；报告仅含结果。Node 22.19.0 会输出内置 SQLite 的 experimental warning，这不是认证错误。
 
-同日，[GitHub Validate 运行 39813423968](https://github.com/realqiyan/agent-task/actions/runs/39813423968)在提交 `461a1b0` 上全部通过：Node 22.19.0/24.x 检查、基础测试、构建及包清单门禁；Ubuntu x64 与 macOS ARM64 的 Node 22.19.0 安装任务均不 checkout 源码，使用 CI tarball 完成前台、Web HTTP 配置、真实 systemd/LaunchAgent、认证健康检查和卸载保留数据验收。报告确认输出无验证凭据，没有模型或 ACP 工作。macOS 的证据来自 hosted runner，不包括 Intel Mac、交互式终端/浏览器、休眠或用户注销场景。
+同日，[GitHub Validate 运行 39813423968](https://github.com/realqiyan/agent-task/actions/runs/39813423968)在提交 `461a1b0` 上全部通过：Node 22.19.0/24.x 检查、基础测试、构建及包清单门禁；Ubuntu x64 与 macOS ARM64 的 Node 22.19.0 安装任务均不 checkout 源码，使用 CI tarball 完成前台、Web HTTP 配置、认证健康检查验收。报告确认输出无验证凭据，没有模型或 ACP 工作。macOS 的证据来自 hosted runner，不包括 Intel Mac、交互式终端/浏览器、休眠或用户注销场景。
 
 [受控发布工作流](../.github/workflows/publish.yml)已推送，但发布 Environment 审核和 npm 发布 secret 尚未配置，发布作业没有实际执行；本机首发和 Validate 通过不等于 Actions 发布已经验收。
 
@@ -112,7 +109,7 @@ Linux 22.19.0 的发布后 registry 安装报告：`/tmp/agent-task-npm-uM8FT5/r
 - 独立单节点用例在当前接口上的真实模型复验、复杂任务的语义验收、并行分支与汇合、不同执行端之间的交付。
 - 各执行端原生权限、认证续期、沙箱、技能/MCP 发现及文件访问；其他模型和 OpenAI 兼容端点的协议差异。
 - 真实模型崩溃窗口、重复收费和预算行为；人工等待期间保留真实 ACP 会话的续答、并发回复、长时间等待及重启。
-- 系统级强杀、断电、业务库磁盘满、Linux 注销/重启与 cgroup 清理，以及 macOS 真实任务的长期监督和原生权限。
+- 系统级强杀、断电、业务库磁盘满、真实任务的长期监督和原生权限。
 - SDK 升级、历史数据转换，以及执行中修改计划等当前未开放能力。
 
 实现和操作入口见[代码导航](technical-design.md)、[部署说明](deployment.md)。

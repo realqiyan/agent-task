@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "./sqlite.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Task, TaskRun } from "./task-model.js";

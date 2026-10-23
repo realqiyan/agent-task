@@ -13,8 +13,8 @@ for (const hook of ["preinstall", "install", "postinstall", "prepare"]) assert(!
 const packed = spawnSync("npm", ["pack", "--json"], { cwd: new URL("..", import.meta.url), encoding: "utf8", timeout: 120000 });
 assert.equal(packed.status, 0, "npm pack failed; run npm run build separately for diagnostics");
 const [artifact] = JSON.parse(packed.stdout);
-const allowedScripts = new Set(["setup", "setup-wizard", "install-lib", "service-runner", "uninstall", "probe-agent", "mcp-call"].map(name => "scripts/" + name + ".mjs"));
-const allowedFiles = new Set(["package.json", "README.md", "LICENSE", "config.example.json", "bin/agent-task.mjs", "deploy/agent-task.service.example"]);
+const allowedScripts = new Set(["setup", "setup-wizard", "install-lib", "service-runner", "probe-agent", "mcp-call"].map(name => "scripts/" + name + ".mjs"));
+const allowedFiles = new Set(["package.json", "README.md", "LICENSE", "config.example.json", "bin/agent-task.mjs"]);
 for (const { path } of artifact.files) {
   assert(allowedFiles.has(path) || allowedScripts.has(path) ||
     /^dist\/[a-z0-9-]+\.js$/.test(path) || /^dist\/web\/[a-z0-9-]+\.(js|css|html)$/.test(path) ||

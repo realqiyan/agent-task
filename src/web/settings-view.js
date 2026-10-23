@@ -14,14 +14,18 @@ function executorEditor(host, executor) {
     const item = field(label, value, kind); fields[key] = item.input; card.append(item.row);
   }
   const approved = field("已由管理员审核原生授权，允许无人值守执行", executor.unattendedApproved, "checkbox");
-  for (const [key, input] of Object.entries(fields)) if (key !== "note") input.addEventListener("input", () => { approved.input.checked = false; });
+  let explicitlyApproved = false;
+  approved.input.addEventListener("change", () => { explicitlyApproved = approved.input.checked; });
+  for (const [key, input] of Object.entries(fields)) if (key !== "note") input.addEventListener("input", () => {
+    approved.input.checked = false; explicitlyApproved = false;
+  });
   card.append(approved.row, element("p", "按类型从用户原生 PATH 查找 ACP 适配器。继承用户原生环境，但过滤服务私密变量；额外 ACP 审批一律拒绝。结果固定保存在 dataDir/results，只向节点提供指定上游文件，不提供整个数据目录读取。"),
     button("从待保存配置中移除", () => { card.remove(); host.dispatchEvent(new Event("input", { bubbles: true })); }));
   host.append(card);
-  return () => card.parentNode === host ? [{
+  return () => card.parentNode === host ? [{ explicitlyApproved, executor: {
     id: fields.id.value, type: fields.type.value, note: fields.note.value,
     cwd: fields.cwd.value, unattendedApproved: approved.input.checked,
-  }] : [];
+  } }] : [];
 }
 function coordinatorEditor(host, config) {
   const provider = select("协调模型提供方", [["", "未配置"], ["openai", "OpenAI"], ["anthropic", "Anthropic"],
@@ -73,10 +77,13 @@ export async function renderSettings(root, navigate) {
   }, state.writeBlocked));
   const preview = element("div");
   const save = submit(form, "校验并预览配置变更", async () => {
-    const input = { editToken: state.editToken, config: { dataDir: startup.dataDir.input.value, port: startup.port.input.valueAsNumber, tokenEnv: startup.tokenEnv.input.value,
-      coordinator: readModel(), executors: readers.flatMap(read => read()) } };
+    const entries = readers.flatMap(read => read());
+    const input = { editToken: state.editToken, approveExecutors: entries.filter(item => item.explicitlyApproved).map(item => item.executor.id),
+      config: { dataDir: startup.dataDir.input.value, port: startup.port.input.valueAsNumber, tokenEnv: startup.tokenEnv.input.value,
+      coordinator: readModel(), executors: entries.map(item => item.executor) } };
     const checked = await request("/settings/validate", input);
     preview.replaceChildren(block("校验后的待保存配置", checked.config),
+      block("配置变更", checked.changes),
       block("重启后受执行端变更影响的任务", checked.affectedTasks));
     const affected = checked.affectedTasks.map(task => task.name + " (" + task.id + ")").join("\n") || "无";
     if (!confirm("本地校验通过，不代表模型认证或 ACP 执行已验证。\n受影响任务：\n" + affected +
@@ -121,6 +128,6 @@ export async function renderSettings(root, navigate) {
       const ready = await request("/restart", {});
       document.dispatchEvent(new CustomEvent("service-restarted", { detail: ready }));
     }, state.writeBlocked),
-    block("前台或 systemd / launchd 托管实例", "agent-task restart [--home /absolute/installation]"),
+    block("重启命令", "agent-task restart [--home /absolute/installation]"),
     element("p", "只有新实例通过认证健康检查才显示成功。若请求结果不确定，请先运行 agent-task status；启动失败时检查当前 dataDir/service.log，不删除历史或重放任务来修复。"));
 }

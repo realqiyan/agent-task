@@ -66,11 +66,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.19.0"
-      - name: Start the Linux test user's manager (no lingering)
-        if: runner.os == 'Linux'
-        run: |
-          sudo systemctl start user@$(id -u).service
-          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
-          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
-      - name: Install, configure, start, authenticate, uninstall
-        run: node scripts/verify-install.mjs realqiyan-agent-task-*.tgz --service
+      - name: Install, configure, start, authenticate
+        run: node scripts/verify-install.mjs realqiyan-agent-task-*.tgz

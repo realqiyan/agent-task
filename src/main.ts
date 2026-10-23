@@ -56,11 +56,12 @@ function shutdown(code: number, drain = false): Promise<void> {
 const fatal = (error: unknown) => { console.error(errorText(error)); void shutdown(1).finally(() => { if (process.connected) process.disconnect(); }); };
 let restartPending = false;
 const restart = async () => {
-  if (!process.connected || restartPending || shutting || settings?.status().writeBlocked) throw new Error("Restart unavailable");
+  if (!process.connected || restartPending || shutting) throw new Error("Restart unavailable");
   restartPending = true;
   return new Promise<unknown>((resolve, reject) => {
     process.once("message", function receive(value: { type?: string; ready?: unknown; error?: string }) {
       if (value.type !== "restarted") { process.once("message", receive); return; }
+      if (value.error && !shutting) { restartPending = false; reject(new Error(value.error)); return; }
       // The HTTP adapter finishes the authenticated response before this child exits.
       setTimeout(() => { if (process.connected) process.disconnect(); http?.closeAllConnections(); }, 200);
       if (value.error) reject(new Error(value.error)); else resolve(value.ready);
@@ -69,7 +70,15 @@ const restart = async () => {
   });
 };
 process.on("message", (value: { type?: string }) => {
-  if (value.type === "drain") void shutdown(0, true).then(() => {
+  if (value.type !== "drain") return;
+  // Both Web and CLI restarts pass this boundary before changing runtime ownership.
+  try {
+    if (settings?.status().writeBlocked) throw new Error("Configuration publication is uncertain");
+  } catch {
+    process.send?.({ type: "drained", error: "Restart blocked; stop and inspect private configuration files" });
+    return;
+  }
+  void shutdown(0, true).then(() => {
     if (process.exitCode) { if (process.connected) process.disconnect(); }
     else process.send?.({ type: "drained" });
   });

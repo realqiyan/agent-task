@@ -1,8 +1,8 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "./sqlite.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-/** The stable installation lock prevents two launchers or uninstall during a directory switch. */
+/** The stable installation lock prevents two launchers during a directory switch. */
 export function acquireLauncherLock(home: string): () => void {
   const db = new DatabaseSync(join(home, "launcher-lock.sqlite"));
   try { db.exec("PRAGMA busy_timeout=0; BEGIN EXCLUSIVE"); }

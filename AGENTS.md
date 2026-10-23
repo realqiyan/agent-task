@@ -22,7 +22,7 @@ Use plain data and narrow capabilities. Services must not depend on MCP/ACP SDK 
 
 The current MVP uses flat source files and has documented boundary gaps. Do not present it as already conforming to the target layers. When extending an affected responsibility, move that responsibility to its owner with behavior-preserving tests. Do not add empty directories, unused interfaces, forwarding layers or a dynamic plugin platform.
 
-`src/` contains TypeScript source and `src/web/` contains browser assets; `tests/` contains Node tests; `scripts/` contains operator/development helpers and future explicit upgrades; `deploy/` contains deployment templates. `dist/` is generated and must not be edited. Group files and tests by domain as the relevant layers grow.
+`src/` contains TypeScript source and `src/web/` contains browser assets; `tests/` contains Node tests; `scripts/` contains operator/development helpers and future explicit upgrades. `dist/` is generated and must not be edited. Group files and tests by domain as the relevant layers grow.
 
 ## Runtime and safety
 
@@ -50,7 +50,7 @@ Initialize new storage separately from upgrading existing data. Normal startup m
 
 Use TypeScript ESM, strict compiler checks, two-space indentation, double quotes, semicolons, .js relative import suffixes and import type for type-only imports. Use camelCase, PascalCase and kebab-case filenames.
 
-Use macOS or Linux and Node.js 22.19+. Local SQLite locking replaces external flock. Background services use launchd on macOS and systemd on Linux; see docs/deployment.md for validation limits.
+Use macOS or Linux and Node.js 22.19+. Local SQLite locking replaces external flock.
 
 - `npm ci --ignore-scripts`: install locked dependencies.
 - `npm run check`: TypeScript check; currently no dependency-boundary checker.

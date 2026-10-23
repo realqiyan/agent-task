@@ -21,10 +21,9 @@ test("real terminal setup requires confirmation, creates private tokens and leav
       : ["-q", "/dev/null", ...command];
     const child = spawn("script", args, { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
     let output = "", pending = "";
-    const answers = ["none", root, "none", "8765", "no", confirm];
+    const answers = ["none", root, "none", "8765", confirm];
     child.stdout.on("data", data => {
       output += data; pending += data;
-      // Node 22 may append its asynchronous SQLite warning after the first prompt.
       if ((/: \x1b\[\d+G/.test(pending) || stripVTControlCharacters(pending).endsWith(": ")) && answers.length) {
         pending = ""; child.stdin.write(answers.shift() + "\n");
       }
@@ -41,10 +40,9 @@ test("real terminal setup requires confirmation, creates private tokens and leav
   assert(!existsSync(home), "Declining confirmation must not write configuration");
   const result = await wizard("yes");
   assert.equal(result.code, 0);
+  assert(!result.output.includes("SQLite is an experimental feature"));
   const config = JSON.parse(readFileSync(join(home, "data/config.json"), "utf8"));
   assert.deepEqual(config.executors, []);
-  const manifest = JSON.parse(readFileSync(join(home, "installation.json"), "utf8"));
-  assert.equal(manifest.serviceInstalled, false);
   const credentials = JSON.parse(readFileSync(join(home, "data/environment.json"), "utf8"));
   const values = Object.values(credentials);
   assert(values.length === 2 && values[0] !== values[1] && values.every(value => value.length >= 32));

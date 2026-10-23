@@ -7,8 +7,6 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { acquireLauncherLock } from "./lock.js";
 import { prepareStartup, startupPaths } from "./startup.js";
-import { readEnvironment } from "./environment.js";
-import { loadConfig } from "./config.js";
 
 type Ready = { instanceId: string; url: string; consoleUrl: string | null; pid: number };
 type Message = { type: string; ready?: Ready; error?: string };
@@ -57,7 +55,7 @@ export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv)
   startupPaths(home); // Also checks private ownership of the locator.
   const unlock = acquireLauncherLock(home);
   const socket = join(home, "control.sock"), children = new Set<ChildProcess>();
-  let current: ChildProcess | undefined, ready: Ready | undefined, restarting = true, closing = false;
+  let current: ChildProcess | undefined, ready: { info: Ready; token: string } | undefined, restarting = true, closing = false;
   let release!: () => void;
   const finished = new Promise<void>(resolve => { release = resolve; });
   const control = createServer(async (req, res) => {
@@ -103,25 +101,31 @@ export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv)
     try {
       const value = (await message(child, "ready")).ready!;
       await health(value, inputs.environment[inputs.config.tokenEnv]!);
-      current = child; ready = value;
+      current = child; ready = { info: value, token: inputs.environment[inputs.config.tokenEnv]! };
       return value;
     } catch (error) { await stop(child); throw error; }
   };
   const status = async (): Promise<Ready> => {
     if (!ready || restarting || closing) throw new Error("Service unavailable");
-    const paths = startupPaths(home), config = loadConfig(paths.configPath), env = readEnvironment(paths.environmentPath);
-    await health(ready, env[config.tokenEnv]!);
-    return ready;
+    // Saved inputs may need repair. Health belongs to the running instance,
+    // including the credential with which that instance actually started.
+    const running = ready;
+    await health(running.info, running.token);
+    return running.info;
   };
   const restart = async (requester?: ChildProcess): Promise<Ready> => {
     if (restarting || closing) throw new Error("Restart already in progress or closed");
     restarting = true;
-    const old = current; current = undefined; ready = undefined;
+    const old = current;
     try {
       if (old) {
         const drained = message(old, "drained");
         old.send({ type: "drain" });
-        try { await drained; } catch (error) { await stop(old); throw error; }
+        let result: Message;
+        try { result = await drained; }
+        catch (error) { current = undefined; ready = undefined; await stop(old); throw error; }
+        if (result.error) throw new Error(result.error);
+        current = undefined; ready = undefined;
         // Keep only the authenticated Web response alive until the new process is verified.
         if (old !== requester) await stop(old);
       }
@@ -129,7 +133,7 @@ export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv)
       return value;
     } finally {
       restarting = false;
-      if (requester) {
+      if (requester && requester !== current) {
         const timer = setTimeout(() => { void stop(requester); }, 5000);
         requester.once("close", () => clearTimeout(timer));
       }

@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { bearerVerifier } from "./http-auth.js";
 import { SettingsError } from "./settings.js";
 import type { Settings } from "./settings.js";
+import { previewSettings } from "./settings-management.js";
 import { StorageError } from "./task-storage.js";
 import type { Tasks } from "./tasks.js";
 import { taskIdSchema, taskListSchema, taskRunListSchema, taskUpdateSchema } from "./task-contract.js";
@@ -73,10 +74,9 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
   router.get("/api/runs/:id", respond(req => tasks.run(taskIdSchema.parse(req.params).id)));
   router.post("/api/task-update", respond(req => tasks.update(taskUpdateSchema.parse(req.body))));
   router.get("/api/settings", respond(() => settings.get()));
-  router.post("/api/settings/validate", respond(req => {
-    const config = settings.validate(req.body);
-    return { config, affectedTasks: tasks.executorImpact(config.executors) };
-  }));
+  router.get("/api/settings/diff", respond(() => settings.diff()));
+  router.post("/api/settings/prepare", respond(req => settings.prepareChange(req.body)));
+  router.post("/api/settings/validate", respond(req => previewSettings(settings, tasks, req.body)));
   router.post("/api/settings/config", respond(req => settings.saveConfig(req.body)));
   router.post("/api/settings/credential", respond(req => settings.saveCredential(req.body)));
   router.post("/api/restart", async (req, res) => {
