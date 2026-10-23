@@ -72,7 +72,7 @@ try {
   const installed = join(prefix, "lib/node_modules", packageName);
   const pkg = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
   assert.equal(pkg.name, packageName);
-  assert.equal(pkg.version, "0.0.0-rc.3");
+  assert.equal(pkg.version, "0.0.1-rc.3");
   assert.equal(pkg.license, "MIT");
   assert(!existsSync(join(installed, "src")) && !existsSync(join(installed, "node_modules/typescript")), "Source/compiler must not be required");
   assert.equal(invoke("--version").trim(), pkg.version);
