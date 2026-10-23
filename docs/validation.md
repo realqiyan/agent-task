@@ -98,6 +98,16 @@ Linux x64、Node 24.15.0 的本机记录：
 
 ## npm 发布候选验证
 
+### 0.0.1-rc.3（等待 npm 发布授权核对）
+
+2026-10-23，[GitHub 发布运行 39980466554](https://github.com/realqiyan/agent-task/actions/runs/39980466554)验证提交 `80b12de`：Node 22.19.0/24.x 类型与依赖检查、基础测试、包清单门禁，以及当前 Linux runner 的独立安装、启动、重启和认证检查均通过。当前发布门禁验证宿主环境；macOS 需在对应环境另行验收。安装报告明确标记其他平台未执行，PTY 用例在缺少终端能力时明确跳过。
+
+发布作业使用 Node 24.21.0、npm 11.19.0 和 GitHub OIDC。包版本检查及 provenance 签名成功，但上传包的 npm PUT 请求返回 E404；发布后的默认安装验证因此未执行。随后 registry 查询未发现 `0.0.1-rc.3`，不能把生成 provenance 当作包已发布。
+
+错误指向 npm 发布授权未生效，需核对该包的 Trusted Publisher 与仓库、工作流、Environment 和允许操作是否匹配。本机凭据读取 trust 设置返回 403，尚未确认具体缺失或不匹配项。GitHub 的 `npm` Environment 已限制为 master；工作流配置与 npm 端授权仍需分别核实，见[发布说明](release.md)。
+
+本机检查与 42 项基础测试通过；独立空工具 PATH 下的真实测试进程确认 PTY 用例明确跳过。发布诊断及已去除下载 URL 查询参数的日志保留于 `/tmp/agent-task-rc3-final-d4tqqpt9`，临时目录可能被系统清理。
+
 ### 0.0.1-rc.2（当前 latest）
 
 2026-10-22，`realqiyan` 已将 **[@realqiyan/agent-task@0.0.1-rc.2](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.0.1-rc.2)** 发布到 npmjs。匿名 registry 查询确认版本、发布账号、MIT 许可证及 `latest=0.0.1-rc.2`。本机直接发布了下述 CI 已验收的同一 tarball，没有重新构建，也没有 GitHub provenance。
