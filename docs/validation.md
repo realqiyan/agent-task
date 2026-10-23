@@ -132,6 +132,8 @@ Linux x64、Node 24.15.0 的本机记录：
 
 后续匿名 npmjs 核对确认 **[@realqiyan/agent-task@0.1.0-rc.1](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0-rc.1)** 存在、`latest=0.1.0-rc.1`，并包含 GitHub provenance。未指定版本的默认全局安装及前台、Web/CLI、stdio 后台验收通过，报告：`/tmp/agent-task-npm-lTc9FG/report.json`。捕获输出未发现验证凭据，无模型或 ACP 工作。发布后校验现已加入有限等待和 `verify_only` 入口，后续复核无需再次上传同一版本。
 
+[仅验证运行 40006683937](https://github.com/realqiyan/agent-task/actions/runs/40006683937)在提交 `3e8e7cd` 上全部通过：Node 22.19.0/24.x 检查和 49 项测试、打包、Linux 独立安装及 npmjs 默认安装复核。该运行跳过发布上传，未重复发布同一版本。
+
 ### 0.0.1-rc.3（历史证据）
 
 2026-10-23，[GitHub 发布运行 39980466554](https://github.com/realqiyan/agent-task/actions/runs/39980466554)验证提交 `80b12de`：Node 22.19.0/24.x 类型与依赖检查、基础测试、包清单门禁，以及当前 Linux runner 的独立安装、启动、重启和认证检查均通过。当前发布门禁验证宿主环境；macOS 需在对应环境另行验收。安装报告明确标记其他平台未执行，PTY 用例在缺少终端能力时明确跳过。
