@@ -2,12 +2,13 @@
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { loadConfig } from "../dist/config.js";
-import { executorCommand, executorEnvironment } from "../dist/executor-runtime.js";
-import { readEnvironment } from "../dist/environment.js";
+import { loadConfig } from "../dist/configuration/files.js";
+import { executorEnvironment } from "../dist/executors/environment.js";
+import { executorCommand } from "../dist/integrations/acp/runtime.js";
+import { readEnvironment } from "../dist/configuration/files.js";
 import { join } from "node:path";
-import { terminateGroup } from "../dist/acp.js";
-import { version } from "../dist/version.js";
+import { terminateGroup } from "../dist/integrations/acp/connection.js";
+import { version } from "../dist/infrastructure/version.js";
 const [file, id] = process.argv.slice(2);
 if (!file || !id) { console.error("Usage: node scripts/probe-agent.mjs <config.json> <executorId>"); process.exit(2); }
 const config = loadConfig(file);

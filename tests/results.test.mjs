@@ -4,8 +4,9 @@ import { realpathSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, statSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { Results, readInputFile } from "../dist/results.js";
-import { acquireLock } from "../dist/lock.js";
+import { Results } from "../dist/results/service.js";
+import { LocalResultFiles } from "../dist/results/files.js";
+import { acquireLock } from "../dist/infrastructure/lock.js";
 
 function directory(t) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-artifacts-"));
@@ -13,25 +14,25 @@ function directory(t) {
   return dir;
 }
 test("result reads require exact upstream files inside results, never other dataDir files", t => {
-  const dir = directory(t), results = new Results(dir);
+  const dir = directory(t), results = new Results(new LocalResultFiles(join(dir, "results"), true));
   const path = results.save("round", "node", "run", "first\nsecond\n");
   assert.equal(statSync(path).mode & 0o777, 0o600);
-  assert.equal(readInputFile(results.root, [path], path), "first\nsecond\n");
-  assert.equal(readInputFile(results.root, [path], path, 2, 1), "second");
-  assert.throws(() => readInputFile(results.root, [], path), /authorized/);
+  assert.equal(results.readInputFile( [path], path), "first\nsecond\n");
+  assert.equal(results.readInputFile( [path], path, 2, 1), "second");
+  assert.throws(() => results.readInputFile( [], path), /authorized/);
   const secret = join(dir, "environment.json"); writeFileSync(secret, "private");
-  assert.throws(() => readInputFile(results.root, [secret], secret), /scope/);
-  assert.throws(() => readInputFile(results.root, [path], path, 0), /range/);
+  assert.throws(() => results.readInputFile( [secret], secret), /scope/);
+  assert.throws(() => results.readInputFile( [path], path, 0), /range/);
   const link = join(dir, "link");
   symlinkSync(path, link);
-  assert.throws(() => readInputFile(results.root, [link], link), /authorized/);
+  assert.throws(() => results.readInputFile( [link], link), /authorized/);
   assert.throws(() => results.save("round", "node", "run", "overwrite"));
   assert.throws(() => results.save("../escape", "node", "run", ""));
 });
 test("OS-owned directory lock excludes another process and releases on SIGKILL", { timeout: 10000 }, async t => {
   const dir = directory(t);
   const child = spawn(process.execPath, ["--input-type=module", "-e",
-    'import {acquireLock} from "./dist/lock.js"; await acquireLock(process.argv[1]); console.log("ready"); setInterval(()=>{},1000);', dir],
+    'import {acquireLock} from "./dist/infrastructure/lock.js"; await acquireLock(process.argv[1]); console.log("ready"); setInterval(()=>{},1000);', dir],
     { stdio: ["ignore", "pipe", "pipe"] });
   const closed = new Promise(resolve => child.once("close", resolve));
   t.after(async () => { child.kill("SIGKILL"); await closed; });

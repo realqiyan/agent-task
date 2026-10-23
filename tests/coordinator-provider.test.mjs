@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { realpathSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configSchema, loadConfig } from "../dist/config.js";
-import { executorEnvironment } from "../dist/executor-runtime.js";
-import { validateServiceEnvironment } from "../dist/environment.js";
-import { createCoordinatorProvider } from "../dist/coordinator-provider.js";
+import { configSchema } from "../dist/configuration/contract.js";
+import { loadConfig } from "../dist/configuration/files.js";
+import { executorEnvironment } from "../dist/executors/environment.js";
+import { validateServiceEnvironment } from "../dist/configuration/environment.js";
+import { createCoordinatorProvider } from "../dist/integrations/coordinator/provider.js";
 import { createModels } from "@earendil-works/pi-ai/models";
 
 const compatible = { provider: "openai-compatible", model: "administrator-model",

@@ -8,14 +8,13 @@ import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { TaskStore } from "../dist/task-storage.js";
-import { Tasks } from "../dist/tasks.js";
-import { Results } from "../dist/results.js";
-import { executorSchema } from "../dist/model.js";
-import { taskSchema } from "../dist/task-contract.js";
-import { createExecution } from "../dist/node-execution.js";
+import { TaskStore } from "../dist/tasks/storage/store.js";
+import { createTaskRuntime } from "../dist/application/task-runtime.js";
+import { executorSchema } from "../dist/executors/validation.js";
+import { taskSchema } from "../dist/protocol/task-contract.js";
+import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
-import { createCoordinator } from "../dist/coordinator.js";
+import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
 
 async function until(fn) {
   for (let i = 0; i < 100; i++) { const result = await fn(); if (result) return result; await delay(100); }
@@ -35,17 +34,17 @@ test("MCP admission survives client disconnect; an unconfigured model fails with
   // Persist a real waiting run before starting the HTTP owner; no model or ACP output is fabricated.
   const state = join(dir, "state"), store = new TaskStore(state);
   const executor = executorSchema.parse({ id: "local", type: "codex", cwd: dir, unattendedApproved: true });
-  const service = new Tasks(store, [executor], new Results(state), openExecution,
+  const service = createTaskRuntime(state, [executor], openExecution,
     createCoordinator(state, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
-  const waitingTask = service.create(taskSchema.parse({ requestKey: "waiting", name: "waiting", prompt: "Inspect",
+  const waitingTask = service.definitions.create(taskSchema.parse({ requestKey: "waiting", name: "waiting", prompt: "Inspect",
     nodes: [{ id: "inspect", prompt: "Inspect", executorId: "local" }], schedule: { type: "now" } }));
-  service.trigger();
-  const waitingRun = service.runs(waitingTask.id).items[0];
-  const question = service.actions(waitingRun.id).ask({ question: "Which source?", completedWork: "None" });
+  service.runs.trigger();
+  const waitingRun = service.runs.list(waitingTask.id).items[0];
+  const question = service.supervisor.actions(waitingRun.id).ask({ question: "Which source?", completedWork: "None" });
   await service.close(); store.close();
   const environmentPath = join(dir, "environment.json");
   await writeFile(environmentPath, JSON.stringify({ AGENT_TASK_TOKEN: token }), { mode: 0o600 });
-  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", config, "--environment", environmentPath], {
+  const child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", config, "--environment", environmentPath], {
     env: { PATH: process.env.PATH, AGENT_TASK_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "", stderr = "";

@@ -7,9 +7,10 @@ import { randomBytes } from "node:crypto";
 import { argumentsFor, installRoot, packages, createFile, json, run, operationLock, readManifest, saveManifest,
   runtimeBaseEnv, inventory, packageRoot } from "./install-lib.mjs";
 import { setupWizard } from "./setup-wizard.mjs";
-import { startupPaths } from "../dist/startup.js";
-import { readEnvironment } from "../dist/environment.js";
-import { executorCommand, executorEnvironment } from "../dist/executor-runtime.js";
+import { startupPaths } from "../dist/configuration/files.js";
+import { readEnvironment } from "../dist/configuration/files.js";
+import { executorEnvironment } from "../dist/executors/environment.js";
+import { executorCommand } from "../dist/integrations/acp/runtime.js";
 
 process.umask(0o077);
 let unlock;
@@ -51,7 +52,7 @@ try {
     createFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
   }
   const app = manifest.app, components = join(root, "components");
-  if (!existsSync(join(app, "dist/main.js"))) throw new Error("Prebuilt runtime is missing; reinstall the npm package (source contributors: npm run build)");
+  if (!existsSync(join(app, "dist/application/main.js"))) throw new Error("Prebuilt runtime is missing; reinstall the npm package (source contributors: npm run build)");
   if (manifest.phase !== "ready") {
     for (const name of ["components"]) {
       if (!existsSync(join(root, name))) continue;
@@ -89,7 +90,7 @@ try {
   }
   const paths = startupPaths(root), env = runtimeBaseEnv(manifest);
   // Use the same native launch environment; private values are read separately, never passed to probes.
-  run(manifest.node, ["--input-type=module", "-e", `import {loadConfig} from ${JSON.stringify(pathToFileURL(join(app, "dist/config.js")).href)}; loadConfig(process.argv[1]);`, paths.configPath], { env });
+  run(manifest.node, ["--input-type=module", "-e", `import {loadConfig} from ${JSON.stringify(pathToFileURL(join(app, "dist/configuration/files.js")).href)}; loadConfig(process.argv[1]);`, paths.configPath], { env });
   const config = json(paths.configPath);
   for (const id of manifest.selected) {
     const cliEnv = executorEnvironment(env, readEnvironment(paths.environmentPath), config);

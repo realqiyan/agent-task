@@ -42,7 +42,7 @@ node scripts/mcp-call.mjs --list
 node scripts/mcp-call.mjs service_status
 ```
 
-任务由 `task_create` 提交固定 DAG，每个节点选择已注册执行端。具体契约见 [task-contract.ts](src/task-contract.ts)，管理工具见 [mcp.ts](src/mcp.ts)。Prompt、人工回复和工作空间选择都不授予工具权限。
+任务由 `task_create` 提交固定 DAG，每个节点选择已注册执行端。具体契约见 [task-contract.ts](src/protocol/task-contract.ts)，管理工具见 [mcp.ts](src/protocol/mcp.ts)。Prompt、人工回复和工作空间选择都不授予工具权限。
 
 ## 许可证
 

@@ -28,7 +28,7 @@ agent-task setup --home /absolute/private/agent-task \
 
 ## 数据目录与配置
 
-初始 `dataDir` 是安装目录下的 `data/`。运行配置、私有环境文件、任务和协调会话记录、结果及服务文件日志均位于当前 `dataDir`。配置契约见 [config.ts](../src/config.ts)，路径选择与新目录准备见 [startup.ts](../src/startup.ts)。
+初始 `dataDir` 是安装目录下的 `data/`。运行配置、私有环境文件、任务和协调会话记录、结果及服务文件日志均位于当前 `dataDir`。配置契约见 [配置契约](../src/configuration/contract.ts)，路径选择与新目录准备见 [startup.ts](../src/application/startup.ts)。
 
 安装目录保留固定的 `launch.json` 定位文件、安装清单、组件及启动器控制资源；它不是另一份运行配置。CLI 通过这个固定入口定位当前数据目录。npm 包、用户工作空间和执行端原生配置不随 `dataDir` 移动。
 
@@ -37,9 +37,9 @@ agent-task setup --home /absolute/private/agent-task \
 1. 运行 `agent-task start`，打开输出的本机控制台地址。用本地编辑器读取当前 `dataDir/environment.json` 的 `AGENT_TASK_ADMIN_TOKEN`，在连接表单输入。不要把 token 放进 URL、命令行、Git、截图或日志。
 2. 在[控制台](web-console.md)或 [CLI](cli.md) 配置协调模型、单独保存模型密钥及注册执行端。两端使用同一管理服务。未配置协调模型时可管理服务，但不能接收可执行任务。
 3. 按执行端官方方式准备原生认证及权限：[Pi](https://github.com/earendil-works/pi/tree/v1.3.0/packages/coding-agent/docs)、[Codex ACP](https://github.com/agentclientprotocol/codex-acp#readme)、[Claude ACP](https://github.com/zed-industries/claude-agent-acp)、[OpenCode](https://opencode.ai/docs/acp/)。运行进程与原生登录须使用同一 OS 用户及相应 HOME/配置目录。
-4. 审核原生工具、沙箱、凭据和结果文件读取权限后，再明确批准无人值守执行。注册只选类型，不配置命令、参数、环境变量清单或 ACP 工具白名单；系统映射见 [executor-runtime.ts](../src/executor-runtime.ts)。额外 ACP 审批请求被拒绝，不自动批准。
+4. 审核原生工具、沙箱、凭据和结果文件读取权限后，再明确批准无人值守执行。注册只选类型，不配置命令、参数、环境变量清单或 ACP 工具白名单；系统映射见 [命令映射](../src/integrations/acp/runtime.ts)。额外 ACP 审批请求被拒绝，不自动批准。
 
-服务和协调员的秘密只从私有环境文件加载，不回退到 shell 模型密钥。执行端沿用启动上下文中的用户原生环境，但排除私有文件变量、服务/管理员令牌、协调员凭据及同值别名。不要把执行端原生凭据放入服务的私有环境文件。启动器不执行 shell 启动脚本，也不导入原生认证文件。隔离实现见 [environment.ts](../src/environment.ts)、[executor-runtime.ts](../src/executor-runtime.ts)。这不是同一 OS 用户下的沙箱。
+服务和协调员的秘密只从私有环境文件加载，不回退到 shell 模型密钥。执行端沿用启动上下文中的用户原生环境，但排除私有文件变量、服务/管理员令牌、协调员凭据及同值别名。不要把执行端原生凭据放入服务的私有环境文件。启动器不执行 shell 启动脚本，也不导入原生认证文件。隔离实现见 [服务环境校验](../src/configuration/environment.ts)、[执行端环境过滤](../src/executors/environment.ts)。这不是同一 OS 用户下的沙箱。
 
 显式握手检查：
 
@@ -66,7 +66,7 @@ Ctrl-C 关闭前台启动器及其运行进程。`restart` 和 Web 的“重启�
 
 启动失败不会回滚配置或重放工作。查看当前 `dataDir/service.log`；确认没有运行实例持有数据后，修正私有文件，再显式 `agent-task restart`。启动器也已退出时，用原启动方式重新启动。
 
-源码开发者执行 `npm ci --ignore-scripts && npm run build` 后，可用 `npm run setup -- ...` 和 `npm start -- --home ...`；npm 安装用户不需要构建。内部 `dist/main.js` 不是独立的重启入口。
+源码开发者执行 `npm ci --ignore-scripts && npm run build` 后，可用 `npm run setup -- ...` 和 `npm start -- --home ...`；npm 安装用户不需要构建。内部 `dist/application/main.js` 不是独立的重启入口。
 
 ## 更新
 

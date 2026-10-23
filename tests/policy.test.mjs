@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { permissionDecision } from "../dist/permissions.js";
-import { progressEvents } from "../dist/acp.js";
-import { executorEnvironment } from "../dist/executor-runtime.js";
+import { permissionDecision } from "../dist/executors/permissions.js";
+import { progressEvents } from "../dist/integrations/acp/connection.js";
+import { executorEnvironment } from "../dist/executors/environment.js";
 const request = {
   sessionId: "session", toolCall: { toolCallId: "tool", name: "read_file", rawInput: { path: "a" } },
   options: [

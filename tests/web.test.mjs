@@ -7,17 +7,16 @@ import { randomBytes } from "node:crypto";
 import { spawn, execFileSync, spawnSync } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadConfig } from "../dist/config.js";
-import { TaskStore } from "../dist/task-storage.js";
-import { Tasks } from "../dist/tasks.js";
-import { Results } from "../dist/results.js";
-import { createExecution } from "../dist/node-execution.js";
+import { loadConfig } from "../dist/configuration/files.js";
+import { TaskStore } from "../dist/tasks/storage/store.js";
+import { createTaskRuntime } from "../dist/application/task-runtime.js";
+import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
-import { createCoordinator } from "../dist/coordinator.js";
-import { taskSchema } from "../dist/task-contract.js";
+import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
+import { taskSchema } from "../dist/protocol/task-contract.js";
 
 async function start(t, home) {
-  const child = spawn(process.execPath, ["--input-type=module", "-e", 'import {launch} from "./dist/launcher.js"; await launch(process.argv[1], process.env);', home],
+  const child = spawn(process.execPath, ["--input-type=module", "-e", 'import {launch} from "./dist/application/launcher.js"; await launch(process.argv[1], process.env);', home],
     { env: { PATH: process.env.PATH }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "", stderr = "";
   child.stdout.on("data", value => { stdout += value; }); child.stderr.on("data", value => { stderr += value; });
@@ -49,15 +48,15 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
     coordinator: { provider: "openai", model: "not-a-real-model" },
     executors: [{ id: "local", type: "codex", cwd: root, unattendedApproved: true }] }), { mode: 0o600 });
   const config = loadConfig(configPath), store = new TaskStore(config.dataDir);
-  const service = new Tasks(store, config.executors, new Results(config.dataDir), openExecution,
+  const service = createTaskRuntime(config.dataDir, config.executors, openExecution,
     createCoordinator(config.dataDir, config.coordinator), error => { throw error; });
   const now = Date.now(), name = '<img src="https://untrusted.invalid" onerror="alert(1)">';
-  const task = service.create(taskSchema.parse({ requestKey: "web-boundary", name, prompt: "Inspect",
+  const task = service.definitions.create(taskSchema.parse({ requestKey: "web-boundary", name, prompt: "Inspect",
     nodes: [{ id: "inspect", prompt: "Inspect", executorId: "local" }],
     schedule: { type: "interval", startAt: new Date(now - 1000).toISOString(), seconds: 600 } }), now - 2000);
-  service.trigger(now);
-  const run = service.runs(task.id).items[0];
-  service.actions(run.id).ask({ question: "Which source?", completedWork: "None" });
+  service.runs.trigger(now);
+  const run = service.runs.list(task.id).items[0];
+  service.supervisor.actions(run.id).ask({ question: "Which source?", completedWork: "None" });
   await service.close(); store.close();
   const children = [];
   t.after(async () => {

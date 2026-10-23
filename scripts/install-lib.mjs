@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { DatabaseSync } from "../dist/sqlite.js";
+import { DatabaseSync } from "../dist/infrastructure/sqlite.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync, readdirSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync } from "node:fs";
 import { dirname, join, resolve, isAbsolute, basename } from "node:path";
 import { homedir } from "node:os";

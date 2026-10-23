@@ -23,7 +23,7 @@ npm run test:install -- ./realqiyan-agent-task-0.0.1-rc.2.tgz
 
 ## GitHub Actions 门禁与受控发布
 
-- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时执行 TypeScript 检查、基础测试及构建；检查包清单。Linux 和 macOS 安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，验证启动、重启及认证检查。
+- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。Linux 和 macOS 安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，验证启动、重启及认证检查。
 - [Publish npm](../.github/workflows/publish.yml)：仅手动触发，限制 master 和账号 realqiyan，输入须匹配已验收包版本。再次执行全部门禁，再发布同一 tarball，不重建、不执行包脚本。发布后核查 latest 并执行默认全局安装验证。
 - 普通 CI 没有 npm 凭据。发布作业单独获得凭据及 provenance 所需权限。并发发布被串行化。
 

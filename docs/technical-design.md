@@ -1,38 +1,58 @@
 # 代码导航
 
-本文指向职责入口和对应测试，不复述字段、默认值、状态枚举或内部流程。目标见[总体方案](design-proposal.md)，设计要求见[架构原则](architecture-guidelines.md)。
+本文指向职责入口、依赖边界和资源所有者，不复述字段、默认值或状态枚举。目标见[总体方案](design-proposal.md)，设计要求见[架构原则](architecture-guidelines.md)。
 
-## 按问题查找
+## 模块与公开能力
 
-| 问题 | 代码入口 | 基础验证 |
+按业务能力组织 `tasks`、`executors`、`configuration` 和 `results`。各模块用普通数据模型表达内部数据，服务通过构造参数接收依赖。没有服务定位器或统一转发门面。协议入口只获得[公开业务能力](../src/protocol/services.ts)。
+
+| 责任 | 实现入口 | 基础验证 |
 | --- | --- | --- |
-| 服务如何装配、启动和关闭 | [main.ts](../src/main.ts)、[launcher.ts](../src/launcher.ts)、[lock.ts](../src/lock.ts) | [restart.test.mjs](../tests/restart.test.mjs)、[service.test.mjs](../tests/service.test.mjs) |
-| MCP 有哪些工具、输入是什么 | [mcp.ts](../src/mcp.ts)、[task-contract.ts](../src/task-contract.ts) | [service.test.mjs](../tests/service.test.mjs) |
-| Task、Run、节点的数据与推进规则 | [task-model.ts](../src/task-model.ts)、[tasks.ts](../src/tasks.ts) | [tasks.test.mjs](../tests/tasks.test.mjs) |
-| 人工等待、回复及续接 | [human-input.ts](../src/human-input.ts) | [human-input.test.mjs](../tests/human-input.test.mjs) |
-| durable 工具与模型接入 | [coordinator.ts](../src/coordinator.ts)、[coordinator-provider.ts](../src/coordinator-provider.ts) | [coordinator-provider.test.mjs](../tests/coordinator-provider.test.mjs) |
-| 持久数据校验和提交 | [task-storage.ts](../src/task-storage.ts)、[coordinator-storage.ts](../src/coordinator-storage.ts) | [durable.test.mjs](../tests/durable.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
-| ACP、worker 和进程关闭 | [acp.ts](../src/acp.ts)、[node-execution.ts](../src/node-execution.ts)、[worker.ts](../src/worker.ts) | [execution.test.mjs](../tests/execution.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
-| 审批、环境与结果文件范围 | [permissions.ts](../src/permissions.ts)、[executor-runtime.ts](../src/executor-runtime.ts)、[results.ts](../src/results.ts) | [policy.test.mjs](../tests/policy.test.mjs)、[results.test.mjs](../tests/results.test.mjs) |
-| 配置、管理员注册和工作空间 | [config.ts](../src/config.ts)、[model.ts](../src/model.ts)、[settings.ts](../src/settings.ts)、[workspace.ts](../src/workspace.ts) | [config-preflight.test.mjs](../tests/config-preflight.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
-| 控制台 HTTP 边界与页面 | [web.ts](../src/web.ts)、[http-auth.ts](../src/http-auth.ts)、[页面模块](../src/web/) | [web.test.mjs](../tests/web.test.mjs) |
-| 配置和凭据的校验、保存与下次启动 | [settings.ts](../src/settings.ts)、[settings-management.ts](../src/settings-management.ts)、[settings-contract.ts](../src/settings-contract.ts)、[startup.ts](../src/startup.ts)、[private-files.ts](../src/private-files.ts)、[environment.ts](../src/environment.ts) | [settings.test.mjs](../tests/settings.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
-| CLI 管理命令与本机认证传输 | [cli.ts](../src/cli.ts)、[admin-client.ts](../src/admin-client.ts) | [web.test.mjs](../tests/web.test.mjs) |
-| npm 命令、安装与启动环境 | [agent-task.mjs](../bin/agent-task.mjs)、[setup-wizard.mjs](../scripts/setup-wizard.mjs)、[setup.mjs](../scripts/setup.mjs)、[install-lib.mjs](../scripts/install-lib.mjs)、[service-runner.mjs](../scripts/service-runner.mjs) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[verify-install.mjs](../scripts/verify-install.mjs) |
-| npm 包清单与发布门禁 | [package.json](../package.json)、[pack-release.mjs](../scripts/pack-release.mjs)、[工作流](../.github/workflows/) | [发布说明](release.md) |
+| 任务定义、执行端快照、未来触发控制 | [TaskDefinitions](../src/tasks/definitions.ts)、[图校验](../src/tasks/graph.ts)、[时间规则](../src/tasks/schedule.ts) | [tasks.test.mjs](../tests/tasks.test.mjs) |
+| Run 与节点状态的业务修改入口、派发与提交顺序 | [TaskRuns](../src/tasks/runs.ts)、[数据模型](../src/tasks/model.ts)、[窄能力契约](../src/tasks/ports.ts) | [tasks.test.mjs](../tests/tasks.test.mjs)、[task-storage.test.mjs](../tests/task-storage.test.mjs) |
+| 时钟、协调会话监督、取消与收尾 | [RunSupervisor](../src/tasks/supervisor.ts)、[NodeSessions](../src/tasks/sessions.ts) | [tasks.test.mjs](../tests/tasks.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs) |
+| 人工事实等待与回复 | [纯状态规则](../src/tasks/human-input.ts)、[TaskRuns](../src/tasks/runs.ts) | [human-input.test.mjs](../tests/human-input.test.mjs) |
+| 执行端注册、授权比较、凭据隔离 | [ExecutorRegistry](../src/executors/registry.ts)、[环境过滤](../src/executors/environment.ts)、[审批策略](../src/executors/permissions.ts) | [policy.test.mjs](../tests/policy.test.mjs)、[config-preflight.test.mjs](../tests/config-preflight.test.mjs) |
+| 配置与凭据编辑、发布顺序、影响预览 | [Settings](../src/configuration/settings.ts)、[配置规则](../src/configuration/policy.ts)、[预览组合](../src/configuration/management.ts) | [settings.test.mjs](../tests/settings.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
+| 请求规范化、内部数据与严格记录校验 | [任务请求](../src/protocol/task-contract.ts)、[配置请求](../src/protocol/settings-contract.ts)、[内部数据校验](../src/tasks/validation.ts)、[持久记录](../src/tasks/storage/records.ts) | [task-storage.test.mjs](../tests/task-storage.test.mjs) |
+| 持久读写与事务 | [TaskStore](../src/tasks/storage/store.ts)、[配置文件](../src/configuration/files.ts)、[私有文件操作](../src/infrastructure/private-files.ts) | [task-storage.test.mjs](../tests/task-storage.test.mjs)、[settings.test.mjs](../tests/settings.test.mjs) |
+| 结果文件授权与文件持久化 | [Results](../src/results/service.ts)、[文件能力](../src/results/ports.ts)、[文件实现](../src/results/files.ts) | [results.test.mjs](../tests/results.test.mjs) |
+| ACP、worker 与进程协议 | [ACP 连接](../src/integrations/acp/connection.ts)、[worker 监督](../src/integrations/acp/execution.ts)、[worker 入口](../src/integrations/acp/worker.ts)、[命令映射](../src/integrations/acp/runtime.ts) | [execution.test.mjs](../tests/execution.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
+| durable 工具、模型与会话存储 | [协调适配](../src/integrations/coordinator/coordinator.ts)、[provider](../src/integrations/coordinator/provider.ts)、[存储](../src/integrations/coordinator/storage.ts) | [coordinator-provider.test.mjs](../tests/coordinator-provider.test.mjs)、[durable.test.mjs](../tests/durable.test.mjs) |
+| MCP、HTTP 与 Web | [MCP 工具](../src/protocol/mcp.ts)、[HTTP 服务](../src/protocol/http/server.ts)、[Web 路由](../src/protocol/http/web.ts)、[页面](../src/web/) | [service.test.mjs](../tests/service.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
+| CLI 与本机控制协议 | [CLI](../src/protocol/cli/commands.ts)、[管理客户端](../src/protocol/cli/admin-client.ts)、[启动器客户端](../src/integrations/local-service/control.ts) | [web.test.mjs](../tests/web.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs) |
+| 装配、启动、关闭与重启 | [main](../src/application/main.ts)、[业务运行实例](../src/application/task-runtime.ts)、[launcher](../src/application/launcher.ts)、[启动准备](../src/application/startup.ts) | [restart.test.mjs](../tests/restart.test.mjs)、[service.test.mjs](../tests/service.test.mjs) |
+| 安装与发布 | [命令入口](../bin/agent-task.mjs)、[setup](../scripts/setup.mjs)、[安装库](../scripts/install-lib.mjs)、[包门禁](../scripts/pack-release.mjs)、[工作流](../.github/workflows/) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[发布说明](release.md) |
 
-配置示例见 [config.example.json](../config.example.json)，命令和依赖版本见 [package.json](../package.json)。测试只说明各自验证的风险，不能把失败进程或结构化状态测试当成真实模型成功执行。
+## 依赖与一致性边界
 
-## 当前架构差距
+[依赖检查器](../scripts/check-boundaries.mjs)随 `npm run check` 执行。它检查 TypeScript 模块的静态导入、类型依赖、再导出、字面量动态导入和 worker 文件引用，拒绝循环依赖、越层引用、SDK 进入业务模块，以及运行服务之外的 `commitRun` 调用。新增文件必须有明确职责分类。
 
-- `tasks.ts` 同时承担业务状态、时间触发和运行监督，尚未完成目标职责拆分。
-- `model.ts` 混合类型与 schema；持久 schema 复用输入契约；`results.ts` 混合路径授权与文件操作。
-- 尚无依赖边界检查器。后续按实际功能修改收敛，不为分层增加空壳。
+模型只依赖模型；能力契约只依赖数据与其他契约；纯规则和基础校验不接触存储或协议。服务可组合其他服务，但不导入存储实现、基础设施或协议 SDK。存储实现依赖数据、校验和基础设施。协议与执行适配器调用业务能力，由应用入口装配。CLI 读取私有启动信息及调用启动器的边界在检查器中明确列出。
+
+[TaskRuns](../src/tasks/runs.ts)持有 Run 写能力。定义服务不写 Run；监督器、模型工具、ACP 回调、超时、取消和人工回复通过运行服务的业务操作修改它。任务游标与 Run 仍使用同一事务，节点派发在创建 worker 前提交；异步结果返回后重新读取当前状态。缺少持久字段或非规范记录直接拒绝，不使用请求默认值修复。配置文件是管理员提供的下次启动输入，按配置请求契约解析；它不与 Task/Run 的持久记录契约共用默认值。
+
+检查器约束源码依赖，不是权限沙箱，也不证明运行时副作用安全。真实模型和执行端的证据边界见[验证说明](validation.md)。
+
+## 资源所有权
+
+| 资源 | 创建与关闭责任 |
+| --- | --- |
+| 数据目录排他锁 | 应用入口取得，在业务与网络资源收尾后释放 |
+| 业务 SQLite 与业务服务 | `createTaskRuntime` 创建；关闭先停止业务入口与监督，再关闭存储 |
+| 协调调用、时钟与取消信号 | `RunSupervisor` 创建并等待其结束；`TaskRuns` 不持有进程或 SDK 对象 |
+| 节点会话句柄、超时与等待期间的会话 | `NodeSessions` 持有；关闭调用共用同一个完成结果 |
+| worker 与 ACP 进程组 | ACP 接入创建与回收；监督器只持有窄会话能力 |
+| durable storage 与 Harness | 每次协调调用创建；打开失败关闭存储，成功后由 Harness 关闭其存储 |
+| HTTP listener 与 MCP transport/server | `HttpServer` 持有；请求断开只释放请求资源，应用关闭停止新请求并收尾 |
+| 配置和结果文件描述符 | 文件适配器在单次操作内打开，并在 `finally` 中关闭 |
+
+关闭接口幂等。关闭开始后拒绝新的业务操作；未验收的外部执行被中断并阻断后续自动派发。进程组回收与文件事务不能证明无孤儿进程、断电恢复或外部副作用 exactly-once。
 
 ## 集成与验收入口
 
 - [probe-agent.mjs](../scripts/probe-agent.mjs)：只做 ACP initialize。
 - [单节点用例](../tests/e2e/deepseek-acp.test.mjs)、[人工回复 DAG 用例](../tests/e2e/human-dag.test.mjs)：真实模型验收。
-- [E2E harness](../tests/e2e/harness.mjs)、[Pi 验收启动器](../scripts/run-pi-human-e2e.mjs)：环境准备、服务生命周期和证据保存。
+- [E2E harness](../tests/e2e/harness.mjs)、[Pi 启动器](../scripts/run-pi-human-e2e.mjs)：环境准备、服务生命周期和证据保存。
 
-操作前置条件和已验证范围见[部署说明](deployment.md)、[验证说明](validation.md)。握手、任务成功和权限隔离是不同证据。
+配置示例见 [config.example.json](../config.example.json)，命令和依赖版本见 [package.json](../package.json)。操作前置条件与已验证范围见[部署说明](deployment.md)、[验证说明](validation.md)。

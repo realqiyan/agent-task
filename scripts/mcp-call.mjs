@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { version } from "../dist/version.js";
+import { version } from "../dist/infrastructure/version.js";
 const [tool, input = "{}"] = process.argv.slice(2);
 if (!tool || !process.env.AGENT_TASK_TOKEN) {
   console.error("Usage: AGENT_TASK_TOKEN=... node scripts/mcp-call.mjs <tool|--list> '[JSON arguments]'\nAGENT_TASK_URL defaults to http://127.0.0.1:8765/mcp");

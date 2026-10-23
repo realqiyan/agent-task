@@ -17,9 +17,9 @@ const allowedScripts = new Set(["setup", "setup-wizard", "install-lib", "service
 const allowedFiles = new Set(["package.json", "README.md", "LICENSE", "config.example.json", "bin/agent-task.mjs"]);
 for (const { path } of artifact.files) {
   assert(allowedFiles.has(path) || allowedScripts.has(path) ||
-    /^dist\/[a-z0-9-]+\.js$/.test(path) || /^dist\/web\/[a-z0-9-]+\.(js|css|html)$/.test(path) ||
+    /^dist\/(?:[a-z0-9-]+\/)+[a-z0-9-]+\.js$/.test(path) || /^dist\/web\/[a-z0-9-]+\.(js|css|html)$/.test(path) ||
     /^docs\/[a-z0-9-]+\.md$/.test(path), "Unexpected package entry: " + path);
 }
 const paths = new Set(artifact.files.map(file => file.path));
-for (const required of [...allowedScripts, "LICENSE", "bin/agent-task.mjs", "dist/main.js", "dist/worker.js", "dist/web/index.html", "dist/web/app.js", "dist/web/style.css"]) assert(paths.has(required), "Missing runtime entry: " + required);
+for (const required of [...allowedScripts, "LICENSE", "bin/agent-task.mjs", "dist/application/main.js", "dist/integrations/acp/worker.js", "dist/web/index.html", "dist/web/app.js", "dist/web/style.css"]) assert(paths.has(required), "Missing runtime entry: " + required);
 console.log(JSON.stringify({ filename: resolve(artifact.filename), version: artifact.version, files: paths.size, unpackedSize: artifact.unpackedSize }));

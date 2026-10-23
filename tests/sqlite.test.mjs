@@ -6,7 +6,7 @@ test("SQLite loads quietly while other runtime warnings remain visible", () => {
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
     import assert from "node:assert/strict";
     const original = process.emitWarning;
-    const { DatabaseSync } = await import("./dist/sqlite.js");
+    const { DatabaseSync } = await import("./dist/infrastructure/sqlite.js");
     assert.equal(process.emitWarning, original);
     const db = new DatabaseSync(":memory:");
     assert.equal(db.prepare("SELECT 1 AS value").get().value, 1);

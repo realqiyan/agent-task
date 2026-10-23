@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFile, json, saveManifest, inventory, operationLock, run } from "../scripts/install-lib.mjs";
 
-import { readEnvironment } from "../dist/environment.js";
+import { readEnvironment } from "../dist/configuration/files.js";
 
 test("setup preserves credentials, records component inventory and serializes operations", t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-install-"));

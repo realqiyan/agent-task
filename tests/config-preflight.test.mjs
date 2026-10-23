@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import { realpathSync, mkdtempSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validateConfig } from "../dist/config.js";
-import { executorCommand } from "../dist/executor-runtime.js";
+import { validateConfig as validate } from "../dist/configuration/policy.js";
+import { configSchema } from "../dist/configuration/contract.js";
+import { resolveWorkspace } from "../dist/infrastructure/workspace.js";
+const validateConfig = value => validate(configSchema.parse(value), resolveWorkspace);
+import { executorCommand } from "../dist/integrations/acp/runtime.js";
 
 test("only four native executor types are registered; ACP commands and arguments are system-owned", t => {
   const directory = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-preflight-"));

@@ -6,7 +6,7 @@ Agent Task is an independently developed TypeScript service. MCP exposes task ma
 
 - `docs/architecture-guidelines.md`: design and dependency requirements.
 - `docs/design-proposal.md`: original requirements, overall design, decisions and deferred capabilities.
-- `docs/technical-design.md`: code/test navigation and known architectural gaps.
+- `docs/technical-design.md`: code/test navigation, dependency boundaries and resource ownership.
 - `docs/validation.md`: validation entry points, evidence and acceptance limits.
 - `docs/deployment.md`: installation, authentication and service operation.
 - `docs/web-console.md`: local administrator access, settings persistence and console limits.
@@ -20,7 +20,7 @@ Keep business rules in services, protocol contracts beside their tools, persiste
 
 Use plain data and narrow capabilities. Services must not depend on MCP/ACP SDK contexts, HTTP objects, UI, or complete process objects. Storage executes transactions but does not own scheduling, authorization or recovery policy. No circular dependencies or hidden global mutable state.
 
-The current MVP uses flat source files and has documented boundary gaps. Do not present it as already conforming to the target layers. When extending an affected responsibility, move that responsibility to its owner with behavior-preserving tests. Do not add empty directories, unused interfaces, forwarding layers or a dynamic plugin platform.
+Business capabilities live in tasks, executors, configuration and results. Protocol adapters, execution integrations, infrastructure and application assembly have separate owners. TaskRuns is the business write entry for Run state. Keep new responsibilities within these boundaries and update the dependency checker when adding a module. Do not add empty directories, unused interfaces, forwarding layers or a dynamic plugin platform.
 
 `src/` contains TypeScript source and `src/web/` contains browser assets; `tests/` contains Node tests; `scripts/` contains operator/development helpers and future explicit upgrades. `dist/` is generated and must not be edited. Group files and tests by domain as the relevant layers grow.
 
@@ -53,12 +53,12 @@ Use TypeScript ESM, strict compiler checks, two-space indentation, double quotes
 Use macOS or Linux and Node.js 22.19+. Local SQLite locking replaces external flock.
 
 - `npm ci --ignore-scripts`: install locked dependencies.
-- `npm run check`: TypeScript check; currently no dependency-boundary checker.
+- `npm run check`: TypeScript and dependency-boundary checks.
 - `npm run build`: compile to dist.
 - `npm test`: build and run Node tests serially.
 - `git diff --check`: whitespace validation.
 
-Add dependency-boundary checking when the documented layers are implemented; do not claim it exists beforehand.
+`scripts/check-boundaries.mjs` checks dependency direction, cycles, SDK placement and the Run write entry. These checks do not prove runtime authorization or external side-effect safety.
 
 ## Tests and documentation
 

@@ -42,7 +42,7 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && node scripts/check-boundaries.mjs",
     "build": "rm -rf dist && tsc && node scripts/copy-web.mjs",
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/deepseek-acp.test.mjs",

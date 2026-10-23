@@ -33,7 +33,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
     coordinator: { provider: "deepseek", model: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash" },
     executors: [{ ...executor, cwd: workspace }],
   });
-  const child = spawn(process.execPath, [resolve("dist/main.js"), "--config", configPath, "--environment", environmentPath], {
+  const child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", configPath, "--environment", environmentPath], {
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });

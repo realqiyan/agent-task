@@ -1,14 +1,18 @@
+import { LocalSettingsFiles, configurationPaths } from "../dist/configuration/files.js";
+import { parseSettings, settingsConfigSchema, settingsChangeSchema, credentialUpdateSchema } from "../dist/protocol/settings-contract.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, writeFileSync, readFileSync, chmodSync, statSync, symlinkSync, renameSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { Settings } from "../dist/settings.js";
-import { loadConfig, ADMIN_TOKEN_ENV } from "../dist/config.js";
-import { readEnvironment } from "../dist/environment.js";
-import { prepareStartup } from "../dist/startup.js";
-import { replacePrivateText, FileCommitError } from "../dist/private-files.js";
+import { Settings } from "../dist/configuration/settings.js";
+import { loadConfig } from "../dist/configuration/files.js";
+import { ADMIN_TOKEN_ENV } from "../dist/configuration/policy.js";
+import { readEnvironment } from "../dist/configuration/files.js";
+import { prepareStartup } from "../dist/application/startup.js";
+import { replacePrivateText } from "../dist/infrastructure/private-files.js";
+import { FileCommitError } from "../dist/shared/errors.js";
 
 function fixture(t) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-settings-"));
@@ -17,7 +21,7 @@ function fixture(t) {
   const environment = { AGENT_TASK_TOKEN: randomBytes(32).toString("hex"), [ADMIN_TOKEN_ENV]: randomBytes(32).toString("hex") };
   writeFileSync(configPath, JSON.stringify({ dataDir: root, executors: [] }), { mode: 0o600 });
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
-  const settings = new Settings(configPath, environmentPath, loadConfig(configPath), {}, environment);
+  const settings = new Settings(new LocalSettingsFiles(configPath, environmentPath), configurationPaths, loadConfig(configPath), {}, environment);
   t.after(() => settings.close());
   return { root, configPath, environmentPath, environment, settings };
 }
@@ -27,14 +31,14 @@ test("startup edits are next-start only; secrets stay private, missing credentia
   const config = { ...initial.saved, port: 9876, tokenEnv: "NEXT_SERVICE_TOKEN", dataDir: join(root, "next"),
     coordinator: { provider: "openai", model: "not-a-real-model" },
     executors: [{ id: "local", type: "claude", note: "native authorization", cwd: root }] };
-  assert.throws(() => settings.validate({ editToken: initial.editToken, config }), /missing/);
+  assert.throws(() => settings.validate(parseSettings(settingsConfigSchema, { editToken: initial.editToken, config })), /missing/);
   assert.equal(readFileSync(configPath, "utf8"), original);
-  assert.throws(() => settings.saveCredential({ editToken: initial.editToken, key: ADMIN_TOKEN_ENV, action: "replace", value: secret }), /not console-managed/);
-  assert.throws(() => settings.saveCredential({ editToken: initial.editToken, key: "ALIAS_KEY", action: "replace", value: environment.AGENT_TASK_TOKEN }), /cannot be reused/);
-  const prepared = settings.saveCredential({ editToken: initial.editToken, key: "OPENAI_API_KEY", action: "replace", value: secret });
+  assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: ADMIN_TOKEN_ENV, action: "replace", value: secret })), /not console-managed/);
+  assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: "ALIAS_KEY", action: "replace", value: environment.AGENT_TASK_TOKEN })), /cannot be reused/);
+  const prepared = settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: "OPENAI_API_KEY", action: "replace", value: secret }));
   assert(!JSON.stringify(prepared).includes(secret));
-  assert.throws(() => settings.saveConfig({ editToken: initial.editToken, config }), /changed/);
-  const saved = settings.saveConfig({ editToken: prepared.editToken, config });
+  assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: initial.editToken, config })), /changed/);
+  const saved = settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: prepared.editToken, config }));
   assert.equal(saved.running.dataDir, root);
   assert.equal(saved.running.port, 8765);
   assert.equal(saved.saved.dataDir, config.dataDir);
@@ -44,19 +48,19 @@ test("startup edits are next-start only; secrets stay private, missing credentia
   assert.equal(readEnvironment(environmentPath).OPENAI_API_KEY, secret);
   assert.equal(statSync(configPath).mode & 0o777, 0o600);
   assert.equal(statSync(environmentPath).mode & 0o777, 0o600);
-  assert.throws(() => settings.saveCredential({ editToken: saved.editToken, key: "OPENAI_API_KEY", action: "delete" }), /still references/);
+  assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: saved.editToken, key: "OPENAI_API_KEY", action: "delete" })), /still references/);
   assert(!JSON.stringify(saved).includes(secret));
 });
 test("token aliases cannot become model credentials through settings or offline startup", async t => {
   const { root, configPath, settings } = fixture(t);
   let view = settings.get();
-  view = settings.saveConfig({ editToken: view.editToken, config: { ...view.saved, tokenEnv: "NEXT_SERVICE_TOKEN" } });
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: view.editToken, config: { ...view.saved, tokenEnv: "NEXT_SERVICE_TOKEN" } }));
   const before = readFileSync(configPath, "utf8");
   const config = { ...view.saved, dataDir: join(root, "next"), coordinator: { provider: "openai-compatible", model: "example",
     baseUrl: "https://untrusted.invalid/v1", apiKeyEnv: "AGENT_TASK_TOKEN", contextWindow: 4096, maxTokens: 1024 } };
   const input = { editToken: view.editToken, config };
-  assert.throws(() => settings.validate(input), /distinct/);
-  assert.throws(() => settings.saveConfig(input), /distinct/);
+  assert.throws(() => settings.validate(parseSettings(settingsConfigSchema, input)), /distinct/);
+  assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, input)), /distinct/);
   assert.equal(readFileSync(configPath, "utf8"), before);
   settings.close();
   const locator = JSON.stringify({ dataDir: root });
@@ -69,22 +73,22 @@ test("token aliases cannot become model credentials through settings or offline 
 });
 test("changing a model endpoint requires separately prepared credentials", t => {
   const { settings, configPath } = fixture(t);
-  let view = settings.saveCredential({ editToken: settings.get().editToken, key: "OPENAI_API_KEY", action: "replace", value: randomBytes(32).toString("hex") });
-  view = settings.saveConfig({ editToken: view.editToken, config: { ...view.saved, coordinator: { provider: "openai", model: "not-a-real-model" } } });
+  let view = settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: settings.get().editToken, key: "OPENAI_API_KEY", action: "replace", value: randomBytes(32).toString("hex") }));
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: view.editToken, config: { ...view.saved, coordinator: { provider: "openai", model: "not-a-real-model" } } }));
   const before = readFileSync(configPath, "utf8");
   const config = { ...view.saved, coordinator: { provider: "openai-compatible", model: "example", api: "openai-completions",
     baseUrl: "https://untrusted.invalid/v1", apiKeyEnv: "OPENAI_API_KEY", contextWindow: 4096, maxTokens: 1024 } };
-  assert.throws(() => settings.validate({ editToken: view.editToken, config }), /new credential reference/);
+  assert.throws(() => settings.validate(parseSettings(settingsConfigSchema, { editToken: view.editToken, config })), /new credential reference/);
   assert.equal(readFileSync(configPath, "utf8"), before);
-  view = settings.saveCredential({ editToken: view.editToken, key: "NEXT_API_KEY", action: "replace", value: randomBytes(32).toString("hex") });
+  view = settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: view.editToken, key: "NEXT_API_KEY", action: "replace", value: randomBytes(32).toString("hex") }));
   config.coordinator.apiKeyEnv = "NEXT_API_KEY";
-  assert.equal(settings.saveConfig({ editToken: view.editToken, config }).saved.coordinator.apiKeyEnv, "NEXT_API_KEY");
+  assert.equal(settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: view.editToken, config })).saved.coordinator.apiKeyEnv, "NEXT_API_KEY");
 });
 test("private files reject insecure boundaries and out-of-band overwrites without repairing data", t => {
   const { root, configPath, settings } = fixture(t), edit = settings.get();
   const external = JSON.stringify({ dataDir: root, executors: [], port: 8766 });
   writeFileSync(configPath, external);
-  assert.throws(() => settings.saveConfig({ editToken: edit.editToken, config: edit.saved }), /changed/);
+  assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: edit.editToken, config: edit.saved })), /changed/);
   assert.equal(readFileSync(configPath, "utf8"), external);
   chmodSync(configPath, 0o644);
   assert.throws(() => settings.get(), /private configuration/);
@@ -99,17 +103,17 @@ test("private files reject insecure boundaries and out-of-band overwrites withou
 test("executor identity changes require fresh approval in the service; convenience edits cannot retain it", t => {
   const { settings, root, configPath } = fixture(t);
   let view = settings.get();
-  const change = value => settings.prepareChange({ editToken: view.editToken, change: value });
-  view = settings.saveConfig(change({ action: "executor-add", executor: { id: "local", type: "codex", cwd: root } }));
+  const change = value => settings.prepareChange(parseSettings(settingsChangeSchema, { editToken: view.editToken, change: value }));
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-add", executor: { id: "local", type: "codex", cwd: root } })));
   assert.equal(view.saved.executors[0].unattendedApproved, false);
-  view = settings.saveConfig(change({ action: "executor-approve", id: "local" }));
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-approve", id: "local" })));
   assert.equal(view.saved.executors[0].unattendedApproved, true);
-  view = settings.saveConfig(change({ action: "executor-update", id: "local", patch: { note: "reviewed" } }));
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, change({ action: "executor-update", id: "local", patch: { note: "reviewed" } })));
   assert.equal(view.saved.executors[0].unattendedApproved, true);
   const original = readFileSync(configPath, "utf8");
   for (const patch of [{ id: "renamed" }, { type: "pi" }, { cwd: realpathSync(tmpdir()) }]) {
     const config = structuredClone(view.saved); Object.assign(config.executors[0], patch);
-    assert.throws(() => settings.saveConfig({ editToken: view.editToken, config }), /explicit approval/);
+    assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: view.editToken, config })), /explicit approval/);
     assert.equal(readFileSync(configPath, "utf8"), original);
   }
   const draft = change({ action: "executor-update", id: "local", patch: { type: "pi" } });
@@ -117,7 +121,7 @@ test("executor identity changes require fresh approval in the service; convenien
   assert.equal(draft.config.executors[0].note, "reviewed", "partial edits preserve omitted fields");
   // The same reviewed candidate can explicitly renew authorization through either client.
   draft.config.executors[0].unattendedApproved = true; draft.approveExecutors = ["local"];
-  view = settings.saveConfig(draft);
+  view = settings.saveConfig(parseSettings(settingsConfigSchema, draft));
   assert.equal(view.saved.executors[0].type, "pi");
   assert.equal(view.saved.executors[0].unattendedApproved, true);
 });

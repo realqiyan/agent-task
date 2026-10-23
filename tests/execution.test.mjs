@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createExecution } from "../dist/node-execution.js";
+import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
-import { executorSchema } from "../dist/model.js";
+import { executorSchema } from "../dist/executors/validation.js";
 
 test("closing a real worker before readiness is idempotent and never starts ACP", { timeout: 10000 }, async () => {
   const executor = executorSchema.parse({ id: "exit", type: "codex", cwd: "/tmp", unattendedApproved: true });

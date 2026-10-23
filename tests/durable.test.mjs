@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { CompactionTask, GenerationTask, Harness, createRegistry } from "@earendil-works/pi-durable";
-import { openCoordinatorStorage } from "../dist/coordinator-storage.js";
+import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
 
 test("pending SDK tasks reopen unchanged while unsupported versions and kinds still fail closed", async t => {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-pending-"));

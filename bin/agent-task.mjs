@@ -38,7 +38,7 @@ try {
         await import("../scripts/service-runner.mjs");
       }
     } else {
-      const { runCli } = await import("../dist/cli.js");
+      const { runCli } = await import("../dist/protocol/cli/commands.js");
       await runCli(command, args, home => lib.installRoot({ home }));
     }
   }

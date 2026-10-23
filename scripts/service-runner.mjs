@@ -1,5 +1,5 @@
 import { readManifest, runtimeBaseEnv } from "./install-lib.mjs";
-import { launch } from "../dist/launcher.js";
+import { launch } from "../dist/application/launcher.js";
 
 process.umask(0o077);
 const root = process.argv[2];

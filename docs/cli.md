@@ -1,6 +1,6 @@
 # 本机管理 CLI
 
-CLI 覆盖 Web 的配置、凭据、任务查询、未来触发控制及重启操作。两端通过同一管理 API 使用配置和任务服务；重启由同一启动器处理。命令入口见 [cli.ts](../src/cli.ts)，管理传输见 [admin-client.ts](../src/admin-client.ts)。
+CLI 覆盖 Web 的配置、凭据、任务查询、未来触发控制及重启操作。两端通过同一管理 API 使用配置和任务服务；重启由同一启动器处理。命令入口见 [命令实现](../src/protocol/cli/commands.ts)，管理传输见 [admin-client.ts](../src/protocol/cli/admin-client.ts)。
 
 ## 连接与命令
 
@@ -36,7 +36,7 @@ agent-task restart
 agent-task config show --running
 ```
 
-导出文件不包含密钥值，以私有权限创建，拒绝覆盖已有文件。编辑令牌过期、服务重启或任一客户端保存配置/凭据后，旧草稿不能提交；重新读取并人工核对，不自动合并。草稿契约见 [settings-contract.ts](../src/settings-contract.ts)。
+导出文件不包含密钥值，以私有权限创建，拒绝覆盖已有文件。编辑令牌过期、服务重启或任一客户端保存配置/凭据后，旧草稿不能提交；重新读取并人工核对，不自动合并。草稿契约见 [settings-contract.ts](../src/protocol/settings-contract.ts)。
 
 `executor` 和 `coordinator` 提供便捷操作，配置服务负责生成候选配置，再走同一预览、校验和保存流程。新执行端默认未批准；修改 ID、类型或工作空间后清除批准。原生授权审核完成后，显式运行 `executor approve ID`。完整草稿新增或变更已批准的执行端时，也须明确声明对候选配置的授权。
 
@@ -46,4 +46,4 @@ agent-task config show --running
 
 `credential set NAME` 使用隐藏终端输入；自动化通过 `--stdin --yes` 从可信凭据工具或受保护文件传值，不把值写进命令参数。`credential list` 只显示设置状态。执行端原生登录和权限继续由其官方工具管理。
 
-`task show ID` 查看固定 DAG，`run show ID` 查看节点、原始回合、已接受交付及问题回复。`task pause/resume/cancel` 仅控制未来触发，不停止当前运行；恢复不补跑，取消后不可恢复未来触发。操作边界与 Web 一致，见[控制台说明](web-console.md#操作范围)。
+`task show ID` 查看固定 DAG，`run show ID` 查看节点、原始回合、已接受交付及问题回复。`task pause/resume/cancel` 仅控制未来触发，不停止当前运行；恢复不补跑，取消后不可恢复未来触发；有不确定外部结果时也拒绝恢复。操作边界与 Web 一致，见[控制台说明](web-console.md#操作范围)。
