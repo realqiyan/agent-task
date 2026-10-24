@@ -4,6 +4,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { version } from "../infrastructure/version.js";
+import { serverInstructions } from "./mcp-contract.js";
 
 const toolNames = new Set(["service_status", "executor_list", "task_create", "task_list", "task_get", "task_update",
   "task_run_list", "task_run_get", "task_run_reply", "task_run_cancel"]);
@@ -15,7 +16,7 @@ export async function serveStdio(options: { url: string; token: string; workspac
     throw new Error("Invalid local MCP address");
   }
   const client = new Client({ name: "agent-task-stdio", version });
-  const server = new Server({ name: "agent-task", version }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "agent-task", version }, { capabilities: { tools: {} }, instructions: serverInstructions });
   let close: Promise<void> | undefined, finish!: () => void;
   const finished = new Promise<void>(resolve => { finish = resolve; });
   const shutdown = (): Promise<void> => close ??= Promise.resolve().then(async () => {

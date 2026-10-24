@@ -104,6 +104,7 @@ test("concurrent stdio projects share one backend whose future tasks survive EOF
   const first = connection(home, projectA, env), second = connection(home, projectB, env);
   peers.push(first, second);
   await Promise.all(peers.map(peer => peer.connect()));
+  assert.match(first.client.getInstructions() ?? "", /task_run_list/);
   connected = true;
   ready = await controlService(home, "status");
   const executors = await call(first.client, "executor_list");

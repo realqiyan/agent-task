@@ -1,4 +1,5 @@
-import { errorText, StorageError } from "../shared/errors.js";
+import { errorText, StorageError, TaskError } from "../shared/errors.js";
+import { MAX_ACTIVE_RUNS, MAX_NODE_SESSIONS, MAX_TASKS } from "../shared/limits.js";
 import { coordinatorInput } from "./human-input.js";
 import type { EndStatus, InputReply, NodeRun } from "./model.js";
 import type { Coordinate, CoordinatorActions, OpenExecution } from "./ports.js";
@@ -17,10 +18,12 @@ export class RunSupervisor {
     private readonly coordinate: Coordinate | undefined, private readonly fatal: (error: unknown) => void) {
     this.sessions = new NodeSessions(openExecution, fatal);
   }
-  private check(): void { if (this.closed) throw new Error("Run supervisor closed"); }
+  private check(): void { if (this.closed) throw new TaskError("unavailable", "Run supervisor closed"); }
   status() {
     return { running: !this.closed && this.timer !== undefined && this.runs.healthy,
-      activeTaskRunIds: [...this.active.keys()], activeNodeRunIds: this.sessions.nodeIds(), storageHealthy: this.runs.healthy };
+      activeTaskRunIds: [...this.active.keys()], activeNodeRunIds: this.sessions.nodeIds(),
+      storageHealthy: this.runs.healthy, coordinatorConfigured: this.coordinate !== undefined,
+      limits: { maxActiveRuns: MAX_ACTIVE_RUNS, maxTasks: MAX_TASKS, maxNodeSessions: MAX_NODE_SESSIONS } };
   }
   actions(id: string, requestId = coordinatorInput(this.runs.get(id)).requestId): CoordinatorActions {
     this.check();
@@ -98,11 +101,11 @@ export class RunSupervisor {
   }
   recover(): void {
     this.check();
-    if (this.active.size || this.sessions.size) throw new Error("Recovery requires no active resources");
+    if (this.active.size || this.sessions.size) throw new TaskError("conflict", "Recovery requires no active resources");
     this.runs.recover();
   }
   start(): void {
-    this.check(); if (this.timer) throw new Error("Run supervisor already started");
+    this.check(); if (this.timer) throw new TaskError("conflict", "Run supervisor already started");
     this.recover(); this.timer = setInterval(() => this.tick(), 10_000); this.tick();
   }
   tick(): void {
@@ -111,7 +114,7 @@ export class RunSupervisor {
       this.runs.trigger();
       for (const run of this.runs.active()) {
         if (run.status === "waiting_input") { this.runs.expireWaiting(run.id); this.reconcile(run.id); continue; }
-        if (this.active.has(run.id) || this.active.size >= 4) continue;
+        if (this.active.has(run.id) || this.active.size >= MAX_ACTIVE_RUNS) continue;
         this.launch(run.id);
       }
     } catch (error) { if (this.timer) clearInterval(this.timer); this.fatal(error); }

@@ -6,6 +6,9 @@ export const scheduleData = z.discriminatedUnion("type", [
   z.object({ type: z.literal("once"), at: timestamp }).strict(),
   z.object({ type: z.literal("interval"), startAt: timestamp, seconds: z.number().int().min(60).max(31_536_000) }).strict(),
 ]);
+export const taskStatusSchema = z.enum(["active", "paused", "cancelled", "completed", "expired"]);
+export const runStatusSchema = z.enum(["running", "succeeded", "failed", "interrupted", "skipped", "cancelled", "timed_out", "waiting_input"]);
+export const nodeStatusSchema = z.enum(["pending", "running", "awaiting_review", "succeeded", "blocked", "interrupted"]);
 export const nodeData = z.object({
   id: identifier, prompt: text(64_000), executorId: identifier,
   dependsOn: z.array(identifier).max(20), maxRunSeconds: z.number().int().min(1).max(3600),

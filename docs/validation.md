@@ -12,6 +12,8 @@ git diff --check
 
 各职责的测试入口见[代码导航](technical-design.md)。基础测试使用真实本地文件、SQLite、进程和 SDK，不调用外部模型，不使用假模型或模拟 provider。失败进程和 no_model 只证明失败路径；结构化状态用例不证明模型语义判断。`check` 同时执行 TypeScript 与[依赖边界检查](../scripts/check-boundaries.mjs)，后者检查模块依赖、循环、SDK 位置和 Run 写入口；它不证明运行时权限或模型语义。
 
+[MCP 服务测试](../tests/service.test.mjs)还通过真实 HTTP `tools/list` 获取全部工具的输出契约，确认嵌套字段均有校验约束，并用 SDK 的 AJV 校验器验证每个工具的成功和参数错误响应、稳定错误 `code`、业务失败、分页、按状态过滤及紧凑任务/运行列表。反例验证缺失字段、错误类型和矛盾的成功/失败封装被拒绝。契约入口见 [mcp-contract.ts](../src/protocol/mcp-contract.ts)。这不替代原警告客户端的复验；其名称和版本尚未提供。
+
 2026-10-23，Linux x64、Node 24.15.0：使用流程简化通过类型与依赖边界检查、49 项基础测试和包清单门禁。重点证据：
 
 - [stdio 进程测试](../tests/stdio.test.mjs)：两个项目并发连接只保留一个后台；目录默认值、显式覆盖及跨项目请求键独立。关闭 stdin 和向客户端进程组发送 SIGHUP 后，后台仍触发未来任务。这些运行因 `no_model` 失败，只证明持续调度与无误派发，不证明 ACP 成功。

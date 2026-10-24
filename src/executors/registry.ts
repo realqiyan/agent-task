@@ -1,4 +1,4 @@
-import { errorText } from "../shared/errors.js";
+import { errorText, TaskError } from "../shared/errors.js";
 import type { Executor, ExecutorStatus, ExecutorType } from "./model.js";
 import type { ExecutorDiscovery } from "./ports.js";
 
@@ -30,7 +30,7 @@ export class ExecutorRegistry {
       ? { ...entry, state: "disabled", error: null } : { ...entry })
       : profiles.map(profile => status(profile, this.disabled.has(profile.type) ? "disabled" : "ready"));
   }
-  private checkOpen(): void { if (this.closed) throw new Error("Executor registry closed"); }
+  private checkOpen(): void { if (this.closed) throw new TaskError("unavailable", "Executor registry closed"); }
   list() { this.checkOpen(); return { executors: structuredClone(this.states) }; }
   refresh() {
     this.checkOpen();
@@ -50,9 +50,9 @@ export class ExecutorRegistry {
   upgrade(id: string) {
     this.checkOpen();
     const entry = this.states.find(item => item.id === id);
-    if (!this.discovery || !entry || !entry.nativePath) throw new Error("Executor is not installed: " + id);
-    if (this.disabled.has(entry.type)) throw new Error("Executor is disabled: " + id);
-    if (entry.type === "opencode") throw new Error("OpenCode uses its native ACP command; update the native CLI directly");
+    if (!this.discovery || !entry || !entry.nativePath) throw new TaskError("not_found", "Executor is not installed: " + id);
+    if (this.disabled.has(entry.type)) throw new TaskError("precondition", "Executor is disabled: " + id);
+    if (entry.type === "opencode") throw new TaskError("precondition", "OpenCode uses its native ACP command; update the native CLI directly");
     this.install(entry, true);
     return this.list();
   }
@@ -68,7 +68,7 @@ export class ExecutorRegistry {
         const executor = await discovery.install(entry.type, upgrade, controller.signal);
         if (this.closed) return;
         if (executor.type !== entry.type || executor.id !== entry.id || executor.nativePath !== expectedPath) {
-          throw new Error("Native executor changed during adapter installation; refresh discovery");
+          throw new TaskError("conflict", "Native executor changed during adapter installation; refresh discovery");
         }
         discovery.check(executor);
         this.profiles = [...this.profiles.filter(profile => profile.type !== entry.type), structuredClone(executor)];
@@ -84,7 +84,7 @@ export class ExecutorRegistry {
     const profile = this.profiles.find(item => item.id === id);
     if (!profile) {
       const entry = this.states.find(item => item.id === id);
-      throw new Error("Executor is not ready: " + id + (entry ? " (" + entry.state + ")" : ""));
+      throw new TaskError("precondition", "Executor is not ready: " + id + (entry ? " (" + entry.state + ")" : ""));
     }
     this.discovery?.check(profile);
     return profile;
@@ -97,9 +97,9 @@ export class ExecutorRegistry {
   }
   authorize(snapshot: Executor | undefined): Executor {
     this.checkOpen();
-    if (!snapshot) throw new Error("Executor snapshot is missing");
+    if (!snapshot) throw new TaskError("precondition", "Executor snapshot is missing");
     const current = this.ready(snapshot.id);
-    if (!authorizedProfile(snapshot, current)) throw new Error("Native executor changed; existing task assignment cannot be replaced");
+    if (!authorizedProfile(snapshot, current)) throw new TaskError("conflict", "Native executor changed; existing task assignment cannot be replaced");
     return structuredClone(current);
   }
   close(): Promise<void> {

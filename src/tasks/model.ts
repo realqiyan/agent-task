@@ -9,7 +9,7 @@ export type Task = { id: string; input: TaskInput; workspace: string; executors:
   status: "active" | "paused" | "cancelled" | "completed" | "expired"; nextAt: number | null; createdAt: string };
 export type Turn = { prompt: string; output: string; stopReason: string | null };
 export type NodeRun = { id: string; definition: NodeDefinition;
-  status: "pending" | "running" | "awaiting_review" | "succeeded" | "failed" | "blocked" | "interrupted";
+  status: "pending" | "running" | "awaiting_review" | "succeeded" | "blocked" | "interrupted";
   workspace: string | null; inputFiles: string[]; resultFile: string | null; result: string | null; acceptance: string | null;
   turns: Turn[]; error: string | null; sessionId: string | null; startedAt: string | null; eventCount: number };
 export type TaskRun = { id: string; taskId: string; scheduledAt: number;

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { z } from "zod";
 import type { Task, TaskRun } from "../model.js";
 import type { DefinitionStore, RunStore } from "../ports.js";
-import { StorageError } from "../../shared/errors.js";
+import { StorageError, TaskError } from "../../shared/errors.js";
 import { definitionSchema, roundSchema } from "./records.js";
 
 /** Task definitions and rounds share one transactional store. */
@@ -62,13 +62,13 @@ export class TaskStore implements DefinitionStore, RunStore {
   get(id: string): Task {
     this.check();
     const row = this.db.prepare("SELECT data FROM definitions WHERE id=?").get(id);
-    if (!row) throw new Error("Task not found");
+    if (!row) throw new TaskError("not_found", "Task not found");
     return this.decode(definitionSchema, row["data"]);
   }
   run(id: string): TaskRun {
     this.check();
     const row = this.db.prepare("SELECT data FROM rounds WHERE id=?").get(id);
-    if (!row) throw new Error("Task run not found");
+    if (!row) throw new TaskError("not_found", "Task run not found");
     return this.decode(roundSchema, row["data"]);
   }
   /** The service supplies all policy; the store commits a cursor and round atomically. */

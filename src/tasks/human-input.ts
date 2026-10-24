@@ -1,12 +1,13 @@
+import { TaskError } from "../shared/errors.js";
 import { iso } from "../shared/time.js";
 import type { CoordinatorInput, InputQuestion, InputReply, QuestionRequest, TaskRun } from "./model.js";
 
 /** Human facts are persisted business state, not executor permission or retry authorization. */
 export function askInput(run: TaskRun, request: QuestionRequest, seconds: number, now: number, questionId: string): { run: TaskRun; question: InputQuestion } {
-  if (run.status !== "running") throw new Error("Task run is not running");
-  if (run.nodes.some(node => node.status === "running")) throw new Error("Wait for all ACP turns before asking for input");
-  if (request.nodeId && !run.nodes.some(node => node.definition.id === request.nodeId)) throw new Error("Unknown question node");
-  if (run.questions.length >= 20) throw new Error("Question limit reached");
+  if (run.status !== "running") throw new TaskError("precondition", "Task run is not running");
+  if (run.nodes.some(node => node.status === "running")) throw new TaskError("precondition", "Wait for all ACP turns before asking for input");
+  if (request.nodeId && !run.nodes.some(node => node.definition.id === request.nodeId)) throw new TaskError("not_found", "Unknown question node");
+  if (run.questions.length >= 20) throw new TaskError("precondition", "Question limit reached");
   run = structuredClone(run);
   const sessions = run.nodes.filter(node => node.status === "awaiting_review");
   const question: InputQuestion = { ...request, id: questionId, createdAt: iso(now), expiresAt: iso(now + seconds * 1000),
@@ -29,16 +30,16 @@ export function waitingFailure(run: TaskRun, now: number): { status: "interrupte
 export function applyReply(run: TaskRun, input: InputReply, now: number): TaskRun | undefined {
   run = structuredClone(run);
   const question = run.questions.find(value => value.id === input.questionId);
-  if (!question) throw new Error("Unknown question");
+  if (!question) throw new TaskError("not_found", "Unknown question");
   const used = run.questions.find(value => value.reply?.requestKey === input.requestKey);
   if (used) {
-    if (used.id !== question.id || used.reply!.answer !== input.answer) throw new Error("Reply requestKey already used with different parameters");
+    if (used.id !== question.id || used.reply!.answer !== input.answer) throw new TaskError("conflict", "Reply requestKey already used with different parameters");
     return undefined;
   }
-  if (question.reply || run.questions.at(-1)?.id !== question.id) throw new Error("Question already answered or stale");
-  if (run.status !== "waiting_input") throw new Error("Task run is not waiting for input: " + run.status);
+  if (question.reply || run.questions.at(-1)?.id !== question.id) throw new TaskError("conflict", "Question already answered or stale");
+  if (run.status !== "waiting_input") throw new TaskError("precondition", "Task run is not waiting for input: " + run.status);
   const failure = waitingFailure(run, now);
-  if (failure) throw new Error(failure.reason);
+  if (failure) throw new TaskError("precondition", failure.reason);
   question.reply = { requestKey: input.requestKey, answer: input.answer, receivedAt: iso(now) };
   run.waitedMs += Math.max(0, now - Date.parse(question.createdAt));
   run.status = "running";

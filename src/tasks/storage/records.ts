@@ -1,16 +1,16 @@
 import { z } from "zod";
 import { executorRecord } from "../../executors/validation.js";
 import { absolutePath, identifier, text, timestamp } from "../../shared/validation.js";
-import { nodeData, questionData, taskData } from "../validation.js";
+import { nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../validation.js";
 
 export const definitionSchema = z.object({
   id: z.string().uuid(), input: taskData, workspace: absolutePath, executors: z.record(identifier, executorRecord),
-  status: z.enum(["active", "paused", "cancelled", "completed", "expired"]),
+  status: taskStatusSchema,
   nextAt: z.number().finite().nullable(), createdAt: timestamp,
 }).strict().refine(task => task.input.workspace === task.workspace, "Task workspace must match the canonical request");
 export const roundSchema = z.object({
   id: z.string().uuid(), taskId: z.string().uuid(), scheduledAt: z.number().finite(),
-  status: z.enum(["running", "succeeded", "failed", "interrupted", "skipped", "cancelled", "timed_out", "waiting_input"]),
+  status: runStatusSchema,
   createdAt: timestamp, finishedAt: timestamp.nullable(), error: z.string().nullable(), skippedCount: z.number().int().nonnegative(),
   steps: z.number().int().nonnegative(), coordinatorStartedAt: timestamp.nullable(), summary: z.string().nullable(),
   waitedMs: z.number().finite().nonnegative(),
@@ -20,7 +20,7 @@ export const roundSchema = z.object({
   })).max(20),
   nodes: z.array(z.object({
     id: z.string().uuid(), definition: nodeData,
-    status: z.enum(["pending", "running", "awaiting_review", "succeeded", "failed", "blocked", "interrupted"]),
+    status: nodeStatusSchema,
     workspace: absolutePath.nullable(), inputFiles: z.array(absolutePath), resultFile: absolutePath.nullable(), result: z.string().nullable(), acceptance: z.string().nullable(),
     turns: z.array(z.object({ prompt: z.string(), output: z.string(), stopReason: z.string().nullable() }).strict()),
     error: z.string().nullable(), sessionId: z.string().nullable(), startedAt: timestamp.nullable(), eventCount: z.number().int().nonnegative(),

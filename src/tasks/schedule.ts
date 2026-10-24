@@ -1,3 +1,4 @@
+import { TaskError } from "../shared/errors.js";
 import type { Schedule, Task, TaskRun } from "./model.js";
 
 export function hasUncertainOutcome(run: TaskRun): boolean {
@@ -9,7 +10,7 @@ export function initialTime(schedule: Schedule, now: number): number {
 }
 export function resumeSchedule(task: Task, now: number): Task {
   const next = structuredClone(task);
-  if (next.nextAt === null || ["cancelled", "expired"].includes(next.status)) throw new Error("Task has no future schedule");
+  if (next.nextAt === null || ["cancelled", "expired"].includes(next.status)) throw new TaskError("precondition", "Task has no future schedule");
   next.status = "active";
   if (next.nextAt < now) {
     if (next.input.schedule.type === "interval") next.nextAt += (Math.floor((now - next.nextAt) / (next.input.schedule.seconds * 1000)) + 1) * next.input.schedule.seconds * 1000;
