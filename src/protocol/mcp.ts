@@ -6,7 +6,7 @@ import { errorCode, errorText, StorageError } from "../shared/errors.js";
 import type { Task, TaskRun } from "../tasks/model.js";
 import type { TaskApi } from "./services.js";
 import { replySchema, taskSchema, taskUpdateSchema, taskIdSchema, runIdSchema, taskListSchema, taskRunListSchema } from "./task-contract.js";
-import { executorsOutput, pageOutput, runOutput, runSummaryOutput, serverInstructions, statusOutput, taskOutput, taskSummaryOutput, toolOutput } from "./mcp-contract.js";
+import { executorsOutput, mcpJsonSchema, pageOutput, runOutput, runSummaryOutput, serverInstructions, statusOutput, taskOutput, taskSummaryOutput, toolOutput } from "./mcp-contract.js";
 import { version } from "../infrastructure/version.js";
 
 type Hints = { readOnly: boolean; destructive: boolean; idempotent: boolean; openWorld: boolean };
@@ -25,8 +25,8 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
       definition: ToolSchema.parse({
         name,
         description,
-        inputSchema: { ...z.toJSONSchema(inputSchema, { target: "draft-7", io: "input" }), type: "object" },
-        outputSchema: { ...z.toJSONSchema(outputSchema, { target: "draft-7", io: "output" }), type: "object" },
+        inputSchema: { ...mcpJsonSchema(inputSchema, "input"), type: "object" },
+        outputSchema: { ...mcpJsonSchema(outputSchema, "output"), type: "object" },
         annotations: { readOnlyHint: hints.readOnly, destructiveHint: hints.destructive, idempotentHint: hints.idempotent, openWorldHint: hints.openWorld },
       }),
       call(input) {

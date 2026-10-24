@@ -16,17 +16,17 @@ VERSION=$(node -p "require('./package.json').version")
 npm run test:install -- "./realqiyan-agent-task-$VERSION.tgz"
 ```
 
-安装验证先检查当前 OS 和 Node.js 版本，再在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；随后验证初始化、前台启动、Web 配置、重启和认证健康检查，再验证 stdio 自动启动后台、断开后后台仍可用及显式 stop。MCP 客户端使用安装包的 SDK 依赖。验证脚本不调用模型或启动 ACP 工作。
+[安装验证](../scripts/verify-install.mjs)在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不依赖项目源码或编译器。它检查服务生命周期和认证，不调用模型或启动 ACP 工作；具体检查项以脚本为准。
 
 输出报告只包含结果和证据目录，不包含 token；只将实际运行的宿主平台记为通过，其他平台明确记为未执行。临时目录权限为私有，内有验证专用随机凭据及空任务库，不上传这些目录。基础测试中的真实 PTY 用例先检查平台及 `script` 能否创建终端；能力不可用时明确跳过，不能把跳过当成终端验收通过。
 
 脚本只验证当前环境，不在 Linux 上推断 macOS 行为；需要 macOS 证据时，在相应环境单独运行同一命令。本地可设置 `npm_config_cache` 复用下载缓存，tarball 验证可用 `npm_config_registry` 指定依赖镜像，报告会记录其地址；`--registry` 发布后验收固定使用 npmjs。不能以复制项目的 node_modules 替代安装验证。
 
-npm 接收发布后可能仍在处理包。发布后验收最多等待五分钟，确认公开 `latest` 指向目标版本，再执行默认全局安装；等待只读取 registry。超时先核对版本状态，不重复上传。
+npm 接收发布后可能仍在处理包。[发布后验收](../scripts/verify-install.mjs)有限等待公开 `latest` 指向目标版本，再执行默认全局安装；等待只读取 registry。超时先核对版本状态，不重复上传。
 
 ## GitHub Actions 门禁与受控发布
 
-- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时在 Ubuntu 执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，在当前 Linux runner 验证启动、重启及认证检查。常规 CI 不再要求 macOS runner；这不代表 macOS 已验证或不受支持。
+- [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时在 Ubuntu 执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，在当前 Linux runner 验证启动、重启及认证检查。常规 CI 使用 Linux runner，不能据此推断 macOS 验证结果。
 - [Publish npm](../.github/workflows/publish.yml)：推送 `v*` tag 自动触发，也保留手动入口；仅账号 realqiyan 可发起或重跑。[发布准入](../scripts/check-release.mjs)要求 tag 与包版本一致、锁文件版本一致，且提交已进入远端 master。手动入口仅接受 master 或版本 tag，输入版本须匹配。通过全部门禁后发布同一 tarball，不重建、不执行包脚本；上传前确认版本未占用，发布后核查 latest 并执行默认全局安装验证。
 - 普通 CI 没有 npm 凭据。发布作业使用 npm Trusted Publisher 和 GitHub OIDC，不读取 `NPM_TOKEN`；并发发布被串行化。
 
@@ -70,6 +70,6 @@ EXPECTED_VERSION="$VERSION" node scripts/verify-install.mjs --registry
 
 登录成功不等于发布授权已完成。若 registry 返回需要 2FA 的 E403，停止发布；维护者须在自己的终端完成发布时认证，或配置有目标包发布权限、短有效期且获准 bypass 2FA 的 granular token。不要关闭账号 2FA，不在聊天、命令参数或日志中传递一次性验证码或 token；不把本机登录凭据自动上传到 GitHub。
 
-不得把 dry-run、上传成功提示或候选包安装当成 npmjs 完成证据。应记录 registry 版本与 latest、默认安装结果、各平台报告，以及未执行的检查。发布结果不明时先查询 registry；同一版本不可覆盖，不盲目重试，也不擅自换版本。
+不得把 dry-run、上传成功提示或候选包安装当成 npmjs 完成证据。验收结论须有 registry 版本与 latest、默认安装和平台报告作为证据，并注明未执行的检查；按 [AGENTS.md](../AGENTS.md#tests-and-documentation)合并维护，不追加发布经过。发布结果不明时先查询 registry；同一版本不可覆盖，不盲目重试，也不擅自换版本。
 
 已发布候选有问题时，停止继续安装验证，保留证据并通知维护者决定弃用提示、tag 调整或新版本。不自动撤包、覆盖历史或删除用户数据。

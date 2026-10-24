@@ -198,6 +198,32 @@ export function pageOutput<T extends z.ZodType>(item: T) {
   }).strict();
 }
 
+/** Keep explicit nulls without array-valued types that some MCP clients reject. */
+export function mcpJsonSchema(schema: z.ZodType, io: "input" | "output") {
+  const json = z.toJSONSchema(schema, { target: "draft-7", io });
+  // Normalize after conversion: Zod compacts unions after its override callback.
+  function visit(node: z.core.JSONSchema.JSONSchema | boolean | undefined): void {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node.type)) {
+      const anyOf = node.type.map(type => ({ type }));
+      delete node.type;
+      if (node.anyOf) node.allOf = [...(node.allOf ?? []), { anyOf }];
+      else node.anyOf = anyOf;
+    }
+    for (const map of [node.properties, node.patternProperties, node.$defs]) {
+      for (const child of Object.values(map ?? {})) visit(child);
+    }
+    for (const branches of [node.anyOf, node.oneOf, node.allOf]) {
+      for (const child of branches ?? []) visit(child);
+    }
+    for (const child of [node.additionalProperties, node.not, node.if, node.then, node.else, node.contains, node.propertyNames]) visit(child);
+    if (Array.isArray(node.items)) node.items.forEach(visit);
+    else visit(node.items);
+  }
+  visit(json);
+  return json;
+}
+
 export function toolOutput<T extends z.ZodType>(data: T) {
   return z.discriminatedUnion("ok", [
     z.object({ ok: z.literal(true), data }).strict(),

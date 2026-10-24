@@ -44,11 +44,16 @@ agent-task config show --running
 
 ## 执行端发现与更新
 
-`agent-task executor list` 查看当前发现和准备结果；`executor show codex` 查看单个执行端。安装新的原生 CLI 后，运行 `executor refresh` 重新检测并在后台准备缺少的 ACP 适配器。该操作无需重启。准备失败时先检查报告的原因，修正后显式刷新或升级。
+```bash
+agent-task executor list
+agent-task executor show codex
+agent-task executor refresh
+# 仅在需要升级适配器时执行：
+agent-task executor upgrade codex --yes
+agent-task executor list
+```
 
-已准备的适配器不会随普通启动或刷新自动升级。需要更新时运行 `agent-task executor upgrade codex --yes`，再用 `executor list` 检查结果。升级期间暂停向该执行端派发新工作；它不修改已有任务指派。OpenCode 使用原生 ACP 命令，通过原生 CLI 的安装渠道更新。
-
-就绪状态只表示启动依赖已准备。原生登录和权限仍由执行端管理；首次准备、版本来源及运行边界见[部署说明](deployment.md)。
+发现、安装复用、升级影响和原生认证统一见[部署说明](deployment.md#执行端发现与准备)。就绪不证明工具授权或任务成功；PATH 变化也不能仅靠刷新生效。
 
 ## 凭据与任务
 

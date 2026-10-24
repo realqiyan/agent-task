@@ -68,6 +68,8 @@ Do not use mocks, stubs, fake models, simulated providers, personal credentials 
 
 Documentation is navigation first. Link to code for fields, defaults, schemas, state transitions and internal workflows; do not copy them into prose or tables. Keep product goals, design reasons, safety constraints, essential operator steps and validation evidence that code cannot establish. Give each topic one owner and link to it elsewhere.
 
-Update the relevant navigation when entry points change, and requirements or evidence when their meaning changes; not for every internal or cosmetic change. Keep product goals, current implementation and validation evidence separate. Runtime instructions and skills are not development-history logs. Use short, precise statements; preserve conditions and limitations.
+Update documentation only when goals, usage, important constraints, key conclusions or navigation entry points materially change. Internal changes and repeated checks do not require documentation updates. Keep product goals, current implementation and validation evidence separate.
+
+Validation records keep conclusions, applicable versions and conditions, unverified boundaries and necessary evidence links. Merge superseded evidence; retain older evidence only when it establishes a distinct conclusion or limitation. Do not append development, debugging, test or release execution logs, or move them into new history documents. Runtime instructions and skills are not history logs either. Use short, precise statements; preserve essential operator steps and safety constraints.
 
 Run npm run check, npm test and git diff --check before submission. Use focused feat: or fix: commits when commits are requested. Keep credentials, runtime databases, generated files and local configuration out of Git.

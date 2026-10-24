@@ -26,11 +26,9 @@
 
 ## 依赖与一致性边界
 
-[依赖检查器](../scripts/check-boundaries.mjs)随 `npm run check` 执行。它检查 TypeScript 模块的静态导入、类型依赖、再导出、字面量动态导入和 worker 文件引用，拒绝循环依赖、越层引用、SDK 进入业务模块，以及运行服务之外的 `commitRun` 调用。新增文件必须有明确职责分类。
+依赖方向由[架构原则](architecture-guidelines.md#职责与依赖)定义，[依赖检查器](../scripts/check-boundaries.mjs)随 `npm run check` 执行。模块分类、允许引用及 Run 写入口检查以该脚本为准；新增文件须明确归属。
 
-模型只依赖模型；能力契约只依赖数据与其他契约；纯规则和基础校验不接触存储或协议。服务可组合其他服务，但不导入存储实现、基础设施或协议 SDK。存储实现依赖数据、校验和基础设施。协议与执行适配器调用业务能力，由应用入口装配。CLI 读取私有启动信息及调用启动器的边界在检查器中明确列出。
-
-[TaskRuns](../src/tasks/runs.ts)持有 Run 写能力。定义服务不写 Run；监督器、模型工具、ACP 回调、超时、取消和人工回复通过运行服务的业务操作修改它。任务游标与 Run 仍使用同一事务，节点派发在创建 worker 前提交；异步结果返回后重新读取当前状态。缺少持久字段或非规范记录直接拒绝，不使用请求默认值修复。配置文件是管理员提供的下次启动输入，按配置请求契约解析；它不与 Task/Run 的持久记录契约共用默认值。
+[TaskRuns](../src/tasks/runs.ts)是 Run 状态的唯一业务写入口。状态转换与提交顺序在该服务维护，事务实现在 [TaskStore](../src/tasks/storage/store.ts)。[持久记录校验](../src/tasks/storage/records.ts)严格拒绝缺失或非规范记录，不使用请求默认值修复；管理员提供的下次启动配置另用[配置请求契约](../src/protocol/settings-contract.ts)解析。
 
 检查器约束源码依赖，不是权限沙箱，也不证明运行时副作用安全。真实模型和执行端的证据边界见[验证说明](validation.md)。
 

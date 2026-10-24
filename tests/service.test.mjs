@@ -27,6 +27,7 @@ const successfulTools = new Set();
 function assertConstrained(schema, path) {
   if (schema === false) return;
   assert(schema && typeof schema === "object", path + " must constrain values");
+  assert.equal(Array.isArray(schema.type), false, path + " must use single-type branches");
   assert(["type", "enum", "const", "$ref", "anyOf", "oneOf", "allOf", "not"].some(key => key in schema), path + " has no validation constraints");
   for (const [name, property] of Object.entries(schema.properties ?? {})) assertConstrained(property, path + ".properties." + name);
   for (const keyword of ["anyOf", "oneOf", "allOf"]) {
@@ -41,6 +42,7 @@ async function checkedCall(client, name, args = {}) {
     const validator = new AjvJsonSchemaValidator();
     const tools = (await client.listTools()).tools;
     contracts.set(client, new Map(tools.map(tool => {
+      assertConstrained(tool.inputSchema, tool.name + ".inputSchema");
       assertConstrained(tool.outputSchema, tool.name + ".outputSchema");
       const validate = validator.getValidator(tool.outputSchema);
       // Both envelope branches are exclusive, and every successful data object has required fields.
@@ -140,6 +142,15 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   const executorStatus = (await call(client, "executor_list")).executors.find(item => item.id === "opencode");
   assert.equal(executorStatus.state, "ready");
   assert(!("type" in executorStatus));
+  const validateExecutors = contracts.get(client).get("executor_list");
+  for (const field of ["adapterVersion", "error"]) {
+    for (const value of [null, "example", 1, undefined]) {
+      const record = { ...executorStatus, [field]: value };
+      if (value === undefined) delete record[field];
+      assert.equal(validateExecutors({ ok: true, data: { executors: [record] } }).valid,
+        value === null || typeof value === "string", field + " must be a required nullable string");
+    }
+  }
   const status = await call(client, "service_status");
   assert.equal(status.coordinatorConfigured, true);
   assert.deepEqual(status.limits, { maxActiveRuns: 4, maxTasks: 1000, maxNodeSessions: 8 });

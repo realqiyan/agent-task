@@ -34,37 +34,16 @@ agent-task status
 agent-task restart
 ```
 
-npm 包名为 `@realqiyan/agent-task`，安装后的命令仍为 `agent-task`。setup 要求确认目录、端口、令牌与协调模型。MCP 连接自动启动或复用独立后台，检测本机执行 CLI，并在缺少 ACP 适配器时安装当时最新版；已有适配器复用，原生登录仍由其官方工具管理。宿主退出后后台继续运行。接入配置与前台管理方式见[部署说明](docs/deployment.md)。
-
-stdio 入口从私有文件读取内部服务 token；直接 HTTP 接入需配置独立服务 token。源码开发辅助命令（凭据须安全注入环境，不写命令行）：
-
-```bash
-node scripts/mcp-call.mjs --list
-node scripts/mcp-call.mjs service_status
-```
+setup 确认本机配置；MCP 连接自动启动或复用独立后台，宿主退出后后台继续运行。首次使用须安装至少一种原生执行 CLI 并准备其认证。完整接入配置、执行端准备与服务管理见[部署说明](docs/deployment.md)。
 
 任务由 `task_create` 提交固定 DAG，每个节点选择已就绪执行端。显式工作目录优先，否则 stdio 入口补入自己的启动目录；直接 HTTP 调用必须提供目录。具体契约见 [task-contract.ts](src/protocol/task-contract.ts)，管理工具见 [mcp.ts](src/protocol/mcp.ts)。Prompt、人工回复和工作空间选择都不授予工具权限。
 
 ## CLI 命令索引
 
-下表列出全部命令及子命令。参数见 `agent-task <命令> --help`，操作流程见 [CLI 说明](docs/cli.md)和[部署说明](docs/deployment.md)。
+完整命令与参数使用 `agent-task --help`、`agent-task <命令> --help` 查询，不在文档中维护副本。
 
-| 命令 | 子命令 | 用途 |
-| --- | --- | --- |
-| `agent-task setup` | — | 初始化、检查或接续安装配置 |
-| `agent-task mcp` | — | stdio 接入，自动启动或连接共用后台 |
-| `agent-task start` | — | 前台启动服务并调度任务 |
-| `agent-task stop` | — | 停止共用服务 |
-| `agent-task restart` | — | 应用已保存配置并重启、检查可用性 |
-| `agent-task status` | — | 查看服务健康、活动任务及待生效配置 |
-| `agent-task config` | `show`、`diff`、`edit`、`export`、`validate`、`apply` | 查看、编辑、导出、校验及保存配置 |
-| `agent-task executor` | `list`、`show`、`refresh`、`upgrade`、`enable`、`disable` | 查看与刷新执行端、升级适配器、设置启停 |
-| `agent-task coordinator` | `show`、`set`、`clear` | 查看、设置或清除协调模型配置 |
-| `agent-task credential` | `list`、`set`、`delete` | 查看凭据状态、设置或删除凭据 |
-| `agent-task task` | `list`、`show`、`pause`、`resume`、`cancel` | 查看任务，控制未来触发 |
-| `agent-task run` | `list`、`show` | 查看运行历史与交付详情 |
-| `agent-task help` / `agent-task --help` | — | 查看总帮助 |
-| `agent-task --version` | — | 查看版本 |
+- 安装与运行：`setup`、`mcp`、`start`、`stop`、`restart`、`status`，见[部署说明](docs/deployment.md)。
+- 配置与凭据：`config`、`executor`、`coordinator`、`credential`；任务与运行：`task`、`run`，见 [CLI 说明](docs/cli.md)。
 
 ## 许可证
 

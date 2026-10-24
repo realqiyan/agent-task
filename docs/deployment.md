@@ -54,7 +54,7 @@ agent-task setup --home /absolute/private/agent-task \
 
 发现原生 CLI 后，后台为缺少 ACP 适配器的执行端安装当时最新版，已有安装直接复用；OpenCode 使用原生 ACP 命令。安装在后台进行，可用 MCP `executor_list`、`agent-task executor list` 或 Web 查看准备结果。任务只能选择就绪执行端。适配器安装失败时保留管理入口和其他就绪执行端，修正原因后显式刷新或升级。包映射和安装实现见 [discovery.ts](../src/integrations/acp/discovery.ts)。
 
-适配器保存在安装目录的私有 `adapters/` 中，不修改全局 npm 包或执行 CLI 的原生配置。普通重连不访问 registry 升级已有适配器。显式更新使用 `agent-task executor upgrade codex --yes`，再查询状态；新版本发布成功前保留原安装，活动 ACP 进程不因升级被重启。高级启停设置及 Web/CLI 操作见 [CLI 说明](cli.md#执行端发现与更新)。
+适配器保存在安装目录的私有 `adapters/` 中，不修改全局 npm 包或执行 CLI 的原生配置。普通重连不访问 registry 升级已有适配器。显式更新使用 `agent-task executor upgrade codex --yes`，再查询状态；升级期间暂停向该执行端派发新工作，新版本发布成功前保留原安装，活动 ACP 进程不因升级被重启。重新检测和升级直接作用于当前执行端目录，无需重启，也不保存启动配置。OpenCode 通过原生 CLI 的安装渠道更新。命令入口见 [CLI 说明](cli.md#执行端发现与更新)。
 
 后台的原生环境来自启动它的进程，不随不同 MCP 客户端切换。新 CLI 位于已有 PATH 时可用 `executor refresh` 重新检测；PATH 本身变化时先停止后台，再从正确环境连接或启动。原生登录须与后台使用同一 OS 用户及 HOME/配置目录。
 
@@ -82,7 +82,7 @@ MCP 接入不会自动重启一个已存在但不可用的后台。故障时查�
 
 运行配置、私有环境文件、任务和协调会话记录、结果及服务日志位于当前 `dataDir`。安装目录保留 `launch.json` 定位文件、初始化清单、适配器及启动器控制资源。npm 包、项目工作空间和执行端原生配置与数据目录分开。路径实现见 [startup.ts](../src/application/startup.ts)。
 
-打开 `status` 返回地址同源的 `/admin/`，用本地编辑器读取当前 `dataDir/environment.json` 中的 `AGENT_TASK_ADMIN_TOKEN`，在连接表单输入。不要把 token 放入 URL、命令参数、Git 或截图。CLI 从私有文件读取管理员令牌。两端使用同一管理服务，见[控制台说明](web-console.md)和 [CLI 说明](cli.md)。
+Web 访问 `status` 返回地址同源的 `/admin/`，连接与令牌保护见[控制台说明](web-console.md#启用与连接)；命令行管理见 [CLI 说明](cli.md)。两端使用同一管理服务。
 
 修改数据目录后，下次启动只准备目标配置和私有环境，并切换定位文件；不复制任务、会话、结果或日志，不删除旧目录。目标已有不同启动文件时拒绝覆盖，须停服核对并显式准备目标。新目录没有旧任务，目录切换不是恢复或重放许可。
 
