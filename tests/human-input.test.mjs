@@ -22,7 +22,7 @@ function fixture(t) {
   const coordinate = createCoordinator(dir, { provider: "openai", model: "not-a-real-model" });
   let store = new TaskStore(dir), service = createTaskRuntime(dir, [executor], openExecution, coordinate, error => { throw error; });
   const input = taskSchema.parse({ workspace: dir, requestKey: "task", name: "task", prompt: "Inspect authorized data",
-    nodes: [{ id: "A", prompt: "Inspect", executorId: "local" }], schedule: { type: "interval", startAt: new Date(Date.now() + 1000).toISOString(), seconds: 60 } });
+    nodes: [{ id: "A", prompt: "Inspect", executorId: "local" }], schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } });
   const task = service.definitions.create(input);
   service.runs.trigger(task.nextAt);
   const run = service.runs.list(task.id).items[0];

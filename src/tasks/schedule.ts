@@ -1,19 +1,20 @@
 import { TaskError } from "../shared/errors.js";
 import type { Schedule, Task, TaskRun } from "./model.js";
+import { parseCron } from "./cron.js";
 
 export function hasUncertainOutcome(run: TaskRun): boolean {
   return run.nodes.some(node => node.status === "interrupted");
 }
 
 export function initialTime(schedule: Schedule, now: number): number {
-  return schedule.type === "now" ? now : Date.parse(schedule.type === "once" ? schedule.at : schedule.startAt);
+  return schedule.type === "now" ? now : schedule.type === "once" ? Date.parse(schedule.at) : parseCron(schedule, now).next().getTime();
 }
 export function resumeSchedule(task: Task, now: number): Task {
   const next = structuredClone(task);
   if (next.nextAt === null || ["cancelled", "expired"].includes(next.status)) throw new TaskError("precondition", "Task has no future schedule");
   next.status = "active";
   if (next.nextAt < now) {
-    if (next.input.schedule.type === "interval") next.nextAt += (Math.floor((now - next.nextAt) / (next.input.schedule.seconds * 1000)) + 1) * next.input.schedule.seconds * 1000;
+    if (next.input.schedule.type === "cron") next.nextAt = parseCron(next.input.schedule, now).next().getTime();
     else { next.nextAt = null; next.status = "completed"; }
   }
   return next;
@@ -26,8 +27,15 @@ export function dueTrigger(task: Task, overlaps: boolean, now: number): Trigger 
   if (task.input.expiresAt && now >= Date.parse(task.input.expiresAt)) return { kind: "expired" };
   if (task.nextAt > now) return { kind: "none" };
   const schedule = task.input.schedule;
-  const count = schedule.type === "interval" ? Math.floor((now - task.nextAt) / (schedule.seconds * 1000)) + 1 : 1;
-  const at = task.nextAt + (schedule.type === "interval" ? (count - 1) * schedule.seconds * 1000 : 0);
-  return { kind: "due", at, count, nextAt: schedule.type === "interval" ? at + schedule.seconds * 1000 : null,
+  let count = 1, at = task.nextAt, nextAt: number | null = null;
+  if (schedule.type === "cron") {
+    const cron = parseCron(schedule, at);
+    nextAt = cron.next().getTime();
+    while (nextAt <= now) {
+      at = nextAt; count++;
+      nextAt = cron.next().getTime();
+    }
+  }
+  return { kind: "due", at, count, nextAt,
     reason: overlaps ? "Previous round still active; slot skipped" : now - at > 30_000 ? "Late slot skipped" : null };
 }

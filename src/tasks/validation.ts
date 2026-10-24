@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { absolutePath, identifier, text, timestamp } from "../shared/validation.js";
+import { parseCron } from "./cron.js";
+
+export const cronScheduleData = z.object({
+  type: z.literal("cron"), expression: text(200), timezone: text(100),
+}).strict().superRefine((schedule, ctx) => {
+  try { parseCron(schedule, Date.UTC(2000, 0, 1)).next(); }
+  catch { ctx.addIssue({ code: "custom", message: "Invalid five-field Cron expression or timezone" }); }
+});
 
 export const scheduleData = z.discriminatedUnion("type", [
   z.object({ type: z.literal("now") }).strict(),
   z.object({ type: z.literal("once"), at: timestamp }).strict(),
-  z.object({ type: z.literal("interval"), startAt: timestamp, seconds: z.number().int().min(60).max(31_536_000) }).strict(),
+  cronScheduleData,
 ]);
 export const taskStatusSchema = z.enum(["active", "paused", "cancelled", "completed", "expired"]);
 export const runStatusSchema = z.enum(["running", "succeeded", "failed", "interrupted", "skipped", "cancelled", "timed_out", "waiting_input"]);

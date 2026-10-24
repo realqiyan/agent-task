@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { absolutePath, identifier, timestamp } from "../shared/validation.js";
-import { nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../tasks/validation.js";
+import { cronScheduleData, nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../tasks/validation.js";
 
 /** Shared MCP initialization text; both the HTTP server and the local stdio proxy advertise it. */
 export const serverInstructions = `Agent Task runs caller-defined DAGs asynchronously with local ACP executors. A task is a persistent definition and schedule; a run is one execution. Task and run UUIDs are distinct from caller-defined DAG node IDs.
@@ -20,11 +20,10 @@ const scheduleOutput = z.discriminatedUnion("type", [
     type: z.literal("once"),
     at: timestamp.describe("Scheduled trigger, not actual execution start."),
   }).strict(),
-  z.object({
-    type: z.literal("interval"),
-    startAt: timestamp.describe("Anchor for the repeating schedule."),
-    seconds: z.number().int().describe("Fixed elapsed seconds between triggers."),
-  }).strict(),
+  cronScheduleData.safeExtend({
+    expression: cronScheduleData.shape.expression.describe("Five-field calendar Cron expression."),
+    timezone: cronScheduleData.shape.timezone.describe("Explicit timezone used to calculate calendar triggers."),
+  }),
 ]).describe("Stored schedule. Task status and nextAt are authoritative for future eligibility.");
 
 const taskNodeOutput = nodeData.safeExtend({

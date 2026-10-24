@@ -52,10 +52,10 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   const executor = { id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null };
   const service = createTaskRuntime(config.dataDir, [executor], openExecution,
     createCoordinator(config.dataDir, config.coordinator), error => { throw error; });
-  const now = Date.now(), name = '<img src="https://untrusted.invalid" onerror="alert(1)">';
+  const now = Math.floor(Date.now() / 60_000) * 60_000, name = '<img src="https://untrusted.invalid" onerror="alert(1)">';
   const task = service.definitions.create(taskSchema.parse({ requestKey: "web-boundary", name, prompt: "Inspect", workspace: root,
     nodes: [{ id: "inspect", prompt: "Inspect", executorId: "local" }],
-    schedule: { type: "interval", startAt: new Date(now - 1000).toISOString(), seconds: 600 } }), now - 2000);
+    schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } }), now - 1);
   service.runs.trigger(now);
   const run = service.runs.list(task.id).items[0];
   service.supervisor.actions(run.id).ask({ question: "Which source?", completedWork: "None" });

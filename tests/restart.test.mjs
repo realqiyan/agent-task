@@ -36,10 +36,10 @@ test("foreground CLI and Web restart on the same port verify a new process; fail
     command: executable, args: ["acp"], adapterVersion: null });
   const store = new TaskStore(dataDir), tasks = createTaskRuntime(dataDir, [executor], createExecution({ PATH: "/missing" }),
     createCoordinator(dataDir, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 60_000) * 60_000;
   const task = tasks.definitions.create(taskSchema.parse({ requestKey: "uncertain", name: "uncertain", prompt: "Inspect", workspace,
     nodes: [{ id: "inspect", executorId: "opencode", prompt: "Inspect" }],
-    schedule: { type: "interval", startAt: new Date(now).toISOString(), seconds: 60 } }), now);
+    schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } }), now - 1);
   tasks.runs.trigger(now);
   const run = tasks.runs.list(task.id).items[0];
   // Persist a dispatch intent with unknown external outcome, not a fabricated executor delivery.

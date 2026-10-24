@@ -12,7 +12,7 @@ function files(directory) {
 const roles = {
   model: ["tasks/model.ts", "executors/model.ts", "configuration/model.ts"],
   port: ["tasks/ports.ts", "configuration/ports.ts", "results/ports.ts", "executors/ports.ts"],
-  rule: ["shared/time.ts", "shared/limits.ts", "shared/errors.ts", "tasks/graph.ts", "tasks/schedule.ts", "tasks/human-input.ts",
+  rule: ["shared/time.ts", "shared/limits.ts", "shared/errors.ts", "tasks/graph.ts", "tasks/schedule.ts", "tasks/cron.ts", "tasks/human-input.ts",
     "executors/permissions.ts", "executors/environment.ts", "configuration/policy.ts", "configuration/environment.ts"],
   schema: ["shared/validation.ts", "tasks/validation.ts", "tasks/storage/records.ts", "executors/validation.ts", "configuration/contract.ts"],
   service: ["tasks/definitions.ts", "tasks/runs.ts", "tasks/supervisor.ts", "tasks/sessions.ts", "executors/registry.ts",
@@ -53,7 +53,7 @@ const errors = [];
 function dependency(source, specifier, typeOnly = false) {
   const from = role(source);
   if (!specifier.startsWith(".")) {
-    const pure = from === "schema" && specifier === "zod";
+    const pure = (from === "schema" && specifier === "zod") || (source === "tasks/cron.ts" && specifier === "cron-parser");
     const utility = from === "service" && ["node:crypto", "node:util"].includes(specifier);
     const outer = ["application", "protocol", "integrations", "infrastructure", "storage"].includes(from);
     if (!pure && !utility && !outer) errors.push(source + " cannot import " + specifier);

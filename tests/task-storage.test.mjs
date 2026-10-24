@@ -24,7 +24,7 @@ function fixture(t) {
 }
 
 test("stored records reject missing fields and noncanonical values without request defaults or repair", async t => {
-  for (const variant of ["task-default", "run-default", "timestamp", "text"]) {
+  for (const variant of ["task-default", "run-default", "timestamp", "text", "cron", "timezone", "interval"]) {
     const f = fixture(t);
     f.runtime.runs.trigger(f.task.nextAt);
     await f.runtime.close();
@@ -36,6 +36,9 @@ test("stored records reject missing fields and noncanonical values without reque
       if (variant === "run-default") delete record.nodes[0].definition.dependsOn;
       if (variant === "timestamp") record.createdAt = record.createdAt.replace("Z", "+00:00");
       if (variant === "text") record.input.name = "  task  ";
+      if (variant === "cron") record.input.schedule = { type: "cron", expression: "61 * * * *", timezone: "UTC" };
+      if (variant === "timezone") record.input.schedule = { type: "cron", expression: "* * * * *", timezone: "invalid" };
+      if (variant === "interval") record.input.schedule = { type: "interval", startAt: record.createdAt, seconds: 60 };
       const text = JSON.stringify(record);
       db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(text, row.id);
       assert.throws(() => new TaskStore(f.dir), /Invalid stored task data/);

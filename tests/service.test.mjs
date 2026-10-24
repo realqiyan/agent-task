@@ -175,7 +175,8 @@ test("MCP checks native CLIs on connection, keeps management available and prese
     { id: "review", prompt: "Review the inspection", executorId: "opencode", dependsOn: ["inspect"], maxRunSeconds: 60 },
   ];
   const future = await call(client, "task_create", { requestKey: "future", name: "future", prompt: "Inspect",
-    workspace: dir, nodes: [nodes[0]], schedule: { type: "once", at: new Date(Date.now() + 60000).toISOString() } });
+    workspace: dir, nodes: [nodes[0]], schedule: { type: "cron", expression: "0 9 * * 1-5", timezone: "Asia/Shanghai" } });
+  assert.deepEqual(future.input.schedule, { type: "cron", expression: "0 9 * * 1-5", timezone: "Asia/Shanghai" });
   assert.equal(typeof future.nextAt, "string");
   assert(!("command" in future.executors.opencode) && !("args" in future.executors.opencode));
   assert.deepEqual((await call(client, "task_get", { id: future.id })).input.nodes, [nodes[0]]);

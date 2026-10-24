@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { requestTimestamp } from "../shared/validation.js";
-import { nodeData, replyData, runStatusSchema, taskData, taskUpdateData } from "../tasks/validation.js";
+import { cronScheduleData, nodeData, replyData, runStatusSchema, taskData, taskUpdateData } from "../tasks/validation.js";
 
 export const nodeSchema = nodeData.extend({
   id: nodeData.shape.id.describe("Unique caller-defined ID in this DAG, referenced by dependsOn; not a run UUID."),
@@ -27,7 +27,7 @@ export const taskRunListSchema = taskListSchema.extend({
 });
 export const taskUpdateSchema = taskUpdateData.extend({
   id: taskIdSchema.shape.id,
-  action: taskUpdateData.shape.action.describe("pause keeps the next trigger but suspends it; resume re-enables it without catch-up (past interval slots advance; past now/once slots become completed); cancel permanently removes future triggers. pause/resume require a remaining trigger. resume fails if any run has an interrupted node."),
+  action: taskUpdateData.shape.action.describe("pause keeps the next trigger but suspends it; resume re-enables it without catch-up (past Cron slots advance; past now/once slots become completed); cancel permanently removes future triggers. pause/resume require a remaining trigger. resume fails if any run has an interrupted node."),
 });
 export const taskSchema = taskData.extend({
   requestKey: taskData.shape.requestKey.describe("Caller-chosen creation key, scoped to the canonical workspace. Keep it stable for retries: identical normalized parameters return the existing task, including cancelled/completed tasks; changes conflict. A new key creates separate work, not a retry."),
@@ -41,11 +41,11 @@ export const taskSchema = taskData.extend({
       type: z.literal("once").describe("One slot at the specified future time."),
       at: requestTimestamp.describe("Future ISO 8601 trigger time with UTC Z or numeric offset; normalized to UTC."),
     }).strict(),
-    z.object({
-      type: z.literal("interval").describe("Repeating slots anchored to startAt, not to completion of the previous run."),
-      startAt: requestTimestamp.describe("First trigger, in the future, as ISO 8601 with UTC Z or numeric offset."),
-      seconds: z.number().int().min(60).max(31_536_000).describe("Fixed elapsed seconds between slots; not a calendar/timezone schedule."),
-    }).strict(),
+    cronScheduleData.safeExtend({
+      type: z.literal("cron").describe("Repeating calendar slots; the first match strictly after creation, not after the previous run completes."),
+      expression: z.string().trim().min(1).max(200).describe("Five fields: minute hour day-of-month month day-of-week, e.g. 0 9 * * 1-5. No seconds, @ aliases or hashed H fields. Day-of-month and day-of-week use OR when both are restricted."),
+      timezone: z.string().trim().min(1).max(100).describe("Required IANA timezone, e.g. Asia/Shanghai or UTC; never inferred from the server environment. DST follows cron-parser calendar rules."),
+    }),
   ]).describe("When runs become eligible, not guaranteed start times. Slots over 30 seconds late or overlapping a running/waiting run of this task are skipped, not queued for catch-up."),
   expiresAt: requestTimestamp.optional().describe("Cutoff for new runs and previously unstarted nodes, not a completion timeout. Must follow the first trigger. Existing ACP sessions may continue. ISO 8601 with timezone; omit for no cutoff."),
   maxRunSeconds: taskData.shape.maxRunSeconds.default(1800).describe("Run execution budget in seconds from coordinator start, excluding human-input waits; includes ACP execution. Separate from expiresAt and each node's session lifetime."),

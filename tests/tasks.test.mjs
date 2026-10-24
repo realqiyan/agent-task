@@ -103,9 +103,9 @@ test("each run retains the caller DAG and dispatches only to the node's assigned
   executable(f.dir, "opencode", process.execPath, ["--eval", 'require("node:fs").writeFileSync("selected.txt", "other"); process.exit(1);']);
   f.executors.push(executorRecord.parse({ ...f.executor, id: "other", type: "opencode", nativePath: join(f.dir, "opencode"), command: join(f.dir, "opencode"), args: ["acp"] }));
   await f.reopen();
-  const nodes = [node("A"), { ...node("B"), executorId: "other" }], now = Date.now();
+  const nodes = [node("A"), { ...node("B"), executorId: "other" }], now = Math.floor(Date.now() / 60_000) * 60_000;
   const task = f.service.definitions.create({ ...f.input, requestKey: "assigned", nodes,
-    schedule: { type: "interval", startAt: new Date(now).toISOString(), seconds: 60 } }, now);
+    schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } }, now - 1);
   assert.deepEqual(Object.keys(task.executors).sort(), ["local", "other"]);
   f.service.runs.trigger(now);
   const first = f.service.runs.list(task.id).items[0];
@@ -170,8 +170,8 @@ test("cancellation and timeout stop real waiting ACP processes without producing
 });
 
 test("task_update affects future slots only, resumes without catch-up and rejects invalid actions without mutation", t => {
-  const f = fixture(t), now = Date.now();
-  const task = f.service.definitions.create({ ...f.input, requestKey: "interval", schedule: { type: "interval", startAt: new Date(now).toISOString(), seconds: 60 } }, now);
+  const f = fixture(t), now = Math.floor(Date.now() / 60_000) * 60_000;
+  const task = f.service.definitions.create({ ...f.input, requestKey: "cron", schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } }, now - 1);
   f.service.runs.trigger(now);
   const run = f.service.runs.list(task.id).items[0];
   f.service.definitions.update({ id: task.id, action: "pause" }, now);
@@ -187,6 +187,42 @@ test("task_update affects future slots only, resumes without catch-up and reject
   assert.equal(f.service.definitions.get(task.id).nextAt, null);
   assert.equal(f.service.runs.get(run.id).status, "running");
   assert.throws(() => f.service.definitions.update({ id: task.id, action: "resume" }), /no future/);
+});
+
+test("Cron admission persists calendar slots, counts misses without catch-up, skips overlaps and respects the cutoff", async t => {
+  const f = fixture(t), now = Date.UTC(2026, 0, 1, 9);
+  const schedule = { type: "cron", expression: "*/5 9-17 * * 1-5", timezone: "UTC" };
+  const expiresAt = new Date(now + 30 * 60_000).toISOString();
+  assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "invalid-cutoff", schedule,
+    expiresAt: new Date(now).toISOString() }, now - 1), /Deadline/);
+  const input = { ...f.input, requestKey: "calendar", schedule, expiresAt };
+  const task = f.service.definitions.create(input, now - 1);
+  assert.equal(task.nextAt, now);
+  assert.equal(f.service.definitions.create(input, now + 1).id, task.id);
+  f.service.runs.trigger(now - 1);
+  assert.equal(f.service.runs.list(task.id).items.length, 0);
+  f.service.runs.trigger(now + 16 * 60_000);
+  const missed = f.service.runs.list(task.id).items[0];
+  assert.equal(missed.scheduledAt, now + 15 * 60_000);
+  assert.equal(missed.status, "skipped");
+  assert.equal(missed.skippedCount, 4);
+  f.service.runs.trigger(now + 20 * 60_000 + 20_000);
+  const run = f.service.runs.list(task.id).items[1];
+  assert.equal(run.status, "running");
+  assert.equal(run.skippedCount, 0);
+  f.service.runs.trigger(now + 25 * 60_000);
+  const overlap = f.service.runs.list(task.id).items[2];
+  assert.equal(overlap.status, "skipped");
+  assert.equal(overlap.skippedCount, 1);
+  assert.match(overlap.error, /Previous round/);
+  await f.reopen();
+  assert.equal(f.service.definitions.get(task.id).nextAt, now + 30 * 60_000);
+  assert.deepEqual(f.service.definitions.get(task.id).input.schedule, schedule);
+  f.service.runs.trigger(now + 30 * 60_000);
+  assert.equal(f.service.definitions.get(task.id).status, "expired");
+  assert.equal(f.service.definitions.get(task.id).nextAt, null);
+  assert.equal(f.service.runs.list(task.id).items.length, 3);
+  assert.equal(f.service.runs.get(run.id).status, "running");
 });
 
 test("task workspaces are canonical and immutable; actual failed process cwd persists", async t => {
@@ -276,9 +312,9 @@ test("shutdown closes real waiting execution once, rejects late output and prese
 });
 
 test("cancelling an open external turn pauses future slots and late events cannot overwrite cancellation", async t => {
-  const f = fixture(t, "/bin/sleep", ["30"]), now = Date.now();
+  const f = fixture(t, "/bin/sleep", ["30"]), now = Math.floor(Date.now() / 60_000) * 60_000;
   const task = f.service.definitions.create({ ...f.input, requestKey: "uncertain-cancel",
-    schedule: { type: "interval", startAt: new Date(now).toISOString(), seconds: 60 } }, now);
+    schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } }, now - 1);
   f.service.runs.trigger(now);
   const run = f.service.runs.list(task.id).items[0];
   const pending = assert.rejects(f.service.supervisor.converse(run.id, "A"));

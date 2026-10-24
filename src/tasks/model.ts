@@ -1,6 +1,6 @@
 import type { Executor } from "../executors/model.js";
 
-export type Schedule = { type: "now" } | { type: "once"; at: string } | { type: "interval"; startAt: string; seconds: number };
+export type Schedule = { type: "now" } | { type: "once"; at: string } | { type: "cron"; expression: string; timezone: string };
 
 export type NodeDefinition = { id: string; prompt: string; executorId: string; dependsOn: string[]; maxRunSeconds: number };
 export type TaskInput = { requestKey: string; name: string; prompt: string; nodes: NodeDefinition[];
