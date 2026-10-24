@@ -22,7 +22,7 @@
 
 ## 使用入口
 
-Linux/macOS，Node.js **22.19+**。以下描述 `0.1.0-rc.1` 的使用入口；安装包自带运行产物。实际发布状态及平台验收范围见[发布证据](docs/validation.md#npm-发布候选验证)。
+Linux/macOS，Node.js **22.19+**。以下为当前源码的使用入口；安装包自带运行产物。实际发布状态及平台验收范围见[发布证据](docs/validation.md#npm-发布候选验证)。
 
 ```bash
 npm install -g @realqiyan/agent-task

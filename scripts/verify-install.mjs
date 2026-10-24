@@ -1,6 +1,6 @@
 // Real source-free npm install and local HTTP acceptance. No model calls.
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, realpathSync, readFileSync, writeFileSync, existsSync, statSync, symlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -17,8 +17,10 @@ if (!["linux", "darwin"].includes(process.platform)) throw new Error(`Installati
 const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
 if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 19)) throw new Error(`Installation validation requires Node.js 22.19+; current version is ${process.version}`);
 const packageName = "@realqiyan/agent-task";
-const expectedVersion = "0.1.0-rc.1";
 const spec = registry ? packageName : resolve(positional[0]);
+const expectedVersion = registry ? process.env.EXPECTED_VERSION
+  : JSON.parse(execFileSync("tar", ["-xOf", spec, "package/package.json"], { encoding: "utf8" })).version;
+assert(typeof expectedVersion === "string" && expectedVersion.length > 0, "EXPECTED_VERSION is required for --registry; local tarballs must declare a version");
 const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-npm-"));
 const prefix = join(root, "prefix"), workspace = join(root, "workspace"), home = join(root, "private");
 const isolatedHome = join(root, "native-home"), userConfig = join(root, "npmrc");

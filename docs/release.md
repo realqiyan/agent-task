@@ -12,7 +12,8 @@ npm run check
 npm test
 git diff --check
 npm run pack:release
-npm run test:install -- ./realqiyan-agent-task-0.1.0-rc.1.tgz
+VERSION=$(node -p "require('./package.json').version")
+npm run test:install -- "./realqiyan-agent-task-$VERSION.tgz"
 ```
 
 安装验证先检查当前 OS 和 Node.js 版本，再在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不使用项目源码或编译器；随后验证初始化、前台启动、Web 配置、重启和认证健康检查，再验证 stdio 自动启动后台、断开后后台仍可用及显式 stop。MCP 客户端使用安装包的 SDK 依赖。验证脚本不调用模型或启动 ACP 工作。
@@ -26,15 +27,28 @@ npm 接收发布后可能仍在处理包。发布后验收最多等待五分钟�
 ## GitHub Actions 门禁与受控发布
 
 - [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时在 Ubuntu 执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，在当前 Linux runner 验证启动、重启及认证检查。常规 CI 不再要求 macOS runner；这不代表 macOS 已验证或不受支持。
-- [Publish npm](../.github/workflows/publish.yml)：仅手动触发，限制 master 和账号 realqiyan，输入须匹配已验收包版本。再次执行全部门禁，再发布同一 tarball，不重建、不执行包脚本。发布后核查 latest 并执行默认全局安装验证。
+- [Publish npm](../.github/workflows/publish.yml)：推送 `v*` tag 自动触发，也保留手动入口；仅账号 realqiyan 可发起或重跑。[发布准入](../scripts/check-release.mjs)要求 tag 与包版本一致、锁文件版本一致，且提交已进入远端 master。手动入口仅接受 master 或版本 tag，输入版本须匹配。通过全部门禁后发布同一 tarball，不重建、不执行包脚本；上传前确认版本未占用，发布后核查 latest 并执行默认全局安装验证。
 - 普通 CI 没有 npm 凭据。发布作业使用 npm Trusted Publisher 和 GitHub OIDC，不读取 `NPM_TOKEN`；并发发布被串行化。
 
-包已发布但后续验收失败时，在同一工作流选择相同版本并启用 `verify_only`。该模式仍执行验证门禁和公开安装验收，跳过上传，适用于 registry 处理延迟后的复核。
+### 通过 tag 发布
+
+1. 核对 npm 中目标版本尚未发布。用 `npm version <新版本> --no-git-tag-version --ignore-scripts` 同步包版本和锁文件；完成上述候选验收后，提交并推送到 master。
+2. 给已验收的提交打版本 tag，并单独推送该 tag：
+
+```bash
+VERSION=$(node -p "require('./package.json').version")
+git tag -a "v$VERSION" -m "Release $VERSION"
+git push origin "v$VERSION"
+```
+
+普通 master 推送只执行 CI，不发布 npm。不要移动或复用已推送的发布 tag；Git tag `v<版本号>` 触发工作流，npm dist-tag `latest` 决定默认安装版本，两者不同。
+
+包已发布但后续验收失败时，在 Actions 手动选择原版本 tag、填写相同版本并启用 `verify_only`。该模式仍执行验证门禁和公开安装验收，跳过上传；不要直接重跑上传作业。安装验收从本地 tarball 读取版本，`--registry` 模式必须提供 `EXPECTED_VERSION`，工作流会自动传入。
 
 首次启用前，由维护者完成以下配置：
-1. 创建 GitHub Environment **npm**，仅允许 master 部署；按仓库需要配置审核人。工作流中的 environment 名称本身**不自动创建审核保护**。
+1. 创建 GitHub Environment **npm**，只允许 master 分支及 `v*` tag 部署；按仓库需要配置审核人。用 tag ruleset 限制发布 tag 的创建、更新和删除，仅仓库管理员可绕过。工作流中的 environment 名称本身**不自动创建审核保护**。
 2. 在 npm 包的 Trusted Publisher 设置中授权 GitHub 仓库 `realqiyan/agent-task`、工作流 `publish.yml`、Environment `npm`，允许 `npm publish`。认证与 2FA 在 npm 官方界面完成，不上传本机登录凭据。
-3. 核查分支保护及工作流修改权限，再在 Actions 选择 Publish npm，输入已验收的版本（本次为 `0.1.0-rc.1`）。认证/权限失败须停止，不能换账号或跳过验证。
+3. 核查 master 与工作流修改权限，再推送版本 tag；需要手动发起时，在 Actions 选择 Publish npm 并输入已验收的版本。认证/权限失败须停止，不能换账号或跳过验证。
 
 发布作业使用 Node 24 与支持 OIDC 的 npm；命令明确传 `--tag latest --access public --provenance`。Trusted Publisher 授权和 provenance 是不同条件，设置工作流不等于 npm 已授权。首次配置和有效期限制以 [npm 官方说明](https://docs.npmjs.com/trusted-publishers/)为准。
 
@@ -46,11 +60,12 @@ npm 接收发布后可能仍在处理包。发布后验收最多等待五分钟�
 npm login --registry=https://registry.npmjs.org
 npm whoami --registry=https://registry.npmjs.org
 # 必须确认输出 realqiyan，再发布已检查的 tarball：
-npm publish ./realqiyan-agent-task-0.1.0-rc.1.tgz --ignore-scripts \
+VERSION=$(node -p "require('./package.json').version")
+npm publish "./realqiyan-agent-task-$VERSION.tgz" --ignore-scripts \
   --access public --tag latest --registry=https://registry.npmjs.org
-npm view @realqiyan/agent-task@0.1.0-rc.1 version license --registry=https://registry.npmjs.org
+npm view "@realqiyan/agent-task@$VERSION" version license --registry=https://registry.npmjs.org
 npm view @realqiyan/agent-task dist-tags --json --registry=https://registry.npmjs.org
-node scripts/verify-install.mjs --registry
+EXPECTED_VERSION="$VERSION" node scripts/verify-install.mjs --registry
 ```
 
 登录成功不等于发布授权已完成。若 registry 返回需要 2FA 的 E403，停止发布；维护者须在自己的终端完成发布时认证，或配置有目标包发布权限、短有效期且获准 bypass 2FA 的 granular token。不要关闭账号 2FA，不在聊天、命令参数或日志中传递一次性验证码或 token；不把本机登录凭据自动上传到 GitHub。

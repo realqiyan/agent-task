@@ -1,6 +1,8 @@
 name: Publish npm
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
@@ -20,12 +22,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    if: github.repository == 'realqiyan/agent-task' && github.actor == 'realqiyan' && github.triggering_actor == 'realqiyan'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+      - name: Check release ref, version and master ancestry
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: node scripts/check-release.mjs
+
   validate:
-    if: github.repository == 'realqiyan/agent-task' && github.ref == 'refs/heads/master' && github.actor == 'realqiyan' && github.triggering_actor == 'realqiyan'
+    needs: preflight
     uses: ./.github/workflows/ci.yml
 
   publish:
-    needs: validate
+    needs: [preflight, validate]
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -39,9 +60,10 @@ jobs:
         with:
           node-version: "24.x"
           registry-url: https://registry.npmjs.org
-      - name: Check reviewed artifact version
+      - name: Check reviewed artifact version and publication state
         env:
-          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
+          VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_only }}
         run: |
           node --input-type=module <<'JS'
           import { readdirSync } from "node:fs";
@@ -54,13 +76,19 @@ jobs:
           assert.equal(pkg.version, process.env.EXPECTED_VERSION);
           assert.equal(pkg.license, "MIT");
           assert.equal(pkg.publishConfig.tag, "latest");
+          if (process.env.VERIFY_ONLY !== "true") {
+            const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}`, {
+              signal: AbortSignal.timeout(15000),
+            });
+            assert.equal(response.status, 404, "Version exists or registry state is unavailable; do not upload again");
+          }
           JS
       - name: Publish with npm trusted publishing (no rebuild or package scripts)
-        if: ${{ !inputs.verify_only }}
+        if: github.event_name == 'push' || !inputs.verify_only
         run: |
           npm publish realqiyan-agent-task-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
       - name: Verify public latest and default global install
         env:
-          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           node scripts/verify-install.mjs --registry
