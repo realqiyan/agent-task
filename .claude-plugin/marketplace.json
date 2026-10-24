@@ -1,0 +1,16 @@
+{
+  "name": "agent-task",
+  "metadata": {
+    "description": "Agent Task installation, usage guidance and native MCP connection"
+  },
+  "owner": {
+    "name": "realqiyan"
+  },
+  "plugins": [
+    {
+      "name": "agent-task",
+      "source": "./hosts/agent-task",
+      "description": "Using Agent Task: installation, setup and existing MCP tools"
+    }
+  ]
+}

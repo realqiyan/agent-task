@@ -1,0 +1,39 @@
+{
+  "name": "@realqiyan/agent-task-hosts",
+  "version": "0.1.0-rc.5",
+  "type": "module",
+  "description": "Using Agent Task: installation, setup and existing MCP tools for Pi, Claude Code and Codex",
+  "license": "MIT",
+  "author": "realqiyan",
+  "keywords": [
+    "pi-package",
+    "mcp",
+    "agent-task"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/realqiyan/agent-task.git",
+    "directory": "hosts/agent-task"
+  },
+  "files": [
+    ".claude-plugin/plugin.json",
+    ".codex-plugin/plugin.json",
+    "mcp.json",
+    "pi-extension.js",
+    "hooks/",
+    "scripts/",
+    "skills/",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "latest"
+  },
+  "pi": {
+    "extensions": ["./pi-extension.js"],
+    "skills": [
+      "./skills"
+    ]
+  }
+}

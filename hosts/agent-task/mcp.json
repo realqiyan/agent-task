@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agent-task": {
+      "type": "stdio",
+      "command": "agent-task",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, realpathSync, lstatSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, lstatSync, writeSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -16,20 +16,48 @@ let unlock;
 try {
   const options = argumentsFor(process.argv.slice(2));
   if (options.help) {
-    console.log("Usage: agent-task setup [--home ABSOLUTE_PRIVATE_DIR]\nNew installation: confirm directories, port, tokens and coordinator in the terminal.\nNoninteractive: --home DIR --data-dir DIR --port NUMBER --generate-tokens|--credentials-file PRIVATE_JSON --yes [--provider openai|anthropic|deepseek|openai-compatible --model ID]\nCompatible provider: --base-url URL --api openai-completions|openai-responses --api-key-env NAME --context-window NUMBER --max-tokens NUMBER\nExisting installation: --check | --resume. Secrets are read from a private JSON file or hidden terminal input, never command arguments. No executor installation during setup.");
+    console.log("Usage: agent-task setup [--home ABSOLUTE_PRIVATE_DIR]\nNew installation: confirm directories, port, tokens and coordinator in the terminal.\nNoninteractive: --home DIR --data-dir DIR --port NUMBER --generate-tokens|--credentials-file PRIVATE_JSON --yes [--provider openai|anthropic|deepseek|openai-compatible --model ID]\nCompatible provider: --base-url URL --api openai-completions|openai-responses --api-key-env NAME --context-window NUMBER --max-tokens NUMBER\nExisting installation: --check [--json] (read-only) | --resume. Secrets are read from a private JSON file or hidden terminal input, never command arguments. No executor installation during setup.");
     process.exit(0);
   }
+  if (options.json && !options.check) throw new Error("--json is only supported with setup --check");
   let root = installRoot(options);
-  if (!existsSync(join(root, "installation.json")) && !options.check && !options.resume && !options.yes) {
+  if (options.check) {
+    if (Object.keys(options).some(key => !["home", "check", "json"].includes(key))) throw new Error("Use setup --check with only optional --json and --home");
+    // This branch never creates a directory, opens SQLite, starts a service or repairs files.
+    let report;
+    try {
+      let present = true;
+      try { lstatSync(join(root, "installation.json")); }
+      catch (error) { if (error.code === "ENOENT") present = false; else throw error; }
+      if (!present) {
+        report = { configuration: existsSync(join(root, "launch.json")) ? "invalid" : "missing" };
+      } else {
+        const manifest = readManifest(root);
+        if (manifest.phase === "initializing") report = { configuration: "incomplete" };
+        else {
+          if (manifest.phase !== "ready" || !existsSync(join(packageRoot, "dist/application/main.js"))) throw new Error("Invalid installation");
+          const paths = startupPaths(root), config = loadConfig(paths.configPath), environment = readEnvironment(paths.environmentPath);
+          validateServiceEnvironment(config, environment);
+          report = { configuration: "valid", coordinatorConfigured: Boolean(config.coordinator && environment[coordinatorCredentialEnv(config.coordinator)]) };
+        }
+      }
+    } catch {
+      // Do not serialize exceptions: schema/parser errors can include private values.
+      report = { configuration: "invalid" };
+    }
+    writeSync(1, JSON.stringify(report) + "\n");
+    process.exit(report.configuration === "valid" ? 0 : 1);
+  }
+  if (!existsSync(join(root, "installation.json")) && !options.resume && !options.yes) {
     await setupWizard(options, root); root = installRoot(options);
   }
   let manifest, initialEnvironment;
   if (existsSync(join(root, "installation.json"))) {
     manifest = readManifest(root);
-    if (Object.keys(options).some(key => !["home", "check", "resume"].includes(key))) throw new Error("Installation exists; use configuration commands instead of initialization flags");
+    if (Object.keys(options).some(key => !["home", "resume"].includes(key))) throw new Error("Installation exists; use configuration commands instead of initialization flags");
     if (manifest.phase !== "ready" && !options.resume) throw new Error("Incomplete initialization; inspect private files and use --resume explicitly");
   } else {
-    if (options.check || options.resume) throw new Error("No installation to check/resume");
+    if (options.resume) throw new Error("No installation to resume");
     if (!options.yes || !options.home || !options["data-dir"] || options.port === undefined ||
       (!options["generate-tokens"] && !options["credentials-file"])) throw new Error("Confirm initialization with --home, --data-dir, --port, --generate-tokens/--credentials-file and --yes");
     const dataDir = installRoot({ home: options["data-dir"] });
@@ -84,7 +112,7 @@ try {
   validateServiceEnvironment(config, readEnvironment(paths.environmentPath));
   console.log(JSON.stringify({ configuration: "valid", coordinator: config.coordinator ? "configured; authentication not verified" : "not configured",
     configPath: paths.configPath, credentialsPath: paths.environmentPath, executorDiscovery: "on MCP connection" }, null, 2));
-  if (!options.check) console.log("Add agent-task with args [mcp] to your MCP client (include --home for a custom installation). Token values are not printed. Use agent-task start for foreground management.");
+  console.log("Add agent-task with args [mcp] to your MCP client (include --home for a custom installation). Token values are not printed. Use agent-task start for foreground management.");
 } catch (error) {
   console.error(error.name === "ZodError" ? "Invalid initialization configuration; check provider, model, directories and port" : error.message);
   process.exitCode = 1;

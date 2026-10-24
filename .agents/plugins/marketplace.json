@@ -1,0 +1,20 @@
+{
+  "name": "agent-task",
+  "interface": {
+    "displayName": "Agent Task"
+  },
+  "plugins": [
+    {
+      "name": "agent-task",
+      "source": {
+        "source": "local",
+        "path": "./hosts/agent-task"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -55,6 +55,9 @@ try {
     }
   }
 } catch (error) {
-  console.error(process.argv.includes("--json") ? JSON.stringify({ error: error.message }) : error.message);
+  const message = process.argv[2] === "mcp"
+    ? error.message + "\nFor installation, setup or connection troubleshooting, use using-agent-task: Pi /skill:using-agent-task; Claude Code /agent-task:using-agent-task; Codex $using-agent-task. Do not reinstall or replay work without checking the cause."
+    : error.message;
+  console.error(process.argv.includes("--json") ? JSON.stringify({ error: message }) : message);
   process.exitCode = 1;
 }

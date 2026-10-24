@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 export const packageRoot = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
 
 export function argumentsFor(argv) {
-  const flags = new Set(["check", "resume", "help", "yes", "generate-tokens"]), options = {};
+  const flags = new Set(["check", "json", "resume", "help", "yes", "generate-tokens"]), options = {};
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, "");
     if (!argv[i].startsWith("--") || key in options) throw new Error("Invalid or repeated option");

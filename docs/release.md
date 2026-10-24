@@ -24,6 +24,19 @@ npm run test:install -- "./realqiyan-agent-task-$VERSION.tgz"
 
 npm 接收发布后可能仍在处理包。[发布后验收](../scripts/verify-install.mjs)有限等待公开 `latest` 指向目标版本，再执行默认全局安装；等待只读取 registry。超时先核对版本状态，不重复上传。
 
+## 独立接入包
+
+[轻量包](../hosts/agent-task/package.json)为 `@realqiyan/agent-task-hosts`，使用同一项目版本，不依赖服务或 SDK，不运行安装脚本。它允许先安装 `using-agent-task`，再经用户确认安装服务；不是服务的替代安装。Claude Code/Codex 还可直接使用仓库 marketplace，不依赖此 npm 包。
+
+```bash
+npm run pack:hosts
+# 产物：hosts/realqiyan-agent-task-hosts-<项目版本>.tgz
+```
+
+[独立包门禁](../scripts/pack-hosts.mjs)检查版本、无执行/依赖字段和实际包清单；不需要构建服务。[接入测试](../tests/host-integrations.test.mjs)使用临时目录和空 npm 缓存离线安装真实 tarball。发布前还须通过本文的项目检查，并用对应宿主验收引导发现与连接，不能将 skill 文本当成模型已执行的证据。
+
+当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `hosts/realqiyan-agent-task-hosts-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:@realqiyan/agent-task-hosts`；此前文档中的 npm 入口仅代表预定分发方式。
+
 ## GitHub Actions 门禁与受控发布
 
 - [Validate](../.github/workflows/ci.yml)：PR/master 或手动触发时在 Ubuntu 执行 TypeScript 与依赖边界检查、基础测试及构建；检查包清单。安装任务**不 checkout 项目源码**，只接收 tarball 和验收脚本，在当前 Linux runner 验证启动、重启及认证检查。常规 CI 使用 Linux runner，不能据此推断 macOS 验证结果。
@@ -32,7 +45,7 @@ npm 接收发布后可能仍在处理包。[发布后验收](../scripts/verify-i
 
 ### 通过 tag 发布
 
-1. 核对 npm 中目标版本尚未发布。用 `npm version <新版本> --no-git-tag-version --ignore-scripts` 同步包版本和锁文件；完成上述候选验收后，提交并推送到 master。
+1. 核对 npm 中目标版本尚未发布。用 `npm version <新版本> --no-git-tag-version --ignore-scripts` 同步包版本和锁文件，并将 `hosts/agent-task/package.json`、`hosts/agent-task/.claude-plugin/plugin.json`、`hosts/agent-task/.codex-plugin/plugin.json` 的版本设为同一值；打包门禁拒绝不一致。完成上述候选验收后，提交并推送到 master。
 2. 给已验收的提交打版本 tag，并单独推送该 tag：
 
 ```bash
