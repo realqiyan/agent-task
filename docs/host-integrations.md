@@ -10,7 +10,7 @@ Agent Task 支持 Linux/macOS、Node.js 22.19+ 与 npm。Pi 需要 1.4.0+ 的原
 
 服务与插件在同一仓库开发，分别打包。服务包 `@realqiyan/agent-task` 提供 CLI 和运行依赖；插件包 `@realqiyan/agent-task-plugin` 仅包含宿主接入资产，不依赖服务或 SDK，没有 npm 安装 hook。**不要用 `pi install npm:@realqiyan/agent-task` 安装插件。** 服务发行包不再携带插件副本。
 
-源码 marketplace 固定选择已审查的插件包版本，不跟随 npm latest。以下 npm 入口须在新包和对应 marketplace 发布后使用；当前改名不等于已发布，状态与限制见[验证说明](validation.md#宿主接入包)。不存在第二个分发仓库。
+源码 marketplace 固定选择已审查的插件包版本，不跟随 npm latest。新包和对应 marketplace 已发布；以下入口的验收版本与限制见[验证说明](validation.md#宿主接入包)。不存在第二个分发仓库。
 
 ### Pi
 

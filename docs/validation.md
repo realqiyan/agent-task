@@ -22,9 +22,9 @@ git diff --check
 
 [接入测试](../tests/host-integrations.test.mjs)从真实 tarball、空 npm 缓存离线安装独立接入包，并通过真实 setup、stdio 与官方 MCP SDK 调用上述只读工具。[启动检查测试](../tests/host-preflight.test.mjs)检查配置缺失/损坏、失败进程、输出限制与取消、无目录/锁写入及私密值不回显；hook 故障输出不阻塞会话，正常状态不输出通知。[插件包门禁](../scripts/pack-plugin.mjs)检查实际包包含 hook、扩展、清单和 skill，并验证两个 npm marketplace 的版本；[服务包门禁](../scripts/pack-release.mjs)拒绝混入插件资产。原生宿主不是基础测试依赖。
 
-旧名 `@realqiyan/agent-task-hosts@0.1.0-rc.5` 曾完成 npm 发布及 Pi 默认安装、skill 发现和启动通知验证；本机发布，无 GitHub provenance。证据：`/tmp/agent-task-rc5-pi-registry-VbshgS/report.json`。维护者已主动删除旧包；该历史验收不代表当前可安装性，不恢复旧名发布。
+正式接入包为 `@realqiyan/agent-task-plugin`。维护者已主动删除旧名 `@realqiyan/agent-task-hosts`，不恢复旧名发布，也不自动改写用户的旧包注册。
 
-新名 `@realqiyan/agent-task-plugin` 尚未发布。Linux、Claude Code 2.1.302/Codex CLI 0.164.0 的隔离配置中，两者都识别 npm 来源并尝试 registry 下载；使用旧包的探针因 404 停止，未证明 npm 插件安装成功。生成的本地插件快照在两种宿主安装成功；不涉及模型或用户 hook 信任。证据：`/tmp/agent-task-npm-source-nNH1U9/report.json`、同目录 `local-report.json`。发布新包后仍须核验清单 URL/稀疏索引入口、npm 下载、skill/hook/MCP 加载；这些未验证条件不因本地安装通过而消失。
+`@realqiyan/agent-task-plugin@0.1.0-rc.6` 已发布，npmjs latest 指向该版本；本机发布，无 GitHub provenance。Linux x64、Node 24.15.0 的隔离 HOME/空 npm 缓存中，Pi 1.4.0 的 npm 安装、Claude Code 2.1.302 的清单 URL → npm 安装、Codex CLI 0.164.0 的同仓稀疏索引 → npm 安装均通过。Pi 的 skill 发现和缺少服务命令时的通知、Codex 的 skill/hook 发现通过；没有授予 hook 信任或调用模型。证据：`/tmp/agent-task-rc6-native-b6lchl/remote-report.json`、同目录 `report.json`、`pi-runtime.jsonl`、`codex-runtime.json`。本地开发快照的安装证据为 `/tmp/agent-task-npm-source-nNH1U9/local-report.json`。本次 npm 分发验收不代替上文的 MCP 连接证据或真实任务验收。
 
 未执行三种宿主的模型驱动安装/setup/日常使用会话、Pi/Claude 模型侧工具调用、真实 TUI 告警展示、Codex 用户信任后的 hook 调用、macOS 接入或自定义 home 的宿主 UI 禁用流程。探针不运行模型或 ACP 领域工作；可发现的真实失败程序只提供连接前置条件，不证明执行端能完成任务。操作入口见[宿主接入](host-integrations.md)。
 
@@ -78,11 +78,11 @@ Linux x64、Node 24.15.0 的隔离环境证据：
 
 | 范围 | 结论 | 证据 |
 | --- | --- | --- |
-| `0.1.0-rc.5`，提交 `0ef200f` | Node 22.19.0/24.x 基础检查、包门禁、Linux 独立安装、GitHub OIDC 发布及 npmjs 默认安装验收通过；公开包有 provenance，latest 指向该版本 | [发布运行](https://github.com/realqiyan/agent-task/actions/runs/40104773771)、[npm 版本](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0-rc.5) |
-| 同版本，Linux x64、Node 24.15.0 | 从 npmjs 默认安装到独立 prefix，通过前台、Web/CLI 重启、stdio 后台、断开后健康及 stop 检查；捕获输出未发现验证凭据 | `/tmp/agent-task-npm-PmUzGG/report.json` |
+| `0.1.0-rc.6`，提交 `4dbab08` | Node 22.19.0/24.x 基础检查、包门禁、Linux 独立安装、GitHub OIDC 发布及 npmjs 默认安装验收通过；公开包有 provenance，latest 指向该版本 | [发布运行](https://github.com/realqiyan/agent-task/actions/runs/40109848894)、[npm 版本](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0-rc.6) |
+| 同版本，Linux x64、Node 24.15.0 | 从 npmjs 默认安装到独立 prefix，通过前台、Web/CLI 重启、stdio 后台、断开后健康及 stop 检查；捕获输出未发现验证凭据 | `/tmp/agent-task-npm-frokWM/report.json` |
 | `0.0.1-rc.2`，提交 `48549ea`，历史平台证据 | Ubuntu x64 与 macOS ARM64 hosted runner 在 Node 22.19.0 下使用 CI tarball、无源码完成安装、前台、重启及认证检查 | [Validate 运行](https://github.com/realqiyan/agent-task/actions/runs/39829900075) |
 
-`0.1.0-rc.5` 的发布验收未执行 macOS、浏览器或真实模型/ACP 任务；旧 macOS 证据不覆盖当前版本、Intel Mac、休眠或用户注销。安装检查使用真实失败程序提供可发现路径，不证明成功 ACP 执行。PTY 能力不可用时测试明确跳过，跳过不是通过。
+`0.1.0-rc.6` 的发布验收未执行 macOS、浏览器或真实模型/ACP 任务；旧 macOS 证据不覆盖当前版本、Intel Mac、休眠或用户注销。安装检查使用真实失败程序提供可发现路径，不证明成功 ACP 执行。PTY 能力不可用时测试明确跳过，跳过不是通过。
 
 上述发布状态是验收时的事实，不是实时 registry 查询；包内文档是发布提交的快照。
 
