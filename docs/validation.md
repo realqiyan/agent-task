@@ -122,6 +122,18 @@ Linux x64、Node 24.15.0 的本机记录：
 
 ## npm 发布候选验证
 
+### 0.1.0-rc.2（已发布）
+
+本候选完善 MCP 输出契约、错误分类、紧凑列表和调用说明，并加入版本 tag 自动发布。发布操作与权限要求见[发布说明](release.md)。
+
+2026-10-24，Linux x64、Node 24.15.0：锁定依赖重装、类型与依赖边界检查、51 项基础测试、工作流语法检查、包清单门禁及独立安装验收均通过。[发布准入测试](../tests/release.test.mjs)使用真实本地 Git，验证版本不匹配、锁文件漂移、普通分支推送和未进入 master 的提交被拒绝；registry 安装验收缺少目标版本时在安装前拒绝。候选包报告：`/tmp/agent-task-npm-mOeeiG/report.json`。
+
+推送 `v0.1.0-rc.2` 自动触发[发布运行 40067373860](https://github.com/realqiyan/agent-task/actions/runs/40067373860)，对应提交 `7ffed5c`。版本与 master 归属检查、Node 22.19.0/24.x 各 51 项测试（无跳过）、包门禁、Linux 独立安装、GitHub OIDC 发布及发布后默认安装验收全部通过。没有重复上传或移动 tag。
+
+随后匿名 npmjs 查询确认 **[@realqiyan/agent-task@0.1.0-rc.2](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0-rc.2)** 已存在、`latest=0.1.0-rc.2`，并有 provenance 记录。本机使用独立 prefix 与原生 HOME 从 npmjs 默认安装再次通过，覆盖前台、Web/CLI 重启、stdio 后台、断开后健康及 stop；报告：`/tmp/agent-task-npm-qiT8oy/report.json`。输出未发现验收凭据。
+
+本次未执行 macOS、浏览器或真实模型/ACP 任务验收，不将安装通过视为模型授权或交付质量证据。临时证据可能被系统清理；包内文档是发布提交的快照，后续结果以本仓库为准。
+
 ### 0.1.0-rc.1（已发布）
 
 本候选包含 stdio 共用后台、本机执行端发现与适配器准备、固定任务目录和按目录去重，以及调度周期调整。初始化须确认目录、端口、令牌及协调模型；普通启动不转换旧配置或业务数据。

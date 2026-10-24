@@ -22,7 +22,7 @@
 | MCP、HTTP 与 Web | [MCP 工具](../src/protocol/mcp.ts)、[输出契约](../src/protocol/mcp-contract.ts)、[stdio 接入](../src/protocol/stdio.ts)、[HTTP 服务](../src/protocol/http/server.ts)、[Web 路由](../src/protocol/http/web.ts)、[页面](../src/web/) | [service.test.mjs](../tests/service.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
 | CLI 与本机控制协议 | [CLI](../src/protocol/cli/commands.ts)、[管理客户端](../src/protocol/cli/admin-client.ts)、[启动器客户端](../src/integrations/local-service/control.ts) | [web.test.mjs](../tests/web.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs) |
 | 装配、启动、关闭与重启 | [main](../src/application/main.ts)、[MCP 后台启动](../src/application/mcp-entry.ts)、[业务运行实例](../src/application/task-runtime.ts)、[launcher](../src/application/launcher.ts)、[启动准备](../src/application/startup.ts) | [stdio.test.mjs](../tests/stdio.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs)、[service.test.mjs](../tests/service.test.mjs) |
-| 安装与发布 | [命令入口](../bin/agent-task.mjs)、[setup](../scripts/setup.mjs)、[安装库](../scripts/install-lib.mjs)、[包门禁](../scripts/pack-release.mjs)、[工作流](../.github/workflows/) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[发布说明](release.md) |
+| 安装与发布 | [命令入口](../bin/agent-task.mjs)、[setup](../scripts/setup.mjs)、[安装库](../scripts/install-lib.mjs)、[包门禁](../scripts/pack-release.mjs)、[发布准入](../scripts/check-release.mjs)、[工作流](../.github/workflows/) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[release.test.mjs](../tests/release.test.mjs)、[发布说明](release.md) |
 
 ## 依赖与一致性边界
 
