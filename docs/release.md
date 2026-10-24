@@ -35,7 +35,7 @@ npm run pack:hosts
 
 [独立包门禁](../scripts/pack-hosts.mjs)检查版本、无执行/依赖字段和实际包清单；不需要构建服务。[接入测试](../tests/host-integrations.test.mjs)使用临时目录和空 npm 缓存离线安装真实 tarball。发布前还须通过本文的项目检查，并用对应宿主验收引导发现与连接，不能将 skill 文本当成模型已执行的证据。
 
-当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `hosts/realqiyan-agent-task-hosts-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:@realqiyan/agent-task-hosts`；此前文档中的 npm 入口仅代表预定分发方式。
+当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `hosts/realqiyan-agent-task-hosts-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:@realqiyan/agent-task-hosts`；实际已发布版本与验收边界见[验证说明](validation.md#宿主接入包)。
 
 ## GitHub Actions 门禁与受控发布
 

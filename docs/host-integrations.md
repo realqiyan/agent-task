@@ -46,15 +46,15 @@ codex plugin add agent-task@agent-task
 
 ## 分发入口与发布边界
 
-独立轻量 npm 包名为 `@realqiyan/agent-task-hosts`，不依赖服务或 SDK，也没有 npm 安装 hook。**维护者发布该包后**，Pi 可直接使用：
+独立轻量 npm 包名为 `@realqiyan/agent-task-hosts`，不依赖服务或 SDK，也没有 npm 安装 hook。Pi 可直接使用：
 
 ```bash
 pi install npm:@realqiyan/agent-task-hosts
 ```
 
-Claude Code/Codex 的 marketplace 文件进入远端后，可将上文 marketplace add 参数替换为 `realqiyan/agent-task`，无需预装服务或克隆源码。
+Claude Code/Codex 可将上文 marketplace add 参数替换为 `realqiyan/agent-task`，无需预装服务或克隆源码。
 
-这些入口的源码配置不等于已完成发布；当前改动可使用上述本地入口。独立包的打包、发布要求见[发布说明](release.md#独立接入包)。包含接入资产的服务 npm 发行版仍可提供同一目录，已安装服务的用户可将 `AGENT_TASK_SOURCE` 设为 `$(npm root -g)/@realqiyan/agent-task`；这不是首次接入的前提。
+npm 接入包和远端 marketplace 已提供；适用版本及安装验收见[验证说明](validation.md#宿主接入包)。独立包的打包、发布要求见[发布说明](release.md#独立接入包)。包含接入资产的服务 npm 发行版仍可提供同一目录，已安装服务的用户可将 `AGENT_TASK_SOURCE` 设为 `$(npm root -g)/@realqiyan/agent-task`；这不是首次接入的前提。
 
 ## 启动提醒与检查边界
 
