@@ -7,8 +7,10 @@
     {
       "name": "agent-task",
       "source": {
-        "source": "local",
-        "path": "./hosts/agent-task"
+        "source": "npm",
+        "package": "@realqiyan/agent-task-plugin",
+        "version": "0.1.0-rc.6",
+        "registry": "https://registry.npmjs.org"
       },
       "policy": {
         "installation": "AVAILABLE",

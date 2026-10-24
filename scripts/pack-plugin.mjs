@@ -5,13 +5,13 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = new URL("../hosts/agent-task/", import.meta.url);
+const root = new URL("../plugin/", import.meta.url);
 const json = name => JSON.parse(readFileSync(new URL(name, root), "utf8"));
 const pkg = json("package.json");
 const project = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-assert(process.argv.length <= 3, "Usage: node scripts/pack-hosts.mjs [output-directory]");
+assert(process.argv.length <= 3, "Usage: node scripts/pack-plugin.mjs [output-directory]");
 const destination = resolve(process.argv[2] ?? fileURLToPath(new URL("..", root)));
-assert.equal(pkg.name, "@realqiyan/agent-task-hosts");
+assert.equal(pkg.name, "@realqiyan/agent-task-plugin");
 assert.equal(pkg.version, project.version);
 assert.equal(pkg.license, "MIT");
 assert(!pkg.private);
@@ -21,6 +21,12 @@ for (const field of ["dependencies", "devDependencies", "optionalDependencies", 
   assert(!pkg[field], "Host installation must not install or execute the service: " + field);
 }
 for (const path of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) assert.equal(json(path).version, pkg.version);
+for (const path of [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"]) {
+  const catalog = JSON.parse(readFileSync(new URL("../" + path, import.meta.url), "utf8"));
+  assert.deepEqual(catalog.plugins[0].source, {
+    source: "npm", package: pkg.name, version: pkg.version, registry: "https://registry.npmjs.org",
+  }, "Marketplace must select the reviewed npm plugin: " + path);
+}
 const packed = spawnSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", destination], {
   cwd: root, encoding: "utf8", timeout: 30_000,
 });

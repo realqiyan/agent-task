@@ -42,11 +42,18 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run pack:release
+      - run: npm run pack:plugin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-plugin-candidate
+          path: realqiyan-agent-task-plugin-*.tgz
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: npm-candidate
           path: |
-            realqiyan-agent-task-*.tgz
+            realqiyan-agent-task-[0-9]*.tgz
             scripts/verify-install.mjs
           if-no-files-found: error
           retention-days: 7

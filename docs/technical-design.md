@@ -24,7 +24,7 @@
 | 装配、启动、关闭与重启 | [main](../src/application/main.ts)、[MCP 后台启动](../src/application/mcp-entry.ts)、[业务运行实例](../src/application/task-runtime.ts)、[launcher](../src/application/launcher.ts)、[启动准备](../src/application/startup.ts) | [stdio.test.mjs](../tests/stdio.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs)、[service.test.mjs](../tests/service.test.mjs) |
 | 安装与发布 | [命令入口](../bin/agent-task.mjs)、[setup](../scripts/setup.mjs)、[安装库](../scripts/install-lib.mjs)、[包门禁](../scripts/pack-release.mjs)、[发布准入](../scripts/check-release.mjs)、[工作流](../.github/workflows/) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[release.test.mjs](../tests/release.test.mjs)、[发布说明](release.md) |
 
-宿主安装资产位于 [hosts/agent-task](../hosts/agent-task/)，包含原生插件清单、MCP 连接声明、`using-agent-task` 使用引导和只读启动检查，不进入服务运行时依赖图。检查通过 CLI 摘要复用 setup 校验；[检查测试](../tests/host-preflight.test.mjs)验证无写入、故障分类和凭据不回显。[独立包门禁](../scripts/pack-hosts.mjs)不构建或安装服务；[接入测试](../tests/host-integrations.test.mjs)验证无服务依赖的离线安装、清单契约和真实 stdio 工具调用；宿主原生流程见[接入说明](host-integrations.md)。
+宿主安装资产位于 [plugin](../plugin/)，包含原生插件清单、MCP 连接声明、`using-agent-task` 使用引导和只读启动检查，不进入服务运行时依赖图。检查通过 CLI 摘要复用 setup 校验；[检查测试](../tests/host-preflight.test.mjs)验证无写入、故障分类和凭据不回显。[独立包门禁](../scripts/pack-plugin.mjs)不构建或安装服务；[接入测试](../tests/host-integrations.test.mjs)验证无服务依赖的离线安装、清单契约和真实 stdio 工具调用；宿主原生流程见[接入说明](host-integrations.md)。
 
 ## 依赖与一致性边界
 

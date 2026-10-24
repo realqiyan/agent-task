@@ -4,25 +4,23 @@ A dependency-free Pi package and Claude Code/Codex plugin. The plugin remains na
 
 ## Install before the service
 
-From an Agent Task source checkout, no service build or npm install is needed:
+Service and plugin sources share one Git repository, but ship as separate npm packages. Do not install `@realqiyan/agent-task` as a Pi plugin. This plugin is `@realqiyan/agent-task-plugin`.
+
+After the plugin package and its matching marketplace entries are published:
 
 ```bash
-pi install /absolute/path/to/agent-task/hosts/agent-task
-# Or, for Claude Code:
-claude plugin marketplace add /absolute/path/to/agent-task
+pi install npm:@realqiyan/agent-task-plugin
+# Or Claude Code: fetch only the marketplace index, then the npm plugin
+claude plugin marketplace add https://raw.githubusercontent.com/realqiyan/agent-task/master/.claude-plugin/marketplace.json
 claude plugin install agent-task@agent-task --scope user
-# Or, for Codex CLI:
-codex plugin marketplace add /absolute/path/to/agent-task
+# Or Codex: sparse-checkout the index, then fetch the npm plugin
+codex plugin marketplace add realqiyan/agent-task --sparse .agents/plugins
 codex plugin add agent-task@agent-task
 ```
 
-Keep a local source directory in place while it is registered. After the marketplace files are published to Git, Claude Code/Codex can use `realqiyan/agent-task` instead of the local repository path.
+The catalogs pin the reviewed npm plugin version. Their existence is not proof that the package has been published. Codex sparse checkout does not eliminate all Git metadata or root files.
 
-The standalone npm package is `@realqiyan/agent-task-hosts`. **Only after a maintainer publishes it**, Pi can install it with:
-
-```bash
-pi install npm:@realqiyan/agent-task-hosts
-```
+For unpublished source, Pi can install the repository's `plugin/` directory directly. Claude/Codex developers can run `node scripts/create-plugin-marketplace.mjs` in the repository and register its output directory, then install `agent-task@agent-task-dev`. The snapshot has a local source and does not use npm. Do not enable development and release copies together.
 
 There is no npm install hook or service dependency. This package does not silently run `npm install -g @realqiyan/agent-task`. In a new session, invoke:
 

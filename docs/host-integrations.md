@@ -2,59 +2,71 @@
 
 **先安装接入包，再由 `using-agent-task` 引导安装、初始化和使用服务。** 插件名仍为 `agent-task`。skill 只指导使用现有 CLI/MCP，不增加任务 API、执行器或业务规则。
 
-入口：[共享包](../hosts/agent-task/)、[使用引导](../hosts/agent-task/skills/using-agent-task/SKILL.md)、[Claude marketplace](../.claude-plugin/marketplace.json)、[Codex marketplace](../.agents/plugins/marketplace.json)。
+入口：[共享包](../plugin/)、[使用引导](../plugin/skills/using-agent-task/SKILL.md)、[Claude marketplace](../.claude-plugin/marketplace.json)、[Codex marketplace](../.agents/plugins/marketplace.json)。
 
 Agent Task 支持 Linux/macOS、Node.js 22.19+ 与 npm。Pi 需要 1.4.0+ 的原生 MCP；Claude Code 需要插件支持；Codex CLI 需要 `plugin marketplace add` 和 `plugin add`。不承诺 Codex IDE、云端或其他同名插件系统可用。核验版本与限制见[验证说明](validation.md#宿主接入包)。
 
-## 不预装服务的本地入口
+## 一个仓库、两个 npm 包
 
-当前源码可直接安装接入包，**不需要先执行服务的 `npm ci`、build、link 或 setup**。在包含本次接入资产的仓库根目录设置：
+服务与插件在同一仓库开发，分别打包。服务包 `@realqiyan/agent-task` 提供 CLI 和运行依赖；插件包 `@realqiyan/agent-task-plugin` 仅包含宿主接入资产，不依赖服务或 SDK，没有 npm 安装 hook。**不要用 `pi install npm:@realqiyan/agent-task` 安装插件。** 服务发行包不再携带插件副本。
 
-```bash
-AGENT_TASK_SOURCE="$(pwd -P)"
-```
-
-然后只执行对应宿主的安装命令。保留被引用的本地目录；接入包与服务安装目录是两个概念。
+源码 marketplace 固定选择已审查的插件包版本，不跟随 npm latest。以下 npm 入口须在新包和对应 marketplace 发布后使用；当前改名不等于已发布，状态与限制见[验证说明](validation.md#宿主接入包)。不存在第二个分发仓库。
 
 ### Pi
 
 ```bash
-pi install "$AGENT_TASK_SOURCE/hosts/agent-task"
+pi install npm:@realqiyan/agent-task-plugin
 ```
 
-启动 Pi（已有会话先 `/reload`），调用 `/skill:using-agent-task`。Pi package 安装 skill 和只读启动检查扩展，首次引导会在 setup 完成并取得确认后，执行原生 `pi mcp add` 注册连接。已有同名连接时先核对，不盲目替换。需要项目作用域时，分别为 package 安装和 MCP 注册选择 `--local` 并审查项目信任设置。
+需要项目作用域时附加 `--local`。启动 Pi（已有会话先 `/reload`），调用 `/skill:using-agent-task`。插件安装 skill 和只读检查扩展；首次引导在 setup 完成并取得确认后用原生 `pi mcp add` 注册连接。MCP 注册的作用域须单独选择，不替换已有同名连接。
 
 ### Claude Code
 
+通过清单 URL 获取索引，不克隆服务仓库：
+
 ```bash
-claude plugin marketplace add "$AGENT_TASK_SOURCE"
+claude plugin marketplace add https://raw.githubusercontent.com/realqiyan/agent-task/master/.claude-plugin/marketplace.json
 claude plugin install agent-task@agent-task --scope user
 ```
 
-在新会话调用 `/agent-task:using-agent-task`。插件已声明 `agent-task mcp`，不要重复执行 `claude mcp add`。服务未安装或 setup 未完成时，MCP 连接失败是预期行为，不妨碍使用引导。初始化后重开会话或在 `/mcp` 重连。
+marketplace 的 npm 来源让宿主下载插件包。需要项目级声明时选择 `--scope project`。新会话调用 `/agent-task:using-agent-task`。插件已声明 MCP，不要重复 `claude mcp add`。
 
 ### Codex CLI
 
+稀疏检出同仓的索引，然后从 npm 安装插件：
+
 ```bash
-codex plugin marketplace add "$AGENT_TASK_SOURCE"
+codex plugin marketplace add realqiyan/agent-task --sparse .agents/plugins
 codex plugin add agent-task@agent-task
 ```
 
-在新会话调用 `$using-agent-task`，或在 `/skills` 中选择它。支持原生 onboarding 的界面也指向同一 skill。插件已声明 `agent-task mcp`，不要重复执行 `codex mcp add`。初始化后开新会话，在 `/mcp` 检查连接；`codex mcp list` 的静态配置输出本身不证明连接成功。
+稀疏检出避免展开整个服务源码树，但不承诺完全不下载 Git 元数据或根目录文件。也可使用本地 marketplace 索引目录，无需 Git 克隆。新会话调用 `$using-agent-task`，或在 `/skills` 选择它。原生 onboarding 指向同一 skill；检查提醒需要先在 `/hooks` 中审查信任。
 
-安装接入资产不需要服务凭据；让宿主模型执行 skill 仍需宿主自身的模型认证。
+### 服务与项目边界
 
-## 分发入口与发布边界
+Claude/Codex 都由宿主通过 npm 获取插件，不是运行 `npm install -g` 后就自动注册。服务未安装或 setup 未完成时 MCP 失败是预期行为，skill 仍可使用；初始化后重开会话或在宿主 MCP 界面重连。`codex mcp list` 的静态配置不是连接成功证据。
 
-独立轻量 npm 包名为 `@realqiyan/agent-task-hosts`，不依赖服务或 SDK，也没有 npm 安装 hook。Pi 可直接使用：
+插件通过 PATH 调用独立服务 `agent-task mcp`，不运行插件缓存里的服务源码。多个 workspace 的本地插件可共用服务；`--local` 或项目级安装只控制宿主配置，不隔离服务数据。需要独立后台时显式配置不同 `--home`。删除项目插件不删除服务或任务历史。
+
+安装接入资产不需要服务凭据；让模型执行 skill 需要宿主自身的模型认证。引导仍须先取得确认，才能安装服务或改配置。
+
+## 未发布资产的本地验收
+
+不需要服务的 npm ci、build、link 或 setup。仓库根目录执行：
 
 ```bash
-pi install npm:@realqiyan/agent-task-hosts
+AGENT_TASK_SOURCE="$(pwd -P)"
+pi install "$AGENT_TASK_SOURCE/plugin"
+
+# Claude/Codex：生成只含插件及本地索引的独立临时快照
+MARKETPLACE="$(node scripts/create-plugin-marketplace.mjs)"
+claude plugin marketplace add "$MARKETPLACE"
+claude plugin install agent-task@agent-task-dev --scope user
+codex plugin marketplace add "$MARKETPLACE"
+codex plugin add agent-task@agent-task-dev
 ```
 
-Claude Code/Codex 可将上文 marketplace add 参数替换为 `realqiyan/agent-task`，无需预装服务或克隆源码。
-
-npm 接入包和远端 marketplace 已提供；适用版本及安装验收见[验证说明](validation.md#宿主接入包)。独立包的打包、发布要求见[发布说明](release.md#独立接入包)。包含接入资产的服务 npm 发行版仍可提供同一目录，已安装服务的用户可将 `AGENT_TASK_SOURCE` 设为 `$(npm root -g)/@realqiyan/agent-task`；这不是首次接入的前提。
+只执行需要的宿主命令。生成器不安装依赖、不改宿主配置；本地 marketplace 名为 `agent-task-dev`，与正式源区分。保留快照目录直到移除注册，修改源码后重新生成并更新注册；不要同时启用正式插件与开发插件，以免重复 MCP 连接。根目录的正式 marketplace 指向 npm，直接注册仓库不会加载尚未发布的 `plugin/` 改动。
 
 ## 启动提醒与检查边界
 
@@ -73,7 +85,7 @@ export AGENT_TASK_PREFLIGHT_HOME=/absolute/private/agent-task
 
 这些变量**只选择检查目标，不修改 MCP 连接**，也不推断或改写宿主配置。已关闭插件 MCP、改用远程连接或不需要此提示时，可在宿主原生设置中禁用该 hook/扩展，保留 skill。
 
-Codex 插件 hook 必须先在 `/hooks` 中审查并信任；安装插件不自动授权 hook。Claude Code/Pi 也须允许插件 hook/扩展运行。禁用、未信任或 Node 无法启动时，不能保证出现自定义提示，仍可显式调用上述 skill。不要通过绕过信任或扩大权限来消除提示。程序入口见 [preflight](../hosts/agent-task/scripts/preflight.mjs)、[Pi 扩展](../hosts/agent-task/pi-extension.js)、[hook 入口](../hosts/agent-task/scripts/session-start.mjs)。
+Codex 插件 hook 必须先在 `/hooks` 中审查并信任；安装插件不自动授权 hook。Claude Code/Pi 也须允许插件 hook/扩展运行。禁用、未信任或 Node 无法启动时，不能保证出现自定义提示，仍可显式调用上述 skill。不要通过绕过信任或扩大权限来消除提示。程序入口见 [preflight](../plugin/scripts/preflight.mjs)、[Pi 扩展](../plugin/pi-extension.js)、[hook 入口](../plugin/scripts/session-start.mjs)。
 
 ## 引导如何安装服务
 
@@ -91,9 +103,9 @@ npm install -g @realqiyan/agent-task
 
 引导按需读取包内参考文件，复制到插件缓存或独立安装后不依赖仓库文档：
 
-- [安装与连接](../hosts/agent-task/skills/using-agent-task/references/installation.md)：setup、原生 MCP 注册、自定义 home/绝对命令路径和连接验证。
-- [日常使用](../hosts/agent-task/skills/using-agent-task/references/tasks.md)：通过现有 MCP 提交固定 DAG、查看运行与交付、回答事实问题、区分未来触发控制和当前运行取消。
-- [排障](../hosts/agent-task/skills/using-agent-task/references/troubleshooting.md)：区分安装、连接、配置、适配器准备和执行结果不明，不盲目重试。
+- [安装与连接](../plugin/skills/using-agent-task/references/installation.md)：setup、原生 MCP 注册、自定义 home/绝对命令路径和连接验证。
+- [日常使用](../plugin/skills/using-agent-task/references/tasks.md)：通过现有 MCP 提交固定 DAG、查看运行与交付、回答事实问题、区分未来触发控制和当前运行取消。
+- [排障](../plugin/skills/using-agent-task/references/troubleshooting.md)：区分安装、连接、配置、适配器准备和执行结果不明，不盲目重试。
 
 安装验收只需宿主显示已连接，并成功调用 `executor_list({})`、`task_list({})`。Pi 默认通过原生 codemode/tool search 发现工具；使用实际宿主命名空间。不为验收创建任务或执行付费模型/领域工作。连接成功、执行端 ready、原生授权和真实交付是不同证据。
 
@@ -101,12 +113,15 @@ npm install -g @realqiyan/agent-task
 
 ## 更新与移除
 
-接入包与服务使用同一项目版本，但分别安装。接入包更新不升级服务、不执行 setup、不迁移数据；更新服务前按[部署说明](deployment.md#数据目录与管理)停服并备份。使用宿主原生 package/marketplace 更新入口刷新接入资产，再重开会话。
+接入包与服务使用同一项目版本，但分别安装。正式 marketplace 固定插件版本，更新时须刷新索引再使用宿主的插件更新入口；开发快照不会自动同步源码。接入包更新不升级服务、不执行 setup、不迁移数据；更新服务前按[部署说明](deployment.md#数据目录与管理)停服并备份。使用宿主原生 package/marketplace 更新入口刷新接入资产，再重开会话。
 
-- Pi 本地安装：`pi remove "$AGENT_TASK_SOURCE/hosts/agent-task"`；npm 安装：`pi remove npm:@realqiyan/agent-task-hosts`。另用 `pi mcp remove agent-task` 移除引导注册的 MCP 连接。
+- Pi 本地安装：`pi remove "$AGENT_TASK_SOURCE/plugin"`；npm 安装：`pi remove npm:@realqiyan/agent-task-plugin`。另用 `pi mcp remove agent-task` 移除引导注册的 MCP 连接。
 - Claude Code：`claude plugin uninstall agent-task@agent-task`。
 - Codex：`codex plugin remove agent-task@agent-task`。
+- 本地开发插件使用同一移除命令，但标识为 `agent-task@agent-task-dev`；不再使用时另行移除 `agent-task-dev` marketplace 注册。
 - 另行添加的手工 MCP 连接需单独移除。
+
+原先注册旧 npm 插件包的用户须审查后显式移除旧包声明、再安装新包；不要同时加载两份。若误把服务包通过 `pi install` 注册为插件，只移除该 Pi 声明，不自动卸载独立服务或删除数据。
 
 宿主退出或卸载插件不停止已提交任务。`agent-task status` 查看共享后台，`agent-task stop` 显式停止；先核对活动工作，自定义安装附加相同 `--home`。卸载接入包不删除服务、历史、工作空间或原生执行端配置。
 

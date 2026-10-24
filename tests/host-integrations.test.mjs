@@ -9,13 +9,22 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { controlService } from "../dist/integrations/local-service/control.js";
 
 const json = path => JSON.parse(readFileSync(path, "utf8"));
-const bundle = resolve("hosts/agent-task");
+const bundle = resolve("plugin");
 
-test("host catalogs resolve one self-contained bundle and the same native MCP entry", () => {
+test("npm and local catalogs select the reviewed plugin and the same native MCP entry", t => {
   const claudeCatalog = json(".claude-plugin/marketplace.json");
   const codexCatalog = json(".agents/plugins/marketplace.json");
-  assert.equal(resolve(claudeCatalog.plugins[0].source), bundle);
-  assert.equal(resolve(codexCatalog.plugins[0].source.path), bundle);
+  for (const catalog of [claudeCatalog, codexCatalog]) {
+    assert.deepEqual(catalog.plugins[0].source, {
+      source: "npm", package: "@realqiyan/agent-task-plugin",
+      version: json("package.json").version, registry: "https://registry.npmjs.org",
+    });
+  }
+  const local = execFileSync(process.execPath, [resolve("scripts/create-plugin-marketplace.mjs")], { encoding: "utf8" }).trim();
+  t.after(() => rmSync(local, { recursive: true, force: true }));
+  assert.equal(json(join(local, ".claude-plugin/marketplace.json")).plugins[0].source, "./plugin");
+  assert.deepEqual(json(join(local, ".agents/plugins/marketplace.json")).plugins[0].source, { source: "local", path: "./plugin" });
+  assert(existsSync(join(local, "plugin/pi-extension.js")));
   const claude = json(join(bundle, ".claude-plugin/plugin.json"));
   const codex = json(join(bundle, ".codex-plugin/plugin.json"));
   const pkg = json("package.json");
@@ -34,7 +43,7 @@ test("host catalogs resolve one self-contained bundle and the same native MCP en
 test("standalone host tarball installs offline without the service or runtime dependencies", { timeout: 30_000 }, t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-host-package-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const artifact = JSON.parse(execFileSync(process.execPath, [resolve("scripts/pack-hosts.mjs"), root], {
+  const artifact = JSON.parse(execFileSync(process.execPath, [resolve("scripts/pack-plugin.mjs"), root], {
     encoding: "utf8", timeout: 15_000,
   }));
   const prefix = join(root, "install");
@@ -42,7 +51,7 @@ test("standalone host tarball installs offline without the service or runtime de
     cwd: root, encoding: "utf8", timeout: 15_000,
     env: { PATH: process.env.PATH, HOME: root, npm_config_cache: join(root, "cache") },
   });
-  const installed = join(prefix, "node_modules/@realqiyan/agent-task-hosts");
+  const installed = join(prefix, "node_modules/@realqiyan/agent-task-plugin");
   assert.equal(json(join(installed, "package.json")).version, json("package.json").version);
   assert(!existsSync(join(prefix, "node_modules/@realqiyan/agent-task")));
   assert(!existsSync(join(installed, "node_modules")));
@@ -52,7 +61,7 @@ test("standalone host tarball installs offline without the service or runtime de
 });
 
 test("bundled stdio command uses setup and calls existing tools without credentials in host config", { timeout: 30_000 }, async t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-hosts-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-plugin-"));
   const bin = join(root, "bin"), user = join(root, "user");
   for (const path of [bin, user]) mkdirSync(path, { mode: 0o700 });
   symlinkSync(process.execPath, join(bin, "node"));

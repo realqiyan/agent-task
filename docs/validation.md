@@ -20,9 +20,11 @@ git diff --check
 
 同一环境中，Pi RPC 发出缺少命令的通知并保留模型上下文，未触发模型运行（`pi-preflight.jsonl`）；Claude headless 原生 SessionStart 执行并返回用户提示和上下文（`claude-hook.jsonl`，MCP 被显式关闭以验证独立性）。Codex 发现同步 hook 且无清单错误，但标记为未信任；未绕过审查执行。
 
-[接入测试](../tests/host-integrations.test.mjs)从真实 tarball、空 npm 缓存离线安装独立接入包，并通过真实 setup、stdio 与官方 MCP SDK 调用上述只读工具。[启动检查测试](../tests/host-preflight.test.mjs)检查配置缺失/损坏、失败进程、输出限制与取消、无目录/锁写入及私密值不回显；hook 故障输出不阻塞会话，正常状态不输出通知。[独立包门禁](../scripts/pack-hosts.mjs)与[服务包门禁](../scripts/pack-release.mjs)检查实际包包含 hook、扩展、清单和 skill。原生宿主不是基础测试依赖。
+[接入测试](../tests/host-integrations.test.mjs)从真实 tarball、空 npm 缓存离线安装独立接入包，并通过真实 setup、stdio 与官方 MCP SDK 调用上述只读工具。[启动检查测试](../tests/host-preflight.test.mjs)检查配置缺失/损坏、失败进程、输出限制与取消、无目录/锁写入及私密值不回显；hook 故障输出不阻塞会话，正常状态不输出通知。[插件包门禁](../scripts/pack-plugin.mjs)检查实际包包含 hook、扩展、清单和 skill，并验证两个 npm marketplace 的版本；[服务包门禁](../scripts/pack-release.mjs)拒绝混入插件资产。原生宿主不是基础测试依赖。
 
-`@realqiyan/agent-task-hosts@0.1.0-rc.5` 已发布到 npmjs，`latest` 指向该版本；本机发布，无 GitHub provenance。Linux 隔离 HOME/空 npm 缓存中，Pi 从 npm 默认安装、skill 发现和启动通知通过，未运行模型。证据：`/tmp/agent-task-rc5-pi-registry-VbshgS/report.json`。同版本的 Claude/Codex marketplace 及插件清单已推送到远端。
+旧名 `@realqiyan/agent-task-hosts@0.1.0-rc.5` 曾完成 npm 发布及 Pi 默认安装、skill 发现和启动通知验证；本机发布，无 GitHub provenance。证据：`/tmp/agent-task-rc5-pi-registry-VbshgS/report.json`。维护者已主动删除旧包；该历史验收不代表当前可安装性，不恢复旧名发布。
+
+新名 `@realqiyan/agent-task-plugin` 尚未发布。Linux、Claude Code 2.1.302/Codex CLI 0.164.0 的隔离配置中，两者都识别 npm 来源并尝试 registry 下载；使用旧包的探针因 404 停止，未证明 npm 插件安装成功。生成的本地插件快照在两种宿主安装成功；不涉及模型或用户 hook 信任。证据：`/tmp/agent-task-npm-source-nNH1U9/report.json`、同目录 `local-report.json`。发布新包后仍须核验清单 URL/稀疏索引入口、npm 下载、skill/hook/MCP 加载；这些未验证条件不因本地安装通过而消失。
 
 未执行三种宿主的模型驱动安装/setup/日常使用会话、Pi/Claude 模型侧工具调用、真实 TUI 告警展示、Codex 用户信任后的 hook 调用、macOS 接入或自定义 home 的宿主 UI 禁用流程。探针不运行模型或 ACP 领域工作；可发现的真实失败程序只提供连接前置条件，不证明执行端能完成任务。操作入口见[宿主接入](host-integrations.md)。
 

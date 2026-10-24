@@ -4,10 +4,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { inspectInstallation } from "../hosts/agent-task/scripts/preflight.mjs";
+import { inspectInstallation } from "../plugin/scripts/preflight.mjs";
 
 const cli = resolve("bin/agent-task.mjs");
-const hook = resolve("hosts/agent-task/scripts/session-start.mjs");
+const hook = resolve("plugin/scripts/session-start.mjs");
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 function snapshot(directory) {
   if (!existsSync(directory)) return null;

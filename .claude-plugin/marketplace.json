@@ -9,7 +9,12 @@
   "plugins": [
     {
       "name": "agent-task",
-      "source": "./hosts/agent-task",
+      "source": {
+        "source": "npm",
+        "package": "@realqiyan/agent-task-plugin",
+        "version": "0.1.0-rc.6",
+        "registry": "https://registry.npmjs.org"
+      },
       "description": "Using Agent Task: installation, setup and existing MCP tools"
     }
   ]

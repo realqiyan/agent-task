@@ -1,11 +1,17 @@
 {
   "name": "agent-task",
-  "version": "0.1.0-rc.5",
+  "version": "0.1.0-rc.6",
   "description": "Install, set up and use Agent Task through its existing MCP tools",
   "author": {
     "name": "realqiyan"
   },
   "license": "MIT",
+  "skills": "./skills/",
   "mcpServers": "./mcp.json",
-  "hooks": "./hooks/claude.json"
+  "hooks": "./hooks/codex.json",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/using-agent-task/SKILL.md"
+    }
+  }
 }

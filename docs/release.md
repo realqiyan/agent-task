@@ -26,16 +26,18 @@ npm 接收发布后可能仍在处理包。[发布后验收](../scripts/verify-i
 
 ## 独立接入包
 
-[轻量包](../hosts/agent-task/package.json)为 `@realqiyan/agent-task-hosts`，使用同一项目版本，不依赖服务或 SDK，不运行安装脚本。它允许先安装 `using-agent-task`，再经用户确认安装服务；不是服务的替代安装。Claude Code/Codex 还可直接使用仓库 marketplace，不依赖此 npm 包。
+[轻量包](../plugin/package.json)为 `@realqiyan/agent-task-plugin`，使用同一项目版本，不依赖服务或 SDK，不运行安装脚本。它允许先安装 `using-agent-task`，再经用户确认安装服务；不是服务的替代安装。Claude Code/Codex 的正式 marketplace 也从该 npm 包获取插件；服务发行包不携带插件副本。未发布资产使用[本地快照](host-integrations.md#未发布资产的本地验收)。
 
 ```bash
-npm run pack:hosts
-# 产物：hosts/realqiyan-agent-task-hosts-<项目版本>.tgz
+npm run pack:plugin
+# 产物：realqiyan-agent-task-plugin-<项目版本>.tgz
 ```
 
-[独立包门禁](../scripts/pack-hosts.mjs)检查版本、无执行/依赖字段和实际包清单；不需要构建服务。[接入测试](../tests/host-integrations.test.mjs)使用临时目录和空 npm 缓存离线安装真实 tarball。发布前还须通过本文的项目检查，并用对应宿主验收引导发现与连接，不能将 skill 文本当成模型已执行的证据。
+[独立包门禁](../scripts/pack-plugin.mjs)检查版本、无执行/依赖字段和实际包清单；不需要构建服务。[接入测试](../tests/host-integrations.test.mjs)使用临时目录和空 npm 缓存离线安装真实 tarball。发布前还须通过本文的项目检查，并用对应宿主验收引导发现与连接，不能将 skill 文本当成模型已执行的证据。
 
-当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `hosts/realqiyan-agent-task-hosts-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:@realqiyan/agent-task-hosts`；实际已发布版本与验收边界见[验证说明](validation.md#宿主接入包)。
+CI 分别生成服务与插件候选产物；当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `realqiyan-agent-task-plugin-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:@realqiyan/agent-task-plugin`；实际已发布版本与验收边界见[验证说明](validation.md#宿主接入包)。
+
+插件首次改名不沿用旧包发布权限。发布时先完成全部门禁，在明确授权后发布新插件包并验证公开 registry 与宿主安装，再推送引用它的 marketplace；不要让正式索引指向尚不可下载的版本。服务 tag 的发布流程保持独立。旧包不自动撤销、弃用或重发，宿主配置也不自动迁移。
 
 ## GitHub Actions 门禁与受控发布
 
@@ -45,7 +47,7 @@ npm run pack:hosts
 
 ### 通过 tag 发布
 
-1. 核对 npm 中目标版本尚未发布。用 `npm version <新版本> --no-git-tag-version --ignore-scripts` 同步包版本和锁文件，并将 `hosts/agent-task/package.json`、`hosts/agent-task/.claude-plugin/plugin.json`、`hosts/agent-task/.codex-plugin/plugin.json` 的版本设为同一值；打包门禁拒绝不一致。完成上述候选验收后，提交并推送到 master。
+1. 核对 npm 中目标版本尚未发布。用 `npm version <新版本> --no-git-tag-version --ignore-scripts` 同步包版本和锁文件，并将 `plugin/package.json`、`plugin/.claude-plugin/plugin.json`、`plugin/.codex-plugin/plugin.json` 的版本，以及两个 marketplace 的 npm 来源版本设为同一值；`pack:plugin` 拒绝不一致。完成上述候选验收后，提交并推送到 master。
 2. 给已验收的提交打版本 tag，并单独推送该 tag：
 
 ```bash
