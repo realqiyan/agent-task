@@ -9,7 +9,7 @@ import type { ExecutorDiscovery } from "../../executors/ports.js";
 import { acquireLock } from "../../infrastructure/lock.js";
 import { checkDataDirectory, readPrivateText } from "../../infrastructure/private-files.js";
 import { FileCommitError } from "../../shared/errors.js";
-import { checkExecutable, findExecutable } from "./runtime.js";
+import { checkExecutable, checkLaunchDirectory, findExecutable } from "./runtime.js";
 
 const types: ExecutorType[] = ["pi", "codex", "claude", "opencode"];
 const adapters = {
@@ -63,6 +63,12 @@ export class LocalExecutors implements ExecutorDiscovery {
   }
 
   check(executor: Executor): void {
+    if (executor.type === "custom") {
+      if (executor.command !== executor.nativePath || executor.adapterVersion !== null) throw new Error("Invalid custom ACP launch");
+      checkExecutable(executor.command);
+      if (executor.cwd !== undefined) checkLaunchDirectory(executor.cwd);
+      return;
+    }
     if (executor.id !== executor.type || !types.includes(executor.type) || this.nativePath(executor.type) !== executor.nativePath) {
       throw new Error("Native executor is missing or changed");
     }

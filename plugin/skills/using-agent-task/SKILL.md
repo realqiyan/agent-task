@@ -1,6 +1,6 @@
 ---
 name: using-agent-task
-description: Use Agent Task from Pi, Claude Code or Codex. Covers installing the service, setup and MCP connection, submitting caller-defined task DAGs, inspecting runs and deliveries, answering user-fact questions, and diagnosing connection failures.
+description: Use Agent Task from Pi, Claude Code or Codex. Covers installing the service, setup and MCP connection, submitting caller-defined task DAGs, inspecting runs and deliveries, answering user-fact questions, registering custom local stdio ACP executors through the administrator CLI, and diagnosing connection failures.
 ---
 
 # Using Agent Task
@@ -10,6 +10,7 @@ Use this skill when the user wants to use or connect Agent Task. It is guidance 
 ## Choose the next step
 
 - **First use, missing service, or setup/connection request:** read [installation](references/installation.md). With user confirmation, execute the npm installation through the host's shell tool; do not merely suggest the command when you can perform the approved operation. Credentials stay in the user's terminal or private files.
+- **Custom ACP executor request:** read [custom ACP registration](references/custom-acp.md). Use the administrator CLI after confirmation; registration applies without a service restart. Do not expose launch commands through task MCP tools.
 - **Connected and ready to work:** read [task usage](references/tasks.md). Discover the host's actual MCP tools and their current schemas. Do not run setup or reinstall the service on every task request.
 - **Connection or execution problem:** read [troubleshooting](references/troubleshooting.md). Inspect before changing anything; an uncertain outcome is not permission to replay work.
 

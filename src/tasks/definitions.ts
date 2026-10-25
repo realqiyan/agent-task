@@ -62,7 +62,7 @@ export class TaskDefinitions {
     this.check();
     return this.store.definitions().filter(task =>
       ((task.nextAt !== null && ["active", "paused"].includes(task.status)) || this.store.activeRounds(task.id).length > 0) &&
-      Object.values(task.executors).some(snapshot => disabled.includes(snapshot.type)))
+      Object.values(task.executors).some(snapshot => snapshot.type !== "custom" && disabled.includes(snapshot.type)))
       .map(task => ({ id: task.id, name: task.input.name }));
   }
   close(): void { this.closed = true; }

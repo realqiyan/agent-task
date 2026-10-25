@@ -72,6 +72,8 @@ Linux x64、Node 24.15.0 的隔离环境证据：
 
 下载成功与 initialize 不证明原生认证、工具授权或任务成功。
 
+自定义本机 stdio ACP 的源码测试入口：[执行端测试](../tests/executors.test.mjs)、[Web/CLI](../tests/web.test.mjs)、[MCP](../tests/service.test.mjs)。它们校验私有注册持久化、即时准入、重启保留、启动快照不被替换、仅自定义执行端时的 MCP 接入及管理员/MCP 权限分离；[任务测试](../tests/tasks.test.mjs)另以真实失败进程验证可选启动 `cwd` 及任务 workspace 保持不变。真实本地程序只证明参数直传、启动目录与失败路径，不证明自定义 ACP 兼容或任务交付。自定义执行端尚未进行真实 ACP/模型验收，也不表示该能力已发布。
+
 ## npm 发布候选验证
 
 发布与安装操作由[发布说明](release.md)维护。此处只保留有适用范围的证据，不逐版记录发布过程。

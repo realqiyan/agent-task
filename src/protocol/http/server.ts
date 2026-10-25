@@ -40,9 +40,9 @@ export class HttpServer {
     app.post("/mcp", async (req, res) => {
       if (req.body?.method === "initialize") {
         const discovered = options.tasks.executors.refresh();
-        if (!discovered.executors.some(executor => executor.nativePath !== null)) {
+        if (!discovered.executors.some(executor => executor.type === "custom" ? executor.state === "ready" : executor.nativePath !== null)) {
           res.json({ jsonrpc: "2.0", id: req.body.id ?? null, error: { code: -32000,
-            message: "No local executor CLI found. Install and configure at least one of pi, codex, claude or opencode, then reconnect. Management remains available." } });
+            message: "No local executor found. Install and configure pi, codex, claude or opencode, or register a local stdio ACP executable with agent-task executor register, then reconnect. Management remains available." } });
           return;
         }
       }

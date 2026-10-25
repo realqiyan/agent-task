@@ -6,10 +6,14 @@ function executorStatus(host, initial) {
   const labels = { missing: "未安装", disabled: "已禁用", installing: "准备中", ready: "可派发", error: "准备失败" };
   const draw = () => {
     clearTimeout(timer);
-    host.replaceChildren(table(["执行端", "状态", "本机路径", "ACP 适配器版本", "错误", "操作"], state.executors.map(executor => [
+    host.replaceChildren(table(["执行端", "状态", "本机路径", "进程启动目录", "ACP 适配器版本", "错误", "操作"], state.executors.map(executor => [
       executor.id, executor.state === "missing" && executor.nativePath ? "已发现，待准备" : labels[executor.state],
-      executor.nativePath, executor.adapterVersion ?? (executor.type === "opencode" ? "原生 ACP" : "—"), executor.error,
-      executor.type === "opencode" ? "通过原生 CLI 更新" : button("升级 ACP 适配器", async () => {
+      executor.nativePath, executor.cwd ?? "任务 workspace", executor.adapterVersion ?? (executor.type === "opencode" ? "原生 ACP" : "—"), executor.error,
+      executor.type === "custom" ? button("注销", async () => {
+        if (!confirm("注销 " + executor.id + "？立即阻止新的派发，不终止活动进程，也不修改已有任务或删除历史。")) return;
+        state = await request("/executors/unregister", { id: executor.id }); draw();
+        notice("已注销，无须重启。已有任务不会自动改派。");
+      }) : executor.type === "opencode" ? "通过原生 CLI 更新" : button("升级 ACP 适配器", async () => {
         if (!confirm("升级 " + executor.id + " 的托管 ACP 适配器？准备期间暂停向此执行端派发新工作。")) return;
         state = await request("/executors/upgrade", { id: executor.id }); draw();
         notice("适配器升级已开始，完成后更新状态。");
@@ -22,7 +26,10 @@ function executorStatus(host, initial) {
     }, 2000);
   };
   draw();
-  return async () => { state = await request("/executors/refresh", {}); draw(); };
+  return {
+    refresh: async () => { state = await request("/executors/refresh", {}); draw(); },
+    update: value => { state = value; draw(); },
+  };
 }
 function coordinatorEditor(host, config) {
   const provider = select("协调模型提供方", [["", "未配置"], ["openai", "OpenAI"], ["anthropic", "Anthropic"],
@@ -60,10 +67,30 @@ export async function renderSettings(root, navigate) {
     block("当前运行配置（只读，无密钥值）", state.running));
   if (state.writeBlocked) root.append(element("p", "上次文件提交结果不确定。请停服核查；当前禁止继续保存。"));
   const executorHost = element("div");
-  const refreshExecutors = executorStatus(executorHost, initial[1]);
+  const executors = executorStatus(executorHost, initial[1]);
   root.append(element("h3", "本机执行端"),
     element("p", "自动检测 pi、codex、claude 和 opencode。可派发表示启动依赖已准备，不代表原生认证或工具权限已验收。"),
-    button("重新检测并准备执行端", refreshExecutors), executorHost);
+    button("重新检测并准备执行端", executors.refresh), executorHost);
+  const registration = element("form"), custom = {
+    id: field("自定义执行端 ID（不得覆盖已有 ID）"),
+    command: field("本机 stdio ACP 可执行文件（规范绝对路径）"),
+    args: field("参数（JSON 字符串数组，不含凭据）", "[]"),
+    cwd: field("进程启动目录（可选，规范绝对目录；留空使用任务 workspace）"),
+  };
+  registration.append(element("h4", "注册自定义 ACP 执行端"),
+    element("p", "此操作授权本机程序作为执行端。使用原生配置完成认证和无人值守授权；不接受远程地址、环境变量或密钥。命令直接执行，可选目录只设置进程启动 cwd，不覆盖 ACP 会话的任务 workspace。保存后立即生效，无须重启；不启动协议或模型探测。"),
+    ...Object.values(custom).map(item => item.row));
+  registration.append(submit(registration, "注册本机 ACP", async () => {
+    let args;
+    try { args = JSON.parse(custom.args.input.value); }
+    catch { throw new Error("参数须为 JSON 字符串数组"); }
+    const input = { id: custom.id.input.value, command: custom.command.input.value, args,
+      ...(custom.cwd.input.value ? { cwd: custom.cwd.input.value } : {}) };
+    if (!confirm("确认注册 " + input.id + " 并允许服务在后续任务中启动该本机程序？参数和命令不得含凭据。")) return;
+    executors.update(await request("/executors/register", input));
+    notice("注册已保存并生效，无须重启。可派发不代表 ACP 协议、模型认证或工具授权已验证。");
+  }));
+  root.append(registration);
   const form = element("form"), modelHost = element("fieldset"), executorOptions = element("fieldset");
   modelHost.append(element("legend", "协调模型"));
   const readModel = coordinatorEditor(modelHost, state.saved.coordinator);

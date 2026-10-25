@@ -49,7 +49,7 @@ const taskInputOutput = taskData.safeExtend({
 });
 
 const executorSnapshotOutput = z.object({
-  nativePath: absolutePath.describe("Native CLI path captured at task creation."),
+  nativePath: absolutePath.describe("Local executable path captured at task creation."),
   adapterVersion: z.string().nullable().describe("Adapter version, or null for a native ACP command."),
 }).strict();
 

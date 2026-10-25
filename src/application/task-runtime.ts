@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Executor, ExecutorType } from "../executors/model.js";
 import type { ExecutorDiscovery } from "../executors/ports.js";
+import { LocalCustomExecutorFiles } from "../executors/files.js";
 import { ExecutorRegistry } from "../executors/registry.js";
 import { checkWorkspace, resolveWorkspace } from "../infrastructure/workspace.js";
 import { LocalResultFiles } from "../results/files.js";
@@ -17,7 +18,8 @@ export function createTaskRuntime(directory: string, profiles: readonly Executor
   discovery?: ExecutorDiscovery, disabled: readonly ExecutorType[] = []) {
   const store = new TaskStore(directory);
   try {
-    const executors = new ExecutorRegistry(profiles, discovery, disabled);
+    const executors = new ExecutorRegistry(profiles, discovery, disabled,
+      discovery ? new LocalCustomExecutorFiles(join(directory, "custom-executors.json")) : undefined);
     const workspaces = { resolve: resolveWorkspace, check: checkWorkspace };
     const results = new Results(new LocalResultFiles(join(directory, "results"), true));
     const definitions = new TaskDefinitions(store, executors, workspaces, Boolean(coordinate));

@@ -169,6 +169,23 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   assert.deepEqual(cliCall("executor", "show", "codex"), discovered.executors.find(executor => executor.id === "codex"));
   assert.deepEqual(cliCall("executor", "refresh"), await call("/executors/refresh", {}));
   assert.notEqual(invoke(["executor", "upgrade", "codex", "--yes"]).status, 0, "disabled executors cannot install or upgrade adapters");
+  const registrationPath = join(root, "registration.json");
+  const registration = { id: "custom-acp", command: realpathSync("/usr/bin/false"), args: ["literal argument"], cwd: root };
+  writeFileSync(registrationPath, JSON.stringify(registration), { mode: 0o600 });
+  const instanceBeforeRegistration = (await call("/status")).instanceId;
+  assert.notEqual(invoke(["executor", "register", "--file", registrationPath]).status, 0);
+  assert.equal((await raw("/api/executors/register", { method: "POST",
+    headers: { Origin: child.origin, "Content-Type": "application/json", Authorization: "Bearer " + mcpToken },
+    body: JSON.stringify(registration) })).status, 401);
+  cliCall("executor", "register", "--file", registrationPath, "--yes");
+  assert.equal(cliCall("executor", "show", registration.id).state, "ready");
+  assert.equal(cliCall("executor", "show", registration.id).cwd, root);
+  assert.equal((await call("/status")).instanceId, instanceBeforeRegistration, "registration must not restart the service");
+  assert.deepEqual(await call("/runs/" + run.id), currentRun, "registration must not change active work");
+  assert.notEqual(invoke(["executor", "register", "--file", registrationPath, "--yes"]).status, 0);
+  await call("/executors/register", { ...registration, id: "remove-me" });
+  cliCall("executor", "unregister", "remove-me", "--yes");
+  assert(!(await call("/executors")).executors.some(entry => entry.id === "remove-me"));
   cliCall("executor", "enable", "pi", "--yes");
   assert(!(await call("/settings")).saved.disabledExecutors.includes("pi"));
   assert.equal(cliCall("executor", "show", "pi").state, "disabled", "saved enablement must not change live discovery");
@@ -203,7 +220,11 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   child.origin = new URL(restarted.url).origin;
   settings = await call("/settings");
   assert.deepEqual(settings.running.disabledExecutors, executorTypes);
-  assert((await call("/executors")).executors.every(executor => executor.state === "disabled"));
+  assert((await call("/executors")).executors.filter(executor => executor.type !== "custom").every(executor => executor.state === "disabled"));
+  assert.equal(cliCall("executor", "show", registration.id).state, "ready", "custom registrations survive restart");
+  assert.equal(cliCall("executor", "show", registration.id).cwd, root);
+  await call("/executors/unregister", { id: registration.id });
+  assert.notEqual(invoke(["executor", "show", registration.id]).status, 0);
   assert.equal(settings.pendingRestart, false);
   assert.equal(settings.credentials.find(item => item.key === "OPENAI_API_KEY").pendingRestart, false);
   assert.equal((await call("/runs/" + run.id)).status, "waiting_input");

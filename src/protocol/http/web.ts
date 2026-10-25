@@ -5,10 +5,10 @@ import { bearerVerifier } from "./auth.js";
 import { SettingsError } from "../../configuration/settings.js";
 import type { Settings } from "../../configuration/settings.js";
 import { previewSettings } from "../../configuration/management.js";
-import { StorageError } from "../../shared/errors.js";
+import { StorageError, TaskError } from "../../shared/errors.js";
 import type { TaskApi } from "../services.js";
 import { parseSettings, settingsConfigSchema, settingsChangeSchema, credentialUpdateSchema,
-  executorRefreshSchema, executorUpgradeSchema } from "../settings-contract.js";
+  executorRefreshSchema, executorUpgradeSchema, executorRegisterSchema, executorUnregisterSchema } from "../settings-contract.js";
 import { taskIdSchema, taskListSchema, taskRunListSchema, taskUpdateSchema } from "../task-contract.js";
 
 type ConsoleTasks = Pick<TaskApi, "definitions" | "runs" | "supervisor" | "executors">;
@@ -55,9 +55,12 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
   const respond = (execute: (req: express.Request) => unknown): express.RequestHandler => (req, res) => {
     try { res.json({ data: execute(req) }); }
     catch (error) {
-      if (error instanceof StorageError) { fatal(error); res.status(503).json({ error: "Task storage unavailable" }); }
+      if (error instanceof StorageError) { fatal(error); res.status(503).json({ error: "Service storage unavailable" }); }
       else if (error instanceof SettingsError) {
         res.status({ invalid: 400, conflict: 409, unavailable: 503 }[error.code]).json({ error: error.message });
+      } else if (error instanceof TaskError) {
+        res.status({ validation: 400, not_found: 404, conflict: 409, precondition: 409, unavailable: 503, internal: 500 }[error.code])
+          .json({ error: error.message });
       } else res.status(400).json({ error: "Request rejected; check inputs and refresh the current state" });
     }
   };
@@ -81,6 +84,8 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
     return tasks.executors.refresh();
   }));
   router.post("/api/executors/upgrade", respond(req => tasks.executors.upgrade(parseSettings(executorUpgradeSchema, req.body).id)));
+  router.post("/api/executors/register", respond(req => tasks.executors.register(parseSettings(executorRegisterSchema, req.body))));
+  router.post("/api/executors/unregister", respond(req => tasks.executors.unregister(parseSettings(executorUnregisterSchema, req.body).id)));
   router.get("/api/settings", respond(() => settings.get()));
   router.get("/api/settings/diff", respond(() => settings.diff()));
   router.post("/api/settings/prepare", respond(req => settings.prepareChange(parseSettings(settingsChangeSchema, req.body))));

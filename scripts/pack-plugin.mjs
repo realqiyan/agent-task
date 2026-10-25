@@ -39,6 +39,7 @@ const required = [
   ".claude-plugin/plugin.json", ".codex-plugin/plugin.json",
   "skills/using-agent-task/SKILL.md",
   "skills/using-agent-task/references/installation.md",
+  "skills/using-agent-task/references/custom-acp.md",
   "skills/using-agent-task/references/tasks.md",
   "skills/using-agent-task/references/troubleshooting.md",
 ];

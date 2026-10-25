@@ -22,11 +22,19 @@ Drafts contain {editToken, config}; no credential values.
 Edit tokens expire after 15 minutes or a save/restart.
 Saving applies on next start; it does not restart the service.`,
   executor: `executor list
-executor show pi|codex|claude|opencode
+executor show ID
+executor register --file FILE [--yes]
+executor unregister ID [--yes]
 executor refresh
 executor upgrade pi|codex|claude [--yes]
 executor enable pi|codex|claude|opencode [--yes]
 executor disable pi|codex|claude|opencode [--yes]
+register reads {id, command, args, cwd?}: a unique ID, canonical absolute executable, argument array and optional startup directory, without secrets.
+Registration/unregistration persist and apply immediately; no restart or ACP/model probe.
+Commands run directly (no shell expansion), with the filtered native environment.
+Optional cwd must be an existing canonical absolute directory; omitted cwd uses the task workspace.
+This sets process startup cwd only; the ACP session workspace remains the task workspace.
+unregister blocks new dispatch; it does not stop active processes, rewrite tasks or delete history.
 list/show report current discovery and adapter preparation; native authentication is not verified.
 refresh discovers installed CLIs and prepares missing adapters in the background.
 upgrade explicitly updates a managed ACP adapter; existing tasks keep their native executor assignment.
@@ -146,7 +154,8 @@ export async function runCli(command: string, args: string[], resolveHome: (home
     case "executor":
       if (action === "list" || action === "refresh") allowed = [];
       else if (action === "show") count = 2;
-      else if (["enable", "disable", "upgrade"].includes(action!)) { count = 2; allowed = ["yes"]; }
+      else if (action === "register") allowed = ["file", "yes"];
+      else if (["enable", "disable", "upgrade", "unregister"].includes(action!)) { count = 2; allowed = ["yes"]; }
       else throw new Error("Unknown executor action");
       break;
     case "coordinator":
@@ -179,6 +188,12 @@ export async function runCli(command: string, args: string[], resolveHome: (home
   }
   const client = await connectAdmin(home);
   if (command === "status") { output({ event: "healthy", ...client.ready, ...await client.request<object>("/status") }); return; }
+  if (command === "executor" && ["register", "unregister"].includes(action!)) {
+    const input = action === "register" ? readJson(text(options, "file", true)!) : { id };
+    process.stderr.write("Custom ACP registration controls local code execution. No secrets in launch arguments. Applies immediately; existing task assignments and active processes are not changed.\n");
+    await confirm(options, action === "register" ? "Register the local ACP executable from this file?" : "Unregister " + id + " and block new dispatch?");
+    output(await client.request("/executors/" + action, input)); return;
+  }
   if (command === "executor" && ["list", "show", "refresh", "upgrade"].includes(action!)) {
     if (action === "refresh") { output(await client.request("/executors/refresh", {})); return; }
     if (action === "upgrade") {

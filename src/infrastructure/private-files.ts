@@ -38,16 +38,20 @@ export function readPrivateText(path: string): string {
   } finally { closeSync(fd); }
 }
 /** Caller owns the configuration. No await between comparison, validation and publication. */
-export function replacePrivateText(path: string, text: string): void {
+export function replacePrivateText(path: string, text: string, allowCreate = false): void {
+  const checkTarget = () => {
+    privateDirectory(path);
+    if (!allowCreate || lstatSync(path, { throwIfNoEntry: false })) ownedFile(path);
+  };
   const temporary = join(dirname(path), "." + basename(path) + "." + randomUUID() + ".tmp");
   let fd: number | undefined, created = false, published = false;
   try {
-    privateDirectory(path); ownedFile(path);
+    checkTarget();
     if (Buffer.byteLength(text) > 1_048_576) throw new Error("Configuration exceeds file limit");
     fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     created = true;
     writeFileSync(fd, text, "utf8"); fsyncSync(fd); closeSync(fd); fd = undefined;
-    privateDirectory(path); ownedFile(path);
+    checkTarget();
     renameSync(temporary, path); published = true;
     const directory = openSync(dirname(path), constants.O_RDONLY);
     try { fsyncSync(directory); } finally { closeSync(directory); }

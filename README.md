@@ -35,7 +35,7 @@ agent-task status
 agent-task restart
 ```
 
-setup 确认本机配置；MCP 连接自动启动或复用独立后台，宿主退出后后台继续运行。首次使用须安装至少一种原生执行 CLI 并准备其认证。Pi、Claude Code 和 Codex 可先安装[接入包](docs/host-integrations.md)，再通过 `using-agent-task` 引导安装服务、完成 setup 和使用现有 MCP 工具。执行端准备与服务管理见[部署说明](docs/deployment.md)。
+setup 确认本机配置；MCP 连接自动启动或复用独立后台，宿主退出后后台继续运行。首次使用须安装至少一种原生执行 CLI，或[注册自定义本机 stdio ACP](docs/cli.md#自定义本机-acp-接入)，并准备其原生认证。Pi、Claude Code 和 Codex 可先安装[接入包](docs/host-integrations.md)，再通过 `using-agent-task` 引导安装服务、完成 setup 和使用现有 MCP 工具。执行端准备与服务管理见[部署说明](docs/deployment.md)。
 
 任务由 `task_create` 提交固定 DAG，每个节点选择已就绪执行端。显式工作目录优先，否则 stdio 入口补入自己的启动目录；直接 HTTP 调用必须提供目录。具体契约见 [task-contract.ts](src/protocol/task-contract.ts)，管理工具见 [mcp.ts](src/protocol/mcp.ts)。Prompt、人工回复和工作空间选择都不授予工具权限。
 

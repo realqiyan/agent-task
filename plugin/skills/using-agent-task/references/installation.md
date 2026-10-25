@@ -18,7 +18,7 @@ Ask the user to run `agent-task setup` in their own terminal, or `agent-task set
 
 For a user-requested noninteractive setup, read `agent-task setup --help` and use only explicitly confirmed options and a user-prepared private credentials file. You may execute that command after confirmation. Do not invent model settings, generate tokens without consent or put secret values in arguments. Without a configured coordinator, management can work but executable tasks cannot be accepted.
 
-Preserve existing setup. Interrupted initialization needs an explicitly approved `--resume`; do not delete history or guess repairs. At least one native pi, codex, claude or opencode CLI must be visible to the service, with its own native login and authorization. Explain before connecting that MCP initialization may download missing ACP adapters. Readiness is not proof of authentication or complete tool authorization.
+Preserve existing setup. Interrupted initialization needs an explicitly approved `--resume`; do not delete history or guess repairs. At least one native pi, codex, claude or opencode CLI must be visible to the service, or a [custom local stdio ACP executor](custom-acp.md) must be registered and ready. Each uses its own native login and authorization. Explain before connecting that MCP initialization may download missing ACP adapters. Readiness is not proof of authentication or complete tool authorization.
 
 ## Startup-check scope and trust
 

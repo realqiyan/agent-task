@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { LocalExecutors } from "../dist/integrations/acp/discovery.js";
 import { ExecutorRegistry } from "../dist/executors/registry.js";
+import { LocalCustomExecutorFiles } from "../dist/executors/files.js";
+import { executorLaunch } from "../dist/integrations/acp/runtime.js";
+import { spawnSync } from "node:child_process";
 import { acquireLock } from "../dist/infrastructure/lock.js";
 
 function fixture(t, cached = false) {
@@ -30,6 +33,89 @@ function fixture(t, cached = false) {
   }
   return { root, bin, adapters, current, binary, discovery: new LocalExecutors(adapters, { PATH: bin, HOME: root }) };
 }
+
+test("custom stdio registrations persist before admission, remain fixed in task snapshots and need no restart", async t => {
+  const f = fixture(t), path = join(f.root, "custom-executors.json");
+  const discovery = new LocalExecutors(f.adapters, { PATH: "/missing" });
+  const open = () => new ExecutorRegistry([], discovery, [], new LocalCustomExecutorFiles(path));
+  let registry = open();
+  t.after(() => registry.close());
+  const marker = join(f.root, "must-not-start");
+  const entry = { id: "my-acp", command: realpathSync("/usr/bin/touch"), args: [marker], cwd: f.root };
+  assert.throws(() => registry.register({ ...entry, id: "pi" }));
+  assert.throws(() => registry.register({ ...entry, command: "/missing/acp" }));
+  assert.throws(() => registry.register({ ...entry, command: "https://example.invalid/acp" }));
+  assert.throws(() => registry.register({ ...entry, env: { TOKEN: "not-accepted" } }));
+  const alias = join(f.root, "directory-alias"); symlinkSync(f.bin, alias);
+  for (const cwd of ["relative", join(f.root, "missing"), entry.command, alias, null]) {
+    assert.throws(() => registry.register({ ...entry, cwd }));
+  }
+  assert.equal(existsSync(path), false, "invalid registration must not be published");
+  registry.register(entry);
+  assert.equal(existsSync(marker), false, "registration must not launch even a real local command");
+  assert.equal(statSync(path).mode & 0o777, 0o600);
+  assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), [entry]);
+  assert.equal(registry.list().executors.find(item => item.id === entry.id).state, "ready");
+  assert.equal(registry.list().executors.find(item => item.id === entry.id).cwd, f.root);
+  const snapshot = registry.snapshot([entry.id])[entry.id];
+  entry.args.push("changed-by-caller");
+  assert.deepEqual(registry.authorize(snapshot).args, [marker]);
+  assert.throws(() => registry.register(entry), /already registered/);
+  assert.throws(() => registry.upgrade(entry.id), /native installation channel/);
+  registry.refresh();
+  assert.deepEqual(registry.authorize(snapshot), snapshot);
+  await registry.close();
+  assert.throws(() => registry.register(entry), /closed/);
+  registry = open();
+  assert.deepEqual(registry.authorize(snapshot), snapshot);
+  registry.unregister(entry.id);
+  assert.throws(() => registry.authorize(snapshot), /not ready/);
+  registry.register(entry);
+  assert.throws(() => registry.authorize(snapshot), /assignment cannot be replaced/);
+  assert.deepEqual(snapshot.args, [marker], "registration changes cannot rewrite stored task bindings");
+  registry.unregister(entry.id);
+  registry.register({ ...entry, args: [marker], cwd: f.bin });
+  assert.throws(() => registry.authorize(snapshot), /assignment cannot be replaced/, "cwd alone is part of the task binding");
+  registry.unregister(entry.id);
+  await registry.close();
+  registry = open();
+  assert(!registry.list().executors.some(item => item.id === entry.id));
+
+  // A real local process proves literal argv handling, not successful ACP execution.
+  const command = realpathSync("/usr/bin/printf");
+  registry.register({ id: "literal-argv", command, args: ["%s", "$(touch " + marker + ")"] });
+  const launch = executorLaunch(registry.snapshot(["literal-argv"])["literal-argv"], { PATH: "/usr/bin:/bin" });
+  const result = spawnSync(launch.command, launch.args, { env: launch.env, encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "$(touch " + marker + ")");
+  assert.equal(existsSync(marker), false, "arguments must not be interpreted by a shell");
+});
+
+test("custom registration storage changes fail closed and missing executables cannot dispatch", async t => {
+  const f = fixture(t), path = join(f.root, "custom-executors.json");
+  const command = join(f.root, "custom-acp");
+  copyFileSync(f.binary, command);
+  const registry = new ExecutorRegistry([], new LocalExecutors(f.adapters, { PATH: "/missing" }), [],
+    new LocalCustomExecutorFiles(path));
+  t.after(() => registry.close());
+  const cwd = join(f.root, "startup"); mkdirSync(cwd);
+  registry.register({ id: "custom", command, args: [], cwd });
+  const snapshot = registry.snapshot(["custom"]).custom;
+  rmSync(cwd, { recursive: true });
+  assert.throws(() => registry.authorize(snapshot));
+  assert.equal(registry.refresh().executors.find(item => item.id === "custom").state, "error");
+  mkdirSync(cwd);
+  registry.refresh();
+  assert.deepEqual(registry.authorize(snapshot), snapshot);
+  rmSync(command);
+  assert.throws(() => registry.authorize(snapshot));
+  assert.equal(registry.refresh().executors.find(item => item.id === "custom").state, "error");
+  writeFileSync(path, "{}", { mode: 0o600 });
+  assert.throws(() => registry.unregister("custom"), /changed outside/);
+  assert.throws(() => registry.snapshot(["custom"]), /storage unavailable/);
+  assert.equal(readFileSync(path, "utf8"), "{}", "out-of-band files must not be repaired or overwritten");
+  assert.throws(() => new LocalCustomExecutorFiles(path).read(), /Cannot read/);
+});
 
 test("discovery separates a native CLI from its adapter and never installs a missing native CLI", async t => {
   const f = fixture(t);

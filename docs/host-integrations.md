@@ -104,6 +104,7 @@ npm install -g @realqiyan/agent-task
 引导按需读取包内参考文件，复制到插件缓存或独立安装后不依赖仓库文档：
 
 - [安装与连接](../plugin/skills/using-agent-task/references/installation.md)：setup、原生 MCP 注册、自定义 home/绝对命令路径和连接验证。
+- [自定义 ACP](../plugin/skills/using-agent-task/references/custom-acp.md)：通过管理员 CLI 注册本机 stdio 执行端，无须重启；MCP 只查询和选择执行端。
 - [日常使用](../plugin/skills/using-agent-task/references/tasks.md)：通过现有 MCP 提交固定 DAG、查看运行与交付、回答事实问题、区分未来触发控制和当前运行取消。
 - [排障](../plugin/skills/using-agent-task/references/troubleshooting.md)：区分安装、连接、配置、适配器准备和执行结果不明，不盲目重试。
 

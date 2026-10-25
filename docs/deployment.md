@@ -52,7 +52,7 @@ Pi、Claude Code 和 Codex 可使用[可安装接入包](host-integrations.md)�
 
 ## 执行端发现与准备
 
-每次 MCP 连接初始化时，后台从自己的原生 PATH 检测 pi、codex、claude 和 opencode。四者均不存在时拒绝 MCP 连接，提示至少安装一种；CLI/Web 管理入口仍可使用。安装和认证由对应官方工具负责：[Pi](https://github.com/earendil-works/pi/tree/v1.3.0/packages/coding-agent/docs)、[Codex](https://github.com/openai/codex)、[Claude Code](https://code.claude.com/docs/en/overview)、[OpenCode](https://opencode.ai/docs/)。
+每次 MCP 连接初始化时，后台从自己的原生 PATH 检测 pi、codex、claude 和 opencode。没有这四种 CLI 且没有就绪的自定义执行端时，拒绝 MCP 连接；CLI/Web 管理入口仍可使用。自定义本机 stdio ACP 可通过[管理员注册入口](cli.md#自定义本机-acp-接入)接入，注册无须重启。安装和认证由对应官方工具负责：[Pi](https://github.com/earendil-works/pi/tree/v1.3.0/packages/coding-agent/docs)、[Codex](https://github.com/openai/codex)、[Claude Code](https://code.claude.com/docs/en/overview)、[OpenCode](https://opencode.ai/docs/)。
 
 发现原生 CLI 后，后台为缺少 ACP 适配器的执行端安装当时最新版，已有安装直接复用；OpenCode 使用原生 ACP 命令。安装在后台进行，可用 MCP `executor_list`、`agent-task executor list` 或 Web 查看准备结果。任务只能选择就绪执行端。适配器安装失败时保留管理入口和其他就绪执行端，修正原因后显式刷新或升级。包映射和安装实现见 [discovery.ts](../src/integrations/acp/discovery.ts)。
 
@@ -82,7 +82,7 @@ MCP 接入不会自动重启一个已存在但不可用的后台。故障时查�
 
 ## 数据目录与管理
 
-运行配置、私有环境文件、任务和协调会话记录、结果及服务日志位于当前 `dataDir`。安装目录保留 `launch.json` 定位文件、初始化清单、适配器及启动器控制资源。npm 包、项目工作空间和执行端原生配置与数据目录分开。路径实现见 [startup.ts](../src/application/startup.ts)。
+运行配置、私有环境文件、自定义 ACP 注册、任务和协调会话记录、结果及服务日志位于当前 `dataDir`。安装目录保留 `launch.json` 定位文件、初始化清单、适配器及启动器控制资源。npm 包、项目工作空间和执行端原生配置与数据目录分开。路径实现见 [startup.ts](../src/application/startup.ts)。
 
 Web 访问 `status` 返回地址同源的 `/admin/`，连接与令牌保护见[控制台说明](web-console.md#启用与连接)；命令行管理见 [CLI 说明](cli.md)。两端使用同一管理服务。
 

@@ -8,5 +8,5 @@ export type TaskApi = {
   definitions: Pick<TaskDefinitions, "create" | "get" | "list" | "update" | "executorImpact">;
   runs: Pick<TaskRuns, "get" | "list">;
   supervisor: Pick<RunSupervisor, "status" | "reply" | "cancel">;
-  executors: Pick<ExecutorRegistry, "list" | "refresh" | "upgrade">;
+  executors: Pick<ExecutorRegistry, "list" | "refresh" | "upgrade" | "register" | "unregister">;
 };

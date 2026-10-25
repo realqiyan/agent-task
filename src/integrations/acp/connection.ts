@@ -54,7 +54,7 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
   const results = new Results(new LocalResultFiles(resultsRoot));
   const launch = executorLaunch(executor, process.env);
   const child = spawn(launch.command, launch.args, {
-    cwd: workspace, env: launch.env, detached: true, stdio: ["pipe", "pipe", "pipe"],
+    cwd: launch.cwd ?? workspace, env: launch.env, detached: true, stdio: ["pipe", "pipe", "pipe"],
   });
   const controller = new AbortController();
   const cancel = AbortSignal.any([signal, controller.signal]);

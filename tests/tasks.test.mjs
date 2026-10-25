@@ -15,12 +15,15 @@ function executable(dir, name, command, args) {
   const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
   writeFileSync(join(dir, name), "#!/bin/sh\nexec " + [command, ...args].map(quote).join(" ") + "\n", { mode: 0o700 });
 }
-function fixture(t, command = "/usr/bin/false", args = [], nodes = [node("A"), node("B", ["A"])]) {
+function fixture(t, command = "/usr/bin/false", args = [], nodes = [node("A"), node("B", ["A"])], custom = false, cwd) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-contract-"));
   const store = new TaskStore(dir);
   // Real failing/waiting OS processes, not ACP protocol imitations.
   executable(dir, "codex-acp", command, args);
-  const executor = executorRecord.parse({ id: "local", type: "codex", nativePath: "/usr/bin/false", command: join(dir, "codex-acp"), args: [], adapterVersion: null });
+  const launch = custom ? { type: "custom", nativePath: realpathSync(command), command: realpathSync(command), args,
+    ...(cwd === undefined ? {} : { cwd }) }
+    : { type: "codex", nativePath: "/usr/bin/false", command: join(dir, "codex-acp"), args: [] };
+  const executor = executorRecord.parse({ id: "local", ...launch, adapterVersion: null });
   const executors = [executor];
   let service = createTaskRuntime(dir, executors, createExecution({ PATH: dir }),
     createCoordinator(dir, { provider: "openai", model: "not-a-real-model" }), error => { throw error; });
@@ -139,12 +142,14 @@ test("recovery blocks uncertain ACP work, but keeps coordinator-only runs resuma
 });
 
 test("real failing ACP process closes the run instead of allowing an automatic retry", { timeout: 10000 }, async t => {
-  const f = fixture(t);
-  await assert.rejects(f.service.supervisor.converse(f.run.id, "A", "Replace the supplied prompt"), /First turn/);
-  await assert.rejects(f.service.supervisor.converse(f.run.id, "A"));
-  assert.equal(f.service.runs.get(f.run.id).nodes[0].turns[0].prompt, f.input.nodes[0].prompt);
-  assert.equal(f.service.runs.get(f.run.id).status, "interrupted");
-  await assert.rejects(f.service.supervisor.converse(f.run.id, "A"), /not running/);
+  for (const custom of [false, true]) {
+    const f = fixture(t, "/usr/bin/false", custom ? ["literal argument"] : [], undefined, custom);
+    await assert.rejects(f.service.supervisor.converse(f.run.id, "A", "Replace the supplied prompt"), /First turn/);
+    await assert.rejects(f.service.supervisor.converse(f.run.id, "A"));
+    assert.equal(f.service.runs.get(f.run.id).nodes[0].turns[0].prompt, f.input.nodes[0].prompt);
+    assert.equal(f.service.runs.get(f.run.id).status, "interrupted");
+    await assert.rejects(f.service.supervisor.converse(f.run.id, "A"), /not running/);
+  }
 });
 
 test("cancellation and timeout stop real waiting ACP processes without producing deliveries", { timeout: 10000 }, async t => {
@@ -223,6 +228,26 @@ test("Cron admission persists calendar slots, counts misses without catch-up, sk
   assert.equal(f.service.definitions.get(task.id).nextAt, null);
   assert.equal(f.service.runs.list(task.id).items.length, 3);
   assert.equal(f.service.runs.get(run.id).status, "running");
+});
+
+test("custom process cwd defaults to the task workspace or uses its registered directory without changing task records", async t => {
+  const startup = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-startup-"));
+  try {
+    for (const cwd of [undefined, startup]) {
+      // Real failing process: this checks process startup and persistence, not successful ACP session setup.
+      const f = fixture(t, process.execPath,
+        ["--eval", 'require("node:fs").writeFileSync("cwd-record.txt", process.cwd()); process.exit(1);'], undefined, true, cwd);
+      const expected = cwd ?? f.task.workspace;
+      await assert.rejects(f.service.supervisor.converse(f.run.id, "A"));
+      assert.equal(readFileSync(join(expected, "cwd-record.txt"), "utf8"), expected);
+      assert.equal(f.service.runs.get(f.run.id).nodes[0].workspace, f.task.workspace);
+      assert.equal(f.service.definitions.get(f.task.id).workspace, f.dir);
+      assert.equal(f.service.definitions.get(f.task.id).executors.local.cwd, cwd);
+      await f.reopen();
+      assert.equal(f.service.definitions.get(f.task.id).executors.local.cwd, cwd);
+      assert.equal(f.store.run(f.run.id).nodes[0].workspace, f.task.workspace);
+    }
+  } finally { rmSync(startup, { recursive: true, force: true }); }
 });
 
 test("task workspaces are canonical and immutable; actual failed process cwd persists", async t => {

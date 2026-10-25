@@ -121,12 +121,24 @@ test("MCP checks native CLIs on connection, keeps management available and prese
     assert.match(client.getInstructions() ?? "", /task_run_list/);
     return client;
   };
-  await assert.rejects(connect(), /No local executor CLI found.*pi, codex, claude or opencode/);
+  await assert.rejects(connect(), /No local executor found.*pi, codex, claude or opencode/);
   const adminHeaders = { Authorization: "Bearer " + adminToken };
   const adminUrl = new URL(url).origin + "/admin/api";
   assert.equal((await fetch(adminUrl + "/settings", { headers: adminHeaders })).status, 200);
   const missing = await (await fetch(adminUrl + "/executors", { headers: adminHeaders })).json();
   assert(missing.data.executors.every(executor => executor.state === "missing" && executor.nativePath === null));
+  // Registration alone allows MCP connection with no built-in CLI and no service restart.
+  const registerResponse = await fetch(adminUrl + "/executors/register", { method: "POST", headers: {
+    ...adminHeaders, Origin: new URL(url).origin, "Content-Type": "application/json",
+  }, body: JSON.stringify({ id: "custom-acp", command: await realpath("/usr/bin/false"), args: ["literal argument"] }) });
+  assert.equal(registerResponse.status, 200);
+  const customClient = await connect();
+  const customList = (await call(customClient, "executor_list")).executors;
+  assert.equal(customList.find(entry => entry.id === "custom-acp").state, "ready");
+  assert(customList.filter(entry => entry.id !== "custom-acp").every(entry => entry.nativePath === null));
+  assert(!(await customClient.listTools()).tools.some(tool => tool.name === "executor_register"));
+  assert.equal((await checkedCall(customClient, "executor_register", {})).isError, true);
+  await customClient.close();
   // A later connection discovers a newly installed binary without restarting the service.
   await symlink("/usr/bin/false", join(dir, "opencode"));
   const client = await connect();
@@ -227,5 +239,12 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   const validateRun = contracts.get(reader).get("task_run_get");
   assert.equal(validateRun({ ok: true, data: { ...replied, questions: [{}] } }).valid, false);
   assert.equal(validateRun({ ok: true, data: { ...run, nodes: [{ ...run.nodes[0], turns: [{ output: 1 }] }] } }).valid, false);
+  const customTask = await call(reader, "task_create", { requestKey: "custom", name: "custom", prompt: "Inspect",
+    workspace: dir, nodes: [{ id: "inspect", prompt: "Inspect", executorId: "custom-acp" }],
+    schedule: { type: "once", at: new Date(Date.now() + 3_600_000).toISOString() } });
+  assert.deepEqual((await call(reader, "task_get", { id: customTask.id })).executors, customTask.executors);
+  assert.equal(customTask.executors["custom-acp"].nativePath, await realpath("/usr/bin/false"));
+  assert(!("args" in customTask.executors["custom-acp"]));
+  await call(reader, "task_update", { id: customTask.id, action: "cancel" });
   assert.deepEqual([...successfulTools].sort(), names.sort());
 });

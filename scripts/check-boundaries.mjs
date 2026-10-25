@@ -17,7 +17,7 @@ const roles = {
   schema: ["shared/validation.ts", "tasks/validation.ts", "tasks/storage/records.ts", "executors/validation.ts", "configuration/contract.ts"],
   service: ["tasks/definitions.ts", "tasks/runs.ts", "tasks/supervisor.ts", "tasks/sessions.ts", "executors/registry.ts",
     "results/service.ts", "configuration/settings.ts", "configuration/management.ts"],
-  storage: ["tasks/storage/store.ts", "results/files.ts", "configuration/files.ts"],
+  storage: ["tasks/storage/store.ts", "results/files.ts", "configuration/files.ts", "executors/files.ts"],
 };
 function role(path) {
   for (const [name, entries] of Object.entries(roles)) if (entries.includes(path)) return name;

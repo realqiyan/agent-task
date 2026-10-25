@@ -1,7 +1,7 @@
 import { SettingsError } from "../configuration/settings.js";
 import { z } from "zod";
 import { configSchema } from "../configuration/contract.js";
-import { executorTypeSchema } from "../executors/validation.js";
+import { customExecutorId, customExecutorSchema, executorTypeSchema } from "../executors/validation.js";
 
 export const settingsConfigSchema = z.object({
   editToken: z.string().uuid(),
@@ -15,6 +15,8 @@ export const settingsChangeSchema = z.object({
     z.object({ action: z.literal("coordinator-clear") }).strict(),
   ]),
 }).strict();
+export const executorRegisterSchema = customExecutorSchema;
+export const executorUnregisterSchema = z.object({ id: customExecutorId }).strict();
 export const executorRefreshSchema = z.object({}).strict();
 export const executorUpgradeSchema = z.object({ id: executorTypeSchema }).strict();
 const credential = {
