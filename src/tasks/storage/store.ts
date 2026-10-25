@@ -2,10 +2,10 @@ import { DatabaseSync } from "../../infrastructure/sqlite.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { z } from "zod";
-import type { Task, TaskMessage, TaskRun } from "../model.js";
+import type { NotificationEvent, NotificationOrigin, Task, TaskMessage, TaskRun } from "../model.js";
 import type { DefinitionStore, RunStore } from "../ports.js";
 import { StorageError, TaskError } from "../../shared/errors.js";
-import { definitionSchema, messageSchema, roundSchema } from "./records.js";
+import { notificationEventSchema, definitionSchema, messageSchema, roundSchema } from "./records.js";
 
 // 数据格式使用首次引入该格式的项目版本，不随无关包升级递增。
 export const taskStorageFormat = "0.1.0";
@@ -16,19 +16,21 @@ const formatSql = `CREATE TABLE storage_format(singleton INTEGER PRIMARY KEY CHE
 export function inspectTaskStorage(db: DatabaseSync) {
   try {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(row => row["name"]);
-    if (!["definitions", "rounds", "messages"].every(name => tables.includes(name)) ||
-      tables.some(name => !["definitions", "rounds", "messages", "storage_format"].includes(String(name)))) throw new Error();
+    if (!["definitions", "rounds", "messages", "notification_events", "notification_deliveries", "notification_leases"].every(name => tables.includes(name)) ||
+      tables.some(name => !["definitions", "rounds", "messages", "notification_events", "notification_deliveries", "notification_leases", "storage_format"].includes(String(name)))) throw new Error();
     const marked = tables.includes("storage_format");
     if (marked) {
       const rows = db.prepare("SELECT singleton,version FROM storage_format").all();
       if (rows.length !== 1 || rows[0]?.["singleton"] !== 1 || rows[0]?.["version"] !== taskStorageFormat) throw new Error();
     }
     const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map(row => row["name"]);
-    if (!["active_task_run", "message_queue"].every(name => indexes.includes(name))) throw new Error();
+    if (!["active_task_run", "message_queue", "notification_inbox"].every(name => indexes.includes(name))) throw new Error();
     db.prepare("SELECT seq,id,workspace,request_key,data FROM definitions LIMIT 0").all();
     db.prepare("SELECT seq,id,task_id,scheduled_at,data FROM rounds LIMIT 0").all();
     db.prepare("SELECT seq,id,task_id,request_key,data FROM messages LIMIT 0").all();
-    for (const [table, schema] of [["definitions", definitionSchema], ["rounds", roundSchema], ["messages", messageSchema]] as const) {
+    db.prepare("SELECT event_id,channel,acknowledged_at FROM notification_deliveries LIMIT 0").all();
+    db.prepare("SELECT project_id,session_id,owner,expires_at FROM notification_leases LIMIT 0").all();
+    for (const [table, schema] of [["definitions", definitionSchema], ["rounds", roundSchema], ["messages", messageSchema], ["notification_events", notificationEventSchema]] as const) {
       for (const row of db.prepare(`SELECT data FROM ${table}`).all()) {
         try { schema.parse(JSON.parse(String(row["data"]))); }
         catch (cause) { throw new StorageError("Invalid stored task data; no conversion or repair performed", { cause }); }
@@ -72,6 +74,15 @@ export class TaskStore implements DefinitionStore, RunStore {
         CREATE TABLE messages(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, task_id TEXT NOT NULL REFERENCES definitions(id),
           request_key TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(task_id,request_key));
         CREATE INDEX message_queue ON messages(task_id,json_extract(data,'$.status'));
+        CREATE TABLE notification_events(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL,
+          task_id TEXT NOT NULL REFERENCES definitions(id), run_id TEXT NOT NULL REFERENCES rounds(id),
+          project_id TEXT NOT NULL, session_id TEXT NOT NULL, data TEXT NOT NULL);
+        CREATE INDEX notification_inbox ON notification_events(project_id,session_id,seq);
+        CREATE TABLE notification_deliveries(event_id TEXT NOT NULL REFERENCES notification_events(id),
+          channel TEXT NOT NULL CHECK(channel='session'), acknowledged_at INTEGER NOT NULL,
+          PRIMARY KEY(event_id,channel));
+        CREATE TABLE notification_leases(project_id TEXT NOT NULL, session_id TEXT NOT NULL,
+          owner TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(project_id,session_id));
         ${formatSql}
         COMMIT;`);
     } catch (error) {
@@ -143,13 +154,14 @@ export class TaskStore implements DefinitionStore, RunStore {
   }
   /** The service supplies all policy; inputs, cursor and round share one transaction. */
   saveDefinition(task: Task): void { this.commit(task); }
-  commitRun(run: TaskRun, task?: Task, messages: TaskMessage[] = []): void { this.commit(task, run, messages); }
+  commitRun(run: TaskRun, task?: Task, messages: TaskMessage[] = [], notifications: NotificationEvent[] = []): void { this.commit(task, run, messages, notifications); }
   saveMessages(messages: TaskMessage[], task?: Task): void { this.commit(task, undefined, messages); }
-  private commit(definition?: Task, round?: TaskRun, messages: TaskMessage[] = []): void {
+  private commit(definition?: Task, round?: TaskRun, messages: TaskMessage[] = [], notifications: NotificationEvent[] = []): void {
     this.check();
     if (definition) definitionSchema.parse(definition);
     if (round) roundSchema.parse(round);
     for (const message of messages) messageSchema.parse(message);
+    for (const event of notifications) notificationEventSchema.parse(event);
     try {
       this.db.exec("BEGIN IMMEDIATE");
       if (definition) this.db.prepare(`INSERT INTO definitions(id,workspace,request_key,data) VALUES(?,?,?,?)
@@ -158,12 +170,50 @@ export class TaskStore implements DefinitionStore, RunStore {
         ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(round.id, round.taskId, round.scheduledAt, JSON.stringify(round));
       for (const message of messages) this.db.prepare(`INSERT INTO messages(id,task_id,request_key,data) VALUES(?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(message.id, message.taskId, message.requestKey, JSON.stringify(message));
+      for (const event of notifications) this.db.prepare(`INSERT INTO notification_events(id,task_id,run_id,project_id,session_id,data)
+        VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`).run(event.eventId, event.taskId, event.runId,
+          event.origin.projectId, event.origin.sessionId, JSON.stringify(event));
       this.db.exec("COMMIT");
     } catch (error) {
       try { this.db.exec("ROLLBACK"); } catch {}
       this.close();
       throw new StorageError("Task commit failed", { cause: error });
     }
+  }
+  acquireNotificationLease(origin: NotificationOrigin, owner: string, now: number, until: number): boolean {
+    this.check();
+    const result = this.db.prepare(`INSERT INTO notification_leases(project_id,session_id,owner,expires_at) VALUES(?,?,?,?)
+      ON CONFLICT(project_id,session_id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at
+      WHERE notification_leases.owner=excluded.owner OR notification_leases.expires_at<=?`)
+      .run(origin.projectId, origin.sessionId, owner, until, now);
+    return result.changes === 1;
+  }
+  releaseNotificationLease(origin: NotificationOrigin, owner: string): void {
+    this.check();
+    this.db.prepare("DELETE FROM notification_leases WHERE project_id=? AND session_id=? AND owner=?")
+      .run(origin.projectId, origin.sessionId, owner);
+  }
+  pendingNotifications(origin: NotificationOrigin, limit: number): NotificationEvent[] {
+    this.check();
+    return this.db.prepare(`SELECT e.data FROM notification_events e WHERE project_id=? AND session_id=?
+      AND NOT EXISTS(SELECT 1 FROM notification_deliveries d WHERE d.event_id=e.id AND d.channel='session')
+      ORDER BY e.seq LIMIT ?`).all(origin.projectId, origin.sessionId, limit).map(row => this.decode(notificationEventSchema, row["data"]));
+  }
+  acknowledgeNotifications(origin: NotificationOrigin, owner: string, ids: string[], now: number): void {
+    this.check();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const lease = this.db.prepare("SELECT owner,expires_at FROM notification_leases WHERE project_id=? AND session_id=?")
+        .get(origin.projectId, origin.sessionId);
+      if (!lease || lease["owner"] !== owner || Number(lease["expires_at"]) <= now) throw new TaskError("conflict", "通知接收租约已失效");
+      for (const id of ids) {
+        const row = this.db.prepare("SELECT id FROM notification_events WHERE id=? AND project_id=? AND session_id=?")
+          .get(id, origin.projectId, origin.sessionId);
+        if (!row) throw new TaskError("not_found", "通知不属于当前项目和会话");
+        this.db.prepare("INSERT INTO notification_deliveries(event_id,channel,acknowledged_at) VALUES(?,'session',?) ON CONFLICT DO NOTHING").run(id, now);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
   close(): void { if (!this.closed) { this.closed = true; this.db.close(); } }
 }

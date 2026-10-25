@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | 任务定义、执行端快照、未来触发控制 | [TaskDefinitions](../src/tasks/definitions.ts)、[图校验](../src/tasks/graph.ts)、[时间规则](../src/tasks/schedule.ts)、[Cron 解析](../src/tasks/cron.ts) | [tasks.test.mjs](../tests/tasks.test.mjs)、[schedule.test.mjs](../tests/schedule.test.mjs) |
 | Run 与节点状态的业务修改入口、派发与提交顺序 | [TaskRuns](../src/tasks/runs.ts)、[数据模型](../src/tasks/model.ts)、[窄能力契约](../src/tasks/ports.ts) | [tasks.test.mjs](../tests/tasks.test.mjs)、[task-storage.test.mjs](../tests/task-storage.test.mjs) |
+| Run 通知事件、会话领取与确认 | [通知服务](../src/tasks/notifications.ts)、[通知契约](../src/protocol/notification-contract.ts)、[Pi 接收](../plugin/scripts/notifications.mjs) | [通知测试](../tests/notifications.test.mjs)、[原生 Pi](../tests/pi-notifications.test.mjs) |
 | 可靠输入、Task 会话绑定、公开消息与回执 | [TaskConversations](../src/tasks/conversations.ts) | [task-conversations.test.mjs](../tests/task-conversations.test.mjs) |
 | 时钟、Task 单所有者监督、取消与收尾 | [TaskSupervisor](../src/tasks/supervisor.ts)、[NodeSessions](../src/tasks/sessions.ts) | [tasks.test.mjs](../tests/tasks.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs) |
 | 人工事实等待与回复 | [纯状态规则](../src/tasks/human-input.ts)、[TaskRuns](../src/tasks/runs.ts) | [human-input.test.mjs](../tests/human-input.test.mjs) |
@@ -26,7 +27,7 @@
 | 离线数据升级 | [迁移入口](../scripts/migrate.mjs)、[格式校验](../src/tasks/storage/store.ts)、[SDK 存储校验](../src/integrations/coordinator/storage.ts) | [migration.test.mjs](../tests/migration.test.mjs)、[升级说明](upgrades.md) |
 | 安装与发布 | [命令入口](../bin/agent-task.mjs)、[setup](../scripts/setup.mjs)、[安装库](../scripts/install-lib.mjs)、[包门禁](../scripts/pack-release.mjs)、[发布准入](../scripts/check-release.mjs)、[工作流](../.github/workflows/) | [install.test.mjs](../tests/install.test.mjs)、[setup.test.mjs](../tests/setup.test.mjs)、[release.test.mjs](../tests/release.test.mjs)、[发布说明](release.md) |
 
-宿主安装资产位于 [plugin](../plugin/)，包含原生插件清单、MCP 连接声明、`using-agent-task` 使用引导和只读启动检查，不进入服务运行时依赖图。检查通过 CLI 摘要复用 setup 校验；[检查测试](../tests/host-preflight.test.mjs)验证无写入、故障分类和凭据不回显。[独立包门禁](../scripts/pack-plugin.mjs)不构建或安装服务；[接入测试](../tests/host-integrations.test.mjs)验证无服务依赖的离线安装、清单契约和真实 stdio 工具调用；宿主原生流程见[接入说明](host-integrations.md)。
+宿主安装资产位于 [plugin](../plugin/)，包含原生插件清单、MCP 连接声明、`using-agent-task` 使用引导、只读启动检查和 [Pi 会话通知](notifications.md)，不进入服务运行时依赖图。检查通过 CLI 摘要复用 setup 校验；[检查测试](../tests/host-preflight.test.mjs)验证无写入、故障分类和凭据不回显。[独立包门禁](../scripts/pack-plugin.mjs)不构建或安装服务；[接入测试](../tests/host-integrations.test.mjs)验证无服务依赖的离线安装、清单契约和真实 stdio 工具调用；宿主原生流程见[接入说明](host-integrations.md)。
 
 ## 依赖与一致性边界
 

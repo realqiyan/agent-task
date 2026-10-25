@@ -40,6 +40,14 @@ git diff --check
 
 未执行三种宿主的模型驱动安装/setup/日常使用会话、Pi/Claude 模型侧工具调用、真实 TUI 告警展示、Codex 用户信任后的 hook 调用、macOS 接入或自定义 home 的宿主 UI 禁用流程。探针不运行模型或 ACP 领域工作；可发现的真实失败程序只提供连接前置条件，不证明执行端能完成任务。操作入口见[宿主接入](host-integrations.md)。
 
+## Pi 会话通知
+
+`0.1.0-rc.9` 候选源码，Linux、Node 24.15.0、原生 Pi SDK 1.4.0：[通知测试](../tests/notifications.test.mjs)验证真实 SQLite 的事件/Run 原子提交、确认回滚、租约接续、会话隔离、Cron 独立事件、真实 MCP 创建绑定及 HTTP 认证边界；真实 Git/文件测试验证项目身份初始化与复用。
+
+[原生 Pi 用例](../tests/pi-notifications.test.mjs)验证 followUp 排队尚无磁盘回执、空闲唤醒后自定义消息保存、恢复去重和不同会话标识隔离；实际 tool_call 扩展事件与 MCP 调用验证创建前注入身份。端到端用例通过真实 setup、后台、CLI 轮询和 Pi 扩展收到协调认证缺失产生的失败事件，并检查消息落盘后服务才保存渠道确认。
+
+这些用例不使用个人凭据或成功模型响应；Pi 模型请求仅连接本机无响应 TCP 服务。未验证模型最终汇报质量、真实 TUI 展示、macOS、远程/多用户部署、极端租约竞争、完整原生 fork/会话切换 UI 流程。基础测试未配置原生 SDK 路径时明确跳过原生用例；运行方式及设计边界见[通知说明](notifications.md)。
+
 ## 控制台验证
 
 [Web/CLI](../tests/web.test.mjs)、[配置](../tests/settings.test.mjs)和[重启](../tests/restart.test.mjs)测试覆盖真实本机服务的管理互通、旧编辑拒绝、凭据隔离、浏览器请求边界、配置生效与目录切换，以及重启后不确定派发仍被阻断。配置文件测试不构成断电、磁盘满或目录同步失败窗口的完整证据。
@@ -64,6 +72,8 @@ git diff --check
 完整前置检查、参数和断言见 [E2E 用例](../tests/e2e/)、[Pi 启动器](../scripts/run-pi-human-e2e.mjs)。Pi 启动器为两端共用获准测试密钥，创建独立原生配置，只启用 read；这不是 OS 沙箱或独立账户隔离。强杀或断电不能保证临时认证清理，需管理员核查。
 
 ### 已验证结论
+
+`0.1.0-rc.9` 通知功能候选工作树，Linux x64、Node 24.15.0，协调者与隔离原生 Pi 均使用 DeepSeek `deepseek-flash`：单节点、人工续答 DAG（测试数量 3）、持续对话三组真实 E2E 各一次全部通过，临时原生凭据已清理。证据分别为 `/tmp/agent-task-pi-human-JCNSBo/test-1.log`、`/tmp/agent-task-pi-human-mTZ7BV/test-1.log`、`/tmp/agent-task-pi-human-UB32Hm/test-1.log`。同一工作树的 91 项基础测试（含三项原生 Pi 通知用例）全部通过，无跳过；不据此推导模型稳定性、真实 TUI 或其他平台已验收。
 
 当前未发布的中文协调重构工作树（`0.1.0-rc.6`，基于 `459f46b`），Linux x64、Node 24.15.0、pi durable 1.3.0，协调者与原生 Pi 均使用 DeepSeek `deepseek-flash`：三组字面字段 E2E 各执行一次均通过。单节点使用 3/6 次模型请求，人工续答 DAG 使用 11/18，持续对话两次 Run 使用 6/25、5/25。只读核查 6 个库、4 个 Run、8 个原生会话及 9 个 turn，交付、依赖文件读取、旧记录保留和来源引用一致；9 个 SDK 输入全部 done，无活动 SDK 任务或工具错误。证据：`/tmp/agent-task-coordinator-refactor-jJBkc9/audit.json`。这是一次通过，不证明稳定性或复杂领域判断；新模型请求单位不能与旧混合步数直接比较。
 

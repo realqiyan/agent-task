@@ -35,7 +35,7 @@ const [artifact] = JSON.parse(packed.stdout);
 const required = [
   "package.json", "README.md", "LICENSE", "mcp.json",
   "pi-extension.js", "hooks/claude.json", "hooks/codex.json",
-  "scripts/preflight.mjs", "scripts/session-start.mjs",
+  "scripts/preflight.mjs", "scripts/session-start.mjs", "scripts/notifications.mjs",
   ".claude-plugin/plugin.json", ".codex-plugin/plugin.json",
   "skills/using-agent-task/SKILL.md",
   "skills/using-agent-task/references/installation.md",

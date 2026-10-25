@@ -1,9 +1,15 @@
 import { z } from "zod";
 import { executorRecord } from "../../executors/validation.js";
 import { absolutePath, identifier, text, timestamp } from "../../shared/validation.js";
-import { nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../validation.js";
+import { notificationOriginData, nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../validation.js";
 
+export const notificationEventSchema = z.object({
+  eventId: z.string().uuid(), taskId: z.string().uuid(), runId: z.string().uuid(),
+  kind: runStatusSchema.exclude(["running"]), createdAt: timestamp, summary: z.string().max(2000),
+  origin: notificationOriginData,
+}).strict();
 export const definitionSchema = z.object({
+  notification: notificationOriginData.nullable(),
   id: z.string().uuid(), input: taskData, workspace: absolutePath, executors: z.record(identifier, executorRecord),
   scheduleStatus: taskStatusSchema,
   nextAt: z.number().finite().nullable(), createdAt: timestamp,

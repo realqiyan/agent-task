@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { absolutePath, identifier, timestamp } from "../shared/validation.js";
-import { cronScheduleData, nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../tasks/validation.js";
+import { notificationOriginData, cronScheduleData, nodeData, nodeStatusSchema, questionData, runStatusSchema, taskData, taskStatusSchema } from "../tasks/validation.js";
 
 /** Shared MCP initialization text; both the HTTP server and the local stdio proxy advertise it. */
 export const serverInstructions = `Agent Task 通过本机 ACP 执行端异步推进调用方定义的固定 DAG。Task 是持久定义与计划，Run 是一次执行；Task/Run UUID 与调用方节点 ID 不同。协调者有判断与记忆，对整体目标负责，不重写计划或自动改派。
@@ -54,6 +54,7 @@ const executorSnapshotOutput = z.object({
 }).strict();
 
 export const taskOutput = z.object({
+  notification: notificationOriginData.nullable().describe("创建时绑定的会话通知归属；null 表示未启用，不代表已投递或用户已读。"),
   taskId: z.string().uuid().describe("Task UUID，用于 task_get、task_schedule_control 和 task_run_list。"),
   conversationInitialized: z.boolean().describe("已记录持久会话绑定；不证明会话存储或模型当前可用。"),
   activeRun: z.object({ runId: z.string().uuid(), status: z.enum(["running", "waiting_input"]) }).strict().nullable(),

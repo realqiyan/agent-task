@@ -7,6 +7,7 @@ import { checkWorkspace, resolveWorkspace } from "../infrastructure/workspace.js
 import { LocalResultFiles } from "../results/files.js";
 import { Results } from "../results/service.js";
 import { TaskDefinitions } from "../tasks/definitions.js";
+import { TaskNotifications } from "../tasks/notifications.js";
 import { TaskRuns } from "../tasks/runs.js";
 import { TaskConversations } from "../tasks/conversations.js";
 import { TaskSupervisor } from "../tasks/supervisor.js";
@@ -24,14 +25,16 @@ export function createTaskRuntime(directory: string, profiles: readonly Executor
     const workspaces = { resolve: resolveWorkspace, check: checkWorkspace };
     const results = new Results(new LocalResultFiles(join(directory, "results"), true));
     const definitions = new TaskDefinitions(store, executors, workspaces, Boolean(coordinate));
+    const notifications = new TaskNotifications(store);
     const conversations = new TaskConversations(store, () => Boolean(coordinate));
     const runs = new TaskRuns(store, executors, results, workspaces, conversations);
     const supervisor = new TaskSupervisor(runs, conversations, openExecution, coordinate, fatal);
     let closing: Promise<void> | undefined;
-    return { definitions, runs, conversations, supervisor, executors,
+    return { definitions, runs, conversations, notifications, supervisor, executors,
       close(): Promise<void> {
         return closing ??= (async () => {
           definitions.close();
+          notifications.close();
           conversations.stopAdmission();
           const stopped = supervisor.close();
           runs.close();

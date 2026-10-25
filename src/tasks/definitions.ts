@@ -4,11 +4,11 @@ import type { ExecutorRegistry } from "../executors/registry.js";
 import { TaskError } from "../shared/errors.js";
 import { MAX_TASKS } from "../shared/limits.js";
 import { iso } from "../shared/time.js";
-import type { Task, TaskInput, TaskScheduleControl } from "./model.js";
+import type { NotificationOrigin, Task, TaskInput, TaskScheduleControl } from "./model.js";
 import type { DefinitionStore, WorkspaceAccess } from "./ports.js";
 import { validateGraph } from "./graph.js";
 import { hasUncertainOutcome, initialTime, resumeSchedule } from "./schedule.js";
-import { taskData, taskScheduleControlData } from "./validation.js";
+import { notificationOriginData, taskData, taskScheduleControlData } from "./validation.js";
 
 /** Owns task definitions and future-trigger controls. Never writes a run. */
 export class TaskDefinitions {
@@ -16,16 +16,17 @@ export class TaskDefinitions {
   constructor(private readonly store: DefinitionStore, private readonly executors: ExecutorRegistry,
     private readonly workspaces: WorkspaceAccess, private readonly coordinatorConfigured: boolean) {}
   private check(): void { if (this.closed) throw new TaskError("unavailable", "Task definition service closed"); }
-  create(value: TaskInput, now = Date.now()): Task {
+  create(value: TaskInput, now = Date.now(), notification: NotificationOrigin | null = null): Task {
     this.check();
     if (!this.coordinatorConfigured) throw new TaskError("precondition", "Coordinator is not configured");
+    notification = notification === null ? null : notificationOriginData.parse(notification);
     const input = taskData.parse(value), all = this.store.definitions();
     if (input.workspace === undefined) throw new TaskError("validation", "workspace is required without a local MCP launch directory");
     const workspace = this.workspaces.resolve(input.workspace);
     input.workspace = workspace;
     const existing = all.find(item => item.workspace === workspace && item.input.requestKey === input.requestKey);
     if (existing) {
-      if (JSON.stringify(existing.input) !== JSON.stringify(input)) throw new TaskError("conflict", "requestKey already used with different parameters");
+      if (JSON.stringify(existing.input) !== JSON.stringify(input) || JSON.stringify(existing.notification) !== JSON.stringify(notification)) throw new TaskError("conflict", "requestKey already used with different parameters");
       return existing;
     }
     if (all.length >= MAX_TASKS) throw new TaskError("precondition", "Task definition limit reached");
@@ -34,7 +35,7 @@ export class TaskDefinitions {
     const nextAt = initialTime(input.schedule, now);
     if (input.schedule.type !== "now" && nextAt < now) throw new TaskError("validation", "Schedule must start in the future");
     if (input.expiresAt && Date.parse(input.expiresAt) <= Math.max(now, nextAt)) throw new TaskError("validation", "Deadline must follow first trigger");
-    const task: Task = { id: randomUUID(), input, workspace,
+    const task: Task = { notification, id: randomUUID(), input, workspace,
       executors, nextAt, scheduleStatus: "active", createdAt: iso(now), conversationId: null, conversationCursor: null, conversationRunId: null };
     this.store.saveDefinition(task); return task;
   }

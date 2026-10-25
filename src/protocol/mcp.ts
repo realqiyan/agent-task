@@ -7,6 +7,7 @@ import type { Delivery, Task, TaskMessage, TaskRun } from "../tasks/model.js";
 import type { TaskApi } from "./services.js";
 import { messageListSchema, messageSchema, replySchema, taskSchema, taskScheduleControlSchema, taskIdSchema, runIdSchema, taskListSchema, taskRunListSchema } from "./task-contract.js";
 import { executorsOutput, messageOutput, mcpJsonSchema, pageOutput, runOutput, runSummaryOutput, serverInstructions, statusOutput, taskOutput, taskSummaryOutput, toolOutput } from "./mcp-contract.js";
+import { notificationOriginData } from "../tasks/validation.js";
 import { version } from "../infrastructure/version.js";
 
 type Hints = { readOnly: boolean; destructive: boolean; idempotent: boolean; openWorld: boolean };
@@ -48,7 +49,8 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
   register("executor_list", "查询可用于 task_create 的本机 ACP 执行端 ID 和适配器准备状态。只选择 state=ready；这只证明启动依赖已准备，不证明原生认证或工具授权。不刷新发现或安装适配器。",
     z.object({}).strict(), executorsOutput, () => ({ executors: service.executors.list().executors.map(executorStatus) }));
   register("task_create", "创建立即、单次或 Cron 触发的持久 Task。提供完整固定 DAG，并为每个节点指定就绪执行端；协调者判断、澄清、记忆和验收，不重写计划或改派。要求 service_status.coordinatorConfigured=true。返回任务定义，不是执行结果；用 task_run_list(taskId) 查运行。MCP 断开不取消后台工作。重复提交须使用相同 requestKey 和参数，不创建替代任务。",
-    taskSchema, taskOutput, input => taskView(service.definitions.create(input), service.runs.active()),
+    taskSchema.extend({ notification: notificationOriginData.optional().describe("由宿主插件自动填入的通知归属；模型不要生成或修改。省略时不发送会话通知。") }),
+    taskOutput, ({ notification, ...input }) => taskView(service.definitions.create(input, Date.now(), notification ?? null), service.runs.active()),
     { readOnly: false, destructive: false, idempotent: true, openWorld: true });
   register("task_list", "查询任务及未来触发状态，包括已取消和已完成任务。返回按创建时间升序的摘要，用 next 继续。完整定义见 task_get，执行结果见 task_run_list。",
     taskListSchema, pageOutput(taskSummaryOutput), input => {
@@ -99,7 +101,7 @@ function executorStatus(executor: ReturnType<TaskApi["executors"]["list"]>["exec
 
 function taskView(task: Task, active: TaskRun[]) {
   const run = active.find(run => run.taskId === task.id);
-  return { conversationInitialized: task.conversationId !== null, activeRun: run ? { runId: run.id, status: run.status } : null, taskId: task.id, input: task.input, workspace: task.workspace, scheduleStatus: task.scheduleStatus, createdAt: task.createdAt,
+  return { notification: task.notification, conversationInitialized: task.conversationId !== null, activeRun: run ? { runId: run.id, status: run.status } : null, taskId: task.id, input: task.input, workspace: task.workspace, scheduleStatus: task.scheduleStatus, createdAt: task.createdAt,
     executors: Object.fromEntries(Object.entries(task.executors).map(([id, executor]) => [id,
       { nativePath: executor.nativePath, adapterVersion: executor.adapterVersion }])),
     nextAt: task.nextAt === null ? null : new Date(task.nextAt).toISOString() };

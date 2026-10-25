@@ -15,7 +15,7 @@ const roles = {
   rule: ["shared/time.ts", "shared/limits.ts", "shared/errors.ts", "tasks/graph.ts", "tasks/schedule.ts", "tasks/cron.ts", "tasks/human-input.ts",
     "executors/permissions.ts", "executors/environment.ts", "configuration/policy.ts", "configuration/environment.ts"],
   schema: ["shared/validation.ts", "tasks/validation.ts", "tasks/storage/records.ts", "executors/validation.ts", "configuration/contract.ts"],
-  service: ["tasks/definitions.ts", "tasks/runs.ts", "tasks/conversations.ts", "tasks/supervisor.ts", "tasks/sessions.ts", "executors/registry.ts",
+  service: ["tasks/notifications.ts", "tasks/definitions.ts", "tasks/runs.ts", "tasks/conversations.ts", "tasks/supervisor.ts", "tasks/sessions.ts", "executors/registry.ts",
     "results/service.ts", "configuration/settings.ts", "configuration/management.ts"],
   storage: ["tasks/storage/store.ts", "results/files.ts", "configuration/files.ts", "executors/files.ts"],
 };

@@ -1,6 +1,8 @@
+import { bindPiNotifications } from "./scripts/notifications.mjs";
 import { inspectInstallation, onboardingNotice } from "./scripts/preflight.mjs";
 
 export default function (pi) {
+  bindPiNotifications(pi);
   let active;
   pi.on("session_start", async (_event, ctx) => {
     const controller = new AbortController();

@@ -14,6 +14,7 @@
 | 本机控制台、配置保存与 Web/CLI 重启 | [控制台说明](docs/web-console.md) |
 | 命令行配置、凭据和任务管理 | [CLI 说明](docs/cli.md) |
 | 理解产品目标和架构选择 | [总体方案](docs/design-proposal.md) |
+| Pi 原会话自动通知、身份与可靠补读 | [通知设计与使用](docs/notifications.md) |
 | Task 持续对话、Document 记忆与补充交付 | [会话设计](docs/task-conversation-plan.md) |
 | 查询项目术语 | [词汇表](CONTEXT.md) |
 | 查找实现与对应测试 | [代码导航](docs/technical-design.md) |

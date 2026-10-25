@@ -14,6 +14,10 @@ export const scheduleData = z.discriminatedUnion("type", [
   z.object({ type: z.literal("once"), at: timestamp }).strict(),
   cronScheduleData,
 ]);
+export const notificationOriginData = z.object({
+  projectId: z.string().regex(/^(git:[0-9a-f]{64}|uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/),
+  sessionId: z.string().min(1).max(200).regex(/^[a-zA-Z0-9:_-]+$/),
+}).strict();
 export const taskStatusSchema = z.enum(["active", "paused", "cancelled", "completed", "expired"]);
 export const runStatusSchema = z.enum(["running", "succeeded", "failed", "interrupted", "skipped", "cancelled", "timed_out", "waiting_input"]);
 export const nodeStatusSchema = z.enum(["pending", "running", "awaiting_review", "succeeded", "stale", "blocked", "interrupted"]);

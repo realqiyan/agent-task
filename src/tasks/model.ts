@@ -4,7 +4,10 @@ export type Schedule = { type: "now" } | { type: "once"; at: string } | { type: 
 export type NodeDefinition = { id: string; prompt: string; executorId: string; dependsOn: string[]; maxRunSeconds: number };
 export type TaskInput = { requestKey: string; name: string; prompt: string; nodes: NodeDefinition[];
   workspace?: string; schedule: Schedule; expiresAt?: string; maxRunSeconds: number; maxModelCalls: number; maxNodeTurns: number; inputWaitSeconds: number };
-export type Task = { id: string; input: TaskInput; workspace: string; executors: Record<string, Executor>;
+export type NotificationOrigin = { projectId: string; sessionId: string };
+export type NotificationEvent = { eventId: string; taskId: string; runId: string;
+  kind: Exclude<TaskRun["status"], "running">; createdAt: string; summary: string; origin: NotificationOrigin };
+export type Task = { notification: NotificationOrigin | null; id: string; input: TaskInput; workspace: string; executors: Record<string, Executor>;
   scheduleStatus: "active" | "paused" | "cancelled" | "completed" | "expired"; nextAt: number | null; createdAt: string;
   conversationId: string | null; conversationCursor: string | null; conversationRunId: string | null };
 export type Turn = { prompt: string; output: string; stopReason: string | null; sessionId: string | null;

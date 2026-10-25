@@ -30,6 +30,14 @@ marketplace 固定插件版本。发布状态与验收范围见[验证说明](ht
 
 Pi 在 setup 完成后注册本项目 MCP。Claude Code/Codex 插件已声明 MCP；服务缺失或初始化未完成时连接失败是预期行为。完成 setup 后重连或新开会话，不重复添加连接。
 
+## Pi 任务通知
+
+Pi TUI/RPC 持久会话通过插件自动绑定项目和会话，后台事件以 followUp 跟进；不打断当前工作。首次提交会在项目目录（Git 默认仓库根目录）保存 `.agent-task/project.json`，项目 ID 与 workspace 分离。关闭期间事件保留，恢复原会话后补读，不自动交给新会话或 fork。
+
+仅支持本机 Agent Task 服务。默认 MCP 名称为 `agent-task`；改名时设置 `AGENT_TASK_MCP_SERVER`。自定义命令/home 时，`AGENT_TASK_PREFLIGHT_COMMAND` 与 `AGENT_TASK_PREFLIGHT_HOME` 必须和 MCP 连接一致。设置 `AGENT_TASK_NOTIFICATIONS=off` 可只关闭通知。显式 `AGENT_TASK_PROJECT_ROOT` 选择项目配置目录。通知只汇报结果，不授权重试或额外执行；Claude/Codex 本版仍只有启动检查。
+
+设计、确认语义与限制见[通知说明](https://github.com/realqiyan/agent-task/blob/master/docs/notifications.md)。
+
 ## 启动检查
 
 Pi 扩展和 Claude Code/Codex 的 `SessionStart` hook 独立于 MCP 连接检查安装状态。异常时显示技能入口并提供简短上下文；正常时保持安静，不触发模型、安装、修复或服务启动。

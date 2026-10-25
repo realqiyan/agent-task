@@ -15,6 +15,7 @@ const help = `用法：agent-task <命令>
   credential               列出、替换或删除私有凭据
   task                     查询任务并控制未来触发
   run                      查询运行历史与交付
+  notifications            插件通知桥接，从 stdin 接收 JSON，不启动后台
   <命令> --help            查看命令用法；管理命令支持 --json
   --version | --help
 要求 Node.js 22.19+；支持 Linux 和 macOS。`;
@@ -31,7 +32,17 @@ try {
     await import(`../scripts/${command}.mjs`);
   } else {
     const lib = await import("../scripts/install-lib.mjs");
-    if (["start", "mcp", "stop"].includes(command)) {
+    if (command === "notifications") {
+      if (args.includes("--help")) console.log("用法：agent-task notifications [--home 绝对目录]；stdin 提供 poll/ack/release JSON，只访问已有后台。");
+      else {
+        const options = lib.argumentsFor(args);
+        if (Object.keys(options).some(key => key !== "home")) throw new Error("通知桥接只接受 --home");
+        try {
+          const { runNotifications } = await import("../dist/application/notification-entry.js");
+          await runNotifications(lib.installRoot(options));
+        } catch { throw new Error("通知桥接不可用；未确认事件保留，请检查服务状态和版本。"); }
+      }
+    } else if (["start", "mcp", "stop"].includes(command)) {
       if (args.includes("--help")) { console.log("用法：agent-task " + command + " [--home 绝对目录]" + (command === "stop" ? " [--json]" : "")); }
       else {
         const json = command === "stop" && args.includes("--json");

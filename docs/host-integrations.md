@@ -18,7 +18,7 @@ Agent Task 支持 Linux/macOS、Node.js 22.19+ 与 npm。Pi 需要 1.4.0+ 的原
 pi install npm:@realqiyan/agent-task-plugin
 ```
 
-需要项目作用域时附加 `--local`。启动 Pi（已有会话先 `/reload`），调用 `/skill:using-agent-task`。插件安装 skill 和只读检查扩展；首次引导在 setup 完成并取得确认后用原生 `pi mcp add` 注册连接。MCP 注册的作用域须单独选择，不替换已有同名连接。
+需要项目作用域时附加 `--local`。启动 Pi（已有会话先 `/reload`），调用 `/skill:using-agent-task`。插件安装 skill、启动检查和 Pi 会话通知扩展；首次引导在 setup 完成并取得确认后用原生 `pi mcp add` 注册连接。MCP 注册的作用域须单独选择，不替换已有同名连接。
 
 ### Claude Code
 
@@ -68,6 +68,10 @@ codex plugin add agent-task@agent-task-dev
 
 只执行需要的宿主命令。生成器不安装依赖、不改宿主配置；本地 marketplace 名为 `agent-task-dev`，与正式源区分。保留快照目录直到移除注册，修改源码后重新生成并更新注册；不要同时启用正式插件与开发插件，以免重复 MCP 连接。根目录的正式 marketplace 指向 npm，直接注册仓库不会加载尚未发布的 `plugin/` 改动。
 
+## Pi 任务通知
+
+当前源码支持 Pi 原会话自动通知：插件绑定项目/会话，轮询后台事件并以 followUp 自动跟进。首次提交会保存项目身份文件；关闭后恢复原会话可补读，不广播给同项目其他会话。适用模式、服务目标配置、禁用方式与可靠性限制见[通知说明](notifications.md)。Claude/Codex 第一版不增加任务通知。
+
 ## 启动提醒与检查边界
 
 接入包的检查独立于 MCP 连接：Pi 在会话启动时显示通知并加入简短模型上下文；Claude Code/Codex 的同步 `SessionStart` hook 返回用户可见的 `systemMessage` 和模型上下文。异常提示给出对应的 `using-agent-task` 入口，状态正常时保持安静；不会自动调用模型或执行安装。
@@ -85,7 +89,7 @@ export AGENT_TASK_PREFLIGHT_COMMAND=/absolute/bin/agent-task
 export AGENT_TASK_PREFLIGHT_HOME=/absolute/private/agent-task
 ```
 
-这些变量**只选择检查目标，不修改 MCP 连接**，也不推断或改写宿主配置。已关闭插件 MCP、改用远程连接或不需要此提示时，可在宿主原生设置中禁用该 hook/扩展，保留 skill。
+这些变量选择检查目标，并供 Pi 通知桥接使用；**不修改 MCP 连接**，也不推断或改写宿主配置。Pi 通知使用的程序/home 必须与 MCP 指向同一服务；详见[通知配置](notifications.md#启用与运行边界)。已关闭插件 MCP、改用远程连接或不需要此提示时，可在宿主原生设置中禁用该 hook/扩展，保留 skill。
 
 Codex 插件 hook 必须先在 `/hooks` 中审查并信任；安装插件不自动授权 hook。Claude Code/Pi 也须允许插件 hook/扩展运行。禁用、未信任或 Node 无法启动时，不能保证出现自定义提示，仍可显式调用上述 skill。不要通过绕过信任或扩大权限来消除提示。程序入口见 [preflight](../plugin/scripts/preflight.mjs)、[Pi 扩展](../plugin/pi-extension.js)、[hook 入口](../plugin/scripts/session-start.mjs)。
 

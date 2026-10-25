@@ -5,6 +5,7 @@ import { EVENT_LIMIT, MAX_NODE_SESSIONS, OUTPUT_LIMIT } from "../shared/limits.j
 import { iso } from "../shared/time.js";
 import { applyReply, askInput, waitingFailure } from "./human-input.js";
 import { inputMessage, type TaskConversations } from "./conversations.js";
+import { runNotification } from "./notifications.js";
 import { dueTrigger, hasUncertainOutcome } from "./schedule.js";
 import { messageData, questionData, replyData } from "./validation.js";
 import type { Delivery, EndStatus, InputReply, MessageRequest, NodeRun, QuestionRequest, Task, TaskMessage, TaskRun } from "./model.js";
@@ -113,7 +114,7 @@ export class TaskRuns {
       }
       task.nextAt = trigger.nextAt;
       if (task.nextAt === null) task.scheduleStatus = "completed";
-      this.store.commitRun(run, task, [message]);
+      this.store.commitRun(run, task, [message], runNotification(task, run));
     }
   }
   supplement(value: MessageRequest, now = Date.now()): TaskMessage {
@@ -161,7 +162,7 @@ export class TaskRuns {
     const next = askInput(run, questionData.parse(request), task.input.inputWaitSeconds, now, randomUUID());
     const message = inputMessage(task.id, run.id, "question:" + next.question.id, next.question.question, "question", false, "", now);
     Object.assign(message, { questionId: next.question.id, role: "coordinator", status: "processed", seen: true, finishedAt: iso(now) });
-    this.store.commitRun(next.run, undefined, [message]); return next.question;
+    this.store.commitRun(next.run, undefined, [message], runNotification(task, next.run)); return next.question;
   }
   finish(id: string, summary: string): void {
     const run = this.current(id);
@@ -171,7 +172,7 @@ export class TaskRuns {
     run.summary = summary; run.status = "succeeded"; run.finishedAt = iso();
     const message = inputMessage(run.taskId, id, "result:" + id, summary, "result", false);
     Object.assign(message, { role: "coordinator", status: "processed", seen: true, finishedAt: run.finishedAt });
-    this.store.commitRun(run, undefined, [message]);
+    this.store.commitRun(run, undefined, [message], runNotification(this.store.get(run.taskId), run));
   }
   private invalidateChildren(run: TaskRun, nodeId: string): void {
     const changed = new Set([nodeId]);
@@ -291,7 +292,7 @@ export class TaskRuns {
     if ((status === "interrupted" || wasWaiting || uncertain) && task.nextAt !== null && task.scheduleStatus !== "cancelled") task.scheduleStatus = "paused";
     const message = inputMessage(task.id, id, "error:" + id, run.error, "error", false);
     Object.assign(message, { role: "coordinator", status: "processed", seen: true, finishedAt: run.finishedAt });
-    this.store.commitRun(run, task, [message]);
+    this.store.commitRun(run, task, [message], runNotification(task, run));
   }
   answer(value: InputReply, hasSession: (id: string) => boolean, now = Date.now()): TaskMessage {
     this.check();

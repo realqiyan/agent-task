@@ -4,6 +4,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Settings } from "../../configuration/settings.js";
 import type { TaskApi } from "../services.js";
 import { createMcpServer } from "../mcp.js";
+import { notificationOperation } from "../notification-contract.js";
+import { StorageError, TaskError } from "../../shared/errors.js";
 import { bearerVerifier } from "./auth.js";
 import { createWebRouter } from "./web.js";
 
@@ -29,7 +31,7 @@ export class HttpServer {
     if (options.settings && options.adminToken) {
       app.use("/admin", createWebRouter(options.tasks, options.settings, options.adminToken, options.fatal, options.restart, options.instanceId));
     }
-    app.use("/mcp", (req, res, next) => {
+    app.use(["/mcp", "/notifications"], (req, res, next) => {
       const suffix = req.socket.localPort === 80 ? "" : ":" + req.socket.localPort;
       if (req.headers.origin !== undefined || !["127.0.0.1" + suffix, "localhost" + suffix].includes(req.headers.host ?? "")) { res.status(403).end(); return; }
       if (!authorized(req.headers.authorization)) {
@@ -37,6 +39,13 @@ export class HttpServer {
       }
       next();
     }, express.json({ limit: "512kb" }));
+    app.post("/notifications", (req, res) => {
+      try { res.json(notificationOperation(options.tasks.notifications, req.body)); }
+      catch (error) {
+        if (error instanceof StorageError) options.fatal(error);
+        res.status(error instanceof TaskError && error.code === "conflict" ? 409 : 400).json({ error: "通知请求失败；未确认的事件会保留。" });
+      }
+    });
     app.post("/mcp", async (req, res) => {
       if (req.body?.method === "initialize") {
         const discovered = options.tasks.executors.refresh();

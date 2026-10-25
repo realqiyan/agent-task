@@ -1,4 +1,4 @@
-import type { Delivery, EndStatus, InputQuestion, MemoryItem, NodeRun, QuestionRequest, Task, TaskInput, TaskMessage, TaskRun } from "./model.js";
+import type { NotificationEvent, NotificationOrigin, Delivery, EndStatus, InputQuestion, MemoryItem, NodeRun, QuestionRequest, Task, TaskInput, TaskMessage, TaskRun } from "./model.js";
 
 export interface TaskQueries {
   readonly healthy: boolean;
@@ -20,7 +20,13 @@ export interface MessageStore extends TaskQueries {
 }
 export interface RunStore extends MessageStore {
   saveDefinition(task: Task): void;
-  commitRun(run: TaskRun, task?: Task, messages?: TaskMessage[]): void;
+  commitRun(run: TaskRun, task?: Task, messages?: TaskMessage[], notifications?: NotificationEvent[]): void;
+}
+export interface NotificationStore {
+  acquireNotificationLease(origin: NotificationOrigin, owner: string, now: number, until: number): boolean;
+  releaseNotificationLease(origin: NotificationOrigin, owner: string): void;
+  pendingNotifications(origin: NotificationOrigin, limit: number): NotificationEvent[];
+  acknowledgeNotifications(origin: NotificationOrigin, owner: string, eventIds: string[], now: number): void;
 }
 export interface WorkspaceAccess { resolve(path: string): string; check(path: string): void; }
 export interface Deliveries {
