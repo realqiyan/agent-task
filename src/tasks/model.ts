@@ -3,7 +3,7 @@ import type { Executor } from "../executors/model.js";
 export type Schedule = { type: "now" } | { type: "once"; at: string } | { type: "cron"; expression: string; timezone: string };
 export type NodeDefinition = { id: string; prompt: string; executorId: string; dependsOn: string[]; maxRunSeconds: number };
 export type TaskInput = { requestKey: string; name: string; prompt: string; nodes: NodeDefinition[];
-  workspace?: string; schedule: Schedule; expiresAt?: string; maxRunSeconds: number; maxSteps: number; maxNodeTurns: number; inputWaitSeconds: number };
+  workspace?: string; schedule: Schedule; expiresAt?: string; maxRunSeconds: number; maxModelCalls: number; maxNodeTurns: number; inputWaitSeconds: number };
 export type Task = { id: string; input: TaskInput; workspace: string; executors: Record<string, Executor>;
   scheduleStatus: "active" | "paused" | "cancelled" | "completed" | "expired"; nextAt: number | null; createdAt: string;
   conversationId: string | null; conversationCursor: string | null; conversationRunId: string | null };
@@ -19,7 +19,7 @@ export type NodeRun = { id: string; definition: NodeDefinition;
 export type TaskRun = { id: string; taskId: string; scheduledAt: number | null; source: { type: "schedule" } | { type: "message"; messageId: string; baseRunId: string };
   inputId: string; status: "running" | "succeeded" | "failed" | "interrupted" | "skipped" | "cancelled" | "timed_out" | "waiting_input";
   createdAt: string; finishedAt: string | null; error: string | null; skippedCount: number;
-  steps: number; coordinatorStartedAt: string | null; summary: string | null; nodes: NodeRun[]; questions: InputQuestion[]; waitedMs: number };
+  modelCalls: number; coordinatorStartedAt: string | null; summary: string | null; nodes: NodeRun[]; questions: InputQuestion[]; waitedMs: number };
 export type QuestionRequest = { nodeId?: string; question: string; completedWork: string };
 export type InputReply = { taskId: string; questionId: string; requestKey: string; answer: string };
 export type InputQuestion = QuestionRequest & { id: string; createdAt: string; expiresAt: string; sessionExpiresAt: string | null;
@@ -27,7 +27,7 @@ export type InputQuestion = QuestionRequest & { id: string; createdAt: string; e
 export type MessageRequest = { taskId: string; requestKey: string; message: string; runId?: string; execute?: boolean };
 export type TaskMessage = { id: string; taskId: string; runId: string | null; questionId: string | null;
   role: "user" | "coordinator" | "system"; kind: "message" | "supplement" | "answer" | "execution" | "question" | "result" | "error";
-  content: string; startedAt: string | null; requestKey: string; request: string; execute: boolean; seen: boolean; steps: number;
+  content: string; startedAt: string | null; requestKey: string; request: string; execute: boolean; seen: boolean; modelCalls: number;
   status: "queued" | "submitted" | "processed" | "failed"; submissionId: string | null; error: string | null;
   createdAt: string; finishedAt: string | null };
 export type MemorySource = { type: "task"; taskId: string } | { type: "run"; runId: string }

@@ -39,7 +39,7 @@
     "darwin"
   ],
   "type": "module",
-  "description": "Durable intelligent task coordination over MCP with ACP executors",
+  "description": "通过 MCP 管理持久任务，由智能协调者和 ACP 执行端推进交付",
   "engines": {
     "node": ">=22.19.0"
   },

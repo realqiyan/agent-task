@@ -1,76 +1,80 @@
-# Repository Guidelines
+# 仓库开发指南
 
-Agent Task is an independently developed TypeScript service. MCP exposes task management; ACP connects execution agents. Pi Agent, Codex, Claude and OpenCode are ACP executor integration targets, not executors embedded in this service.
+Agent Task 是独立开发的 TypeScript 服务。MCP 提供任务管理，ACP 连接执行端。Pi Agent、Codex、Claude、OpenCode 是 ACP 接入目标，不是嵌入本服务的执行器。
 
-## Read first
+## 先阅读
 
-- `docs/architecture-guidelines.md`: design and dependency requirements.
-- `docs/design-proposal.md`: original requirements, overall design, decisions and deferred capabilities.
-- `docs/technical-design.md`: code/test navigation, dependency boundaries and resource ownership.
-- `docs/validation.md`: validation entry points, evidence and acceptance limits.
-- `docs/deployment.md`: installation, authentication and service operation.
-- `docs/web-console.md`: local administrator access, settings persistence and console limits.
-- `README.md`: project entry and documentation navigation.
+- `docs/architecture-guidelines.md`：设计与依赖要求。
+- `docs/design-proposal.md`：产品需求、总体设计、取舍与暂缓能力。
+- `docs/technical-design.md`：代码和测试导航、依赖边界及资源所有权。
+- `docs/validation.md`：验证入口、证据与验收限制。
+- `docs/deployment.md`：安装、认证及运行。
+- `docs/web-console.md`：本机管理、配置保存与控制台边界。
+- `README.md`：项目入口与文档导航。
 
-These documents are self-contained. Development does not require another project's checkout or the conversation that produced the requirements. The loopback Web console manages next-start configuration and reads tasks; its only task write operations control future triggers. Outbound ACP and inbound MCP have distinct roles.
+这些文档应独立完整，不依赖其他项目检出或产生需求的历史对话。回环地址上的 Web 控制台管理下次启动配置并读取任务；任务写操作只控制未来触发。对外 ACP 与对内 MCP 职责不同。
 
-## Structure and boundaries
+## 结构与边界
 
-Keep business rules in services, protocol contracts beside their tools, persistence in storage, and protocol/process behavior in integrations. Data models have no business behavior or SDK types. The application entry assembles dependencies and owns lifecycle. The Web console calls the same task services as MCP; keep HTML small and separate scripts and styles.
+业务规则放在服务中，协议契约靠近工具，持久化放在存储，协议和进程行为放在接入层。数据模型不含业务行为或 SDK 类型。应用入口装配依赖并持有生命周期。Web 与 MCP 调用同一业务服务；HTML 保持简小，脚本与样式分离。
 
-Use plain data and narrow capabilities. Services must not depend on MCP/ACP SDK contexts, HTTP objects, UI, or complete process objects. Storage executes transactions but does not own scheduling, authorization or recovery policy. No circular dependencies or hidden global mutable state.
+使用普通数据与窄能力接口。服务不依赖 MCP/ACP SDK 上下文、HTTP 对象、UI 或完整进程对象。存储执行事务，不决定调度、授权或恢复策略。禁止循环依赖和隐藏的全局可变状态。
 
-Business capabilities live in tasks, executors, configuration and results. Protocol adapters, execution integrations, infrastructure and application assembly have separate owners. TaskRuns is the business write entry for Run state. Keep new responsibilities within these boundaries and update the dependency checker when adding a module. Do not add empty directories, unused interfaces, forwarding layers or a dynamic plugin platform.
+业务能力归属于 tasks、executors、configuration、results；协议适配、执行接入、基础设施和应用装配分别负责。TaskRuns 是 Run 状态的业务写入口。新增职责遵守这些边界，新增模块时更新依赖检查器。不增加空目录、无用接口、转发层或动态插件平台。
 
-`src/` contains TypeScript source and `src/web/` contains browser assets; `tests/` contains Node tests; `scripts/` contains operator/development helpers and future explicit upgrades. `dist/` is generated and must not be edited. Group files and tests by domain as the relevant layers grow.
+`src/` 保存 TypeScript 源码，`src/web/` 保存浏览器资源；`tests/` 使用 Node 测试；`scripts/` 保存管理、开发及未来显式升级工具。`dist/` 为生成内容，不得编辑。随层次增长按领域组织源码和测试。
 
-## Runtime and safety
+## 运行与安全
 
-- MCP callers define the Task DAG and assign each node to a ready local ACP executor. Pi durable keeps one coordinator conversation per Task, with separately admitted Runs, to advance that fixed DAG, review results and request missing user facts; it does not decompose tasks or change the plan. ACP agents perform domain work. Reuse the SDK model loop; do not add another planner or parallel node scheduler.
-- Ordinary messages do not answer pending questions or authorize idle ACP work. Supplementary work needs explicit intent; terminal Runs and accepted deliveries remain immutable. Documents and conversation history are advisory, not execution authority. See `docs/task-conversation-plan.md`.
-- A protocol turn ending is not task completion. Only explicitly accepted executor deliveries can unlock dependencies. Unknown external outcomes block new dispatch, including fresh model-issued calls.
-- Use official protocol SDKs and native execution-agent configuration where possible.
-- Persist admission/dispatch intent before external work. Keep Task, Run, Session and external business records distinct.
-- Do not automatically retry interrupted work, replay external side effects or switch agents after an uncertain outcome.
-- Deadlines stop new starts; execution timeouts are separate. Client disconnection does not cancel persisted tasks.
-- Resources have explicit ownership and idempotent close behavior. Reject operations against closed instances.
-- Only discovered or locally administrator-registered, enabled local executors with prepared launch dependencies may launch. Custom registrations persist before admission and do not probe models. The service owns launch commands; MCP callers cannot supply commands, credentials or capability endpoints. Task creation selects an existing absolute workspace, resolved from the request or local MCP launch directory and fixed for future runs. Workspace validation is not authorization or a sandbox.
-- Keep discovered capability facts, authorization and validation evidence separate.
-- ACP permission requests are optional. Rely on native executor authorization and reject requests for additional ACP approval. Discovery and adapter readiness are not proof of complete tool authorization. Never infer permission from prompts, roles, tool titles or protocol success.
-- No interactive approvals for unattended execution. Reject requests that lack sufficient authorization; never silently widen access.
-- Executors inherit the OS user’s native environment only after filtering private service variables and credential aliases. Do not inherit service credentials into executors. Do not intentionally log secrets. Agent outputs may still be sensitive.
-- Never delete user history or workspaces to repair state. Do not add file hash verification in code, tests or checks.
+- MCP 调用方定义固定 Task DAG，为每个节点指派已就绪本机 ACP 执行端。每个 Task 保留一条 pi durable 协调会话，Run 独立准入。协调者有判断和记忆，通过 ACP 推进整体目标、澄清及验收；不拆解任务或修改计划，不退化为程序化节点调度器。复用 SDK 模型循环，不增加另一套规划器或并行节点调度器。
+- 普通消息不回答待决问题，也不授权空闲 ACP 工作。补充工作需要明确意图。终结 Run 和已验收交付不可变。文档与对话历史仅供参考，不是执行授权。见 `docs/task-conversation-plan.md`。
+- 协议 turn 结束不等于任务完成。只有明确验收的执行端交付能解锁依赖；整体完成仍需协调者明确决定。外部结果不明时阻止新派发，包括模型新发起的调用。
+- 优先使用官方协议 SDK 和执行端原生配置。
+- 外部工作前先持久化准入和派发意图。Task、Run、Session 与外部业务记录分别保存，不互相替代。
+- 不自动重试中断工作、不重放外部副作用，不因结果不明切换执行端。
+- 截止时间限制新开始，执行超时独立计算。客户端断开不取消持久任务。模型请求、ACP 执行与工程收尾有明确资源语义；不靠不断增加预算或提示词补丁维持运行。
+- 资源有明确所有者，关闭幂等，关闭后的实例拒绝操作。业务停止、SDK 终止与资源关闭分阶段处理；工程收尾不依赖额外模型额度。收尾失败明确上报，不吞错或伪造成功回执。
+- 只有自动发现或管理员注册、启用且启动依赖已准备的本机执行端可以启动。自定义注册先持久化再准入，不探测模型。服务持有启动命令；MCP 调用方不能提供命令、凭据或能力端点。创建任务时选定已有绝对工作目录，来自显式请求或本地 MCP 启动目录，并固定用于后续 Run。目录校验不是授权或沙箱。
+- 分开表达发现的能力事实、授权及验证证据。
+- ACP 权限请求是可选协议能力。沿用执行端原生授权，拒绝额外 ACP 审批请求。发现或适配器就绪不证明工具授权完整；不从提示词、角色、工具标题或协议成功推断权限。
+- 无人值守执行不等待交互审批。授权不足时拒绝，不能静默扩大权限。
+- 执行端仅在过滤服务私密变量和凭据别名后继承 OS 用户原生环境，不继承服务凭据。不有意记录秘密；Agent 输出仍可能敏感。
+- 不删除用户历史或工作目录来修复状态。不在代码、测试或检查中增加文件哈希验证。
 
-## Storage and releases
+## 存储与发布
 
-Use this project's package version. Do not copy another project's storage markers or bind releases to it.
+使用本项目包版本，不复制其他项目的存储标记或与其发布绑定。
 
-Initialize new storage separately from upgrading existing data. Normal startup must not silently migrate or repair old data. Actual conversions belong in standalone scripts: declare supported formats, require a stopped service and exclusive ownership, back up first, validate after changes, and support explicit resumption. At the current research/MVP validation stage, no backward compatibility is required. The public abstraction is a Task with a caller-defined DAG of one or more nodes and a fixed ACP executor assignment per node. Use Task/task names for APIs, types, files and documentation. Single-node and multi-node tasks share one API and engine; do not retain separate single-node APIs, storage adapters or parallel schedulers. This does not authorize deleting user data. Do not add unused compatibility layers or extra version counters.
+新存储初始化与已有数据升级分离。正常启动不得静默迁移或修复旧数据。真正的转换使用独立脚本，声明支持格式，要求停服并独占，先备份，转换后验证，支持显式续接。
 
-## Style and commands
+当前是调研/MVP 验证阶段，不要求旧版兼容。公共抽象是 Task，包含调用方定义的一个或多个节点及固定 ACP 指派。API、类型、文件和文档使用 Task/task 名称；单节点与多节点共用 API 和引擎，不保留独立单节点 API、存储适配或并行调度器。不增加闲置兼容层或额外版本计数。这些约定不授权删除用户数据。
 
-Use TypeScript ESM, strict compiler checks, two-space indentation, double quotes, semicolons, .js relative import suffixes and import type for type-only imports. Use camelCase, PascalCase and kebab-case filenames.
+## 风格与命令
 
-Use macOS or Linux and Node.js 22.19+. Local SQLite locking replaces external flock.
+使用 TypeScript ESM、严格编译检查、两空格缩进、双引号、分号、带 `.js` 后缀的相对导入和 `import type`。命名使用 camelCase、PascalCase 与 kebab-case 文件名。
 
-- `npm ci --ignore-scripts`: install locked dependencies.
-- `npm run check`: TypeScript and dependency-boundary checks.
-- `npm run build`: compile to dist.
-- `npm test`: build and run Node tests serially.
-- `git diff --check`: whitespace validation.
+项目维护的描述、工具和字段说明、提示词及使用引导使用中文；工具名、协议字段、状态标识、代码标识符和第三方原文保留必要的英文。
 
-`scripts/check-boundaries.mjs` checks dependency direction, cycles, SDK placement and the Run write entry. These checks do not prove runtime authorization or external side-effect safety.
+开发环境为 macOS/Linux、Node.js 22.19+。用本机 SQLite 锁替代外部 flock。
 
-## Tests and documentation
+- `npm ci --ignore-scripts`：按锁文件安装依赖。
+- `npm run check`：TypeScript 与依赖边界检查。
+- `npm run build`：编译到 dist。
+- `npm test`：构建并串行运行 Node 测试。
+- `git diff --check`：空白检查。
 
-Use node:test and node:assert/strict with real local files, SQLite, processes and SDK behavior. At this research stage keep only basic, critical correctness and safety tests, not exhaustive suites. Test concrete risks, not coverage counts, implementation structure, documentation, prompt text or UI labels. Structured inputs and outputs may be tested as logic contracts.
+`scripts/check-boundaries.mjs` 检查依赖方向、循环、SDK 位置和 Run 写入口。这些检查不证明运行时授权或外部副作用安全。
 
-Do not use mocks, stubs, fake models, simulated providers, personal credentials or real trades. Real agent/model acceptance needs an approved environment. A real failing process proves a failure path, not successful ACP execution. Keep unverified boundaries explicit.
+## 测试与文档
 
-Documentation is navigation first. Link to code for fields, defaults, schemas, state transitions and internal workflows; do not copy them into prose or tables. Keep product goals, design reasons, safety constraints, essential operator steps and validation evidence that code cannot establish. Give each topic one owner and link to it elsewhere.
+使用 node:test、node:assert/strict，验证真实本机文件、SQLite、进程及 SDK 行为。调研阶段只保留基础、关键正确性和安全测试，不追求穷举。测试具体风险，不测试覆盖率、实现结构、文档、提示词或 UI 标签。结构化输入输出可作为逻辑契约测试。
 
-Update documentation only when goals, usage, important constraints, key conclusions or navigation entry points materially change. Internal changes and repeated checks do not require documentation updates. Keep product goals, current implementation and validation evidence separate.
+不使用 mock、stub、假模型、模拟 provider、个人凭据或真实交易。真实 Agent/模型验收需要获准环境。真实失败进程只证明失败路径，不证明 ACP 成功。明确标注未经验证的边界。
 
-Validation records keep conclusions, applicable versions and conditions, unverified boundaries and necessary evidence links. Merge superseded evidence; retain older evidence only when it establishes a distinct conclusion or limitation. Do not append development, debugging, test or release execution logs, or move them into new history documents. Runtime instructions and skills are not history logs either. Use short, precise statements; preserve essential operator steps and safety constraints.
+文档以导航为主。字段、默认值、schema、状态转换和内部流程链接到代码，不复制成多份正文或表格。保留代码无法证明的产品目标、设计理由、安全约束、必要操作步骤及验证证据。每个主题只设一份权威说明，其他位置链接。
 
-Run npm run check, npm test and git diff --check before submission. Use focused feat: or fix: commits when commits are requested. Keep credentials, runtime databases, generated files and local configuration out of Git.
+只在目标、使用方式、重要约束、关键结论或导航入口实质改变时更新文档。内部调整和重复检查不需要更新文档。区分产品目标、当前实现与验证证据。
+
+验证记录保留结论、适用版本与条件、未验证边界及必要证据链接。合并被替代证据；旧证据仅在证明不同结论或限制时保留。不追加开发、调试、测试或发布流水账，也不另建历史文件搬运这些日志。运行提示词和技能也不是历史日志。表达简短精确，保留必要操作与安全约束。
+
+提交结果前执行 `npm run check`、`npm test` 和 `git diff --check`。用户要求提交时使用聚焦的 feat: 或 fix: commit。凭据、运行数据库、生成文件和本机配置不得进入 Git。

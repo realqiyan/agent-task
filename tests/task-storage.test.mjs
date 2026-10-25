@@ -32,7 +32,7 @@ test("stored records reject missing fields and noncanonical values without reque
     try {
       const table = variant === "run-default" ? "rounds" : "definitions";
       const row = db.prepare(`SELECT id,data FROM ${table}`).get(), record = JSON.parse(row.data);
-      if (variant === "task-default") delete record.input.maxSteps;
+      if (variant === "task-default") delete record.input.maxModelCalls;
       if (variant === "run-default") delete record.nodes[0].definition.dependsOn;
       if (variant === "timestamp") record.createdAt = record.createdAt.replace("Z", "+00:00");
       if (variant === "text") record.input.name = "  task  ";

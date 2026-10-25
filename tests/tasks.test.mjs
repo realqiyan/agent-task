@@ -73,7 +73,7 @@ test("a turn ending with a question is not a DAG delivery; only accepted excerpt
   assert.equal(f.service.runs.get(run.id).waitedMs, 1000);
   assert.equal(f.service.runs.get(run.id).nodes[0].resultFile, accepted.resultFile);
   assert.equal(f.service.runs.get(run.id).nodes[1].id, run.nodes[1].id);
-  assert.throws(() => actions.step(), /Stale/);
+  assert.throws(() => actions.requestModel(), /Stale/);
   assert.deepEqual(f.service.supervisor.answer(reply), receipt);
   assert.throws(() => f.service.supervisor.answer({ ...reply, answer: "changed" }), /requestKey/);
   assert.throws(() => f.service.supervisor.answer({ ...reply, requestKey: "another" }), /answered/);
@@ -95,8 +95,8 @@ test("DAG admission validates structure, assigned executors and deduplication be
   assert.equal(f.service.runs.get(f.run.id).nodes[0].startedAt, null);
   assert.equal(f.service.definitions.list().items.length, 1);
   const actions = f.service.supervisor.actions(f.run.id);
-  for (let i = 0; i < f.input.maxSteps; i++) actions.step();
-  assert.throws(() => actions.step(), /budget/);
+  for (let i = 0; i < f.input.maxModelCalls; i++) actions.requestModel();
+  assert.throws(() => actions.requestModel(), /模型请求额度/);
   assert.equal(f.service.runs.get(f.run.id).status, "failed");
 });
 
@@ -138,7 +138,7 @@ test("recovery blocks uncertain ACP work, but keeps coordinator-only runs resuma
   f.service.supervisor.recover();
   assert.equal(f.service.runs.get(run.id).status, "interrupted");
   assert.deepEqual(f.service.runs.get(run.id).nodes.map(n => n.status), ["interrupted", "blocked"]);
-  assert.throws(() => f.service.supervisor.actions(run.id).step(), /not running/);
+  assert.throws(() => f.service.supervisor.actions(run.id).requestModel(), /not running/);
 });
 
 test("real failing ACP process closes the run instead of allowing an automatic retry", { timeout: 10000 }, async t => {

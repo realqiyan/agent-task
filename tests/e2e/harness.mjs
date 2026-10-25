@@ -89,7 +89,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
   }
   async function create(input) {
     const task = await call("task_create", { requestKey: "real-e2e", name: "Real ACP E2E",
-      workspace, schedule: { type: "now" }, maxRunSeconds: 300, maxSteps: 35, maxNodeTurns: 3, ...input });
+      workspace, schedule: { type: "now" }, maxRunSeconds: 300, maxModelCalls: 18, maxNodeTurns: 3, ...input });
     taskId = task.taskId;
     log("task_created", { taskId });
     await save("task.json", task);
@@ -107,7 +107,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
     }
     const run = await call("task_run_get", { runId });
     await save("latest-run.json", run);
-    const state = { runId: run.runId, status: run.status, steps: run.steps, questions: run.questions.length,
+    const state = { runId: run.runId, status: run.status, modelCalls: run.modelCalls, questions: run.questions.length,
       nodes: run.nodes.map(node => ({ nodeRunId: node.nodeRunId, name: node.definition.id, status: node.status, sessionId: node.sessionId, turns: node.turns.length })) };
     if (JSON.stringify(state) !== lastState) { log("run_progress", state); lastState = JSON.stringify(state); }
     return run;

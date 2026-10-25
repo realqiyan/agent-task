@@ -40,10 +40,12 @@ export class TaskSupervisor {
         this.check();
         const view = this.runs.inspect(taskId, selected ?? runId);
         const bound = execution ? (view.run?.id === runId ? view : this.runs.inspect(taskId, runId)) : null;
-        return { ...view, execution: bound ? { runId: runId!, contextMessages: bound.messages } : null };
+        const modelCalls = execution ? bound!.run!.modelCalls : this.conversations.get(input.id).modelCalls;
+        return { ...view, budget: { modelCalls, maxModelCalls: view.task.maxModelCalls }, execution: bound ? { runId: runId!, contextMessages: bound.messages } : null };
       },
       readMessage: id => { this.check(); return this.conversations.readMessage(taskId, id); },
-      step: () => { current(); if (execution) { try { this.runs.step(runId!); } finally { this.reconcile(runId!); } } else this.conversations.step(input.id); },
+      check: current,
+      requestModel: () => { current(); if (execution) { try { this.runs.requestModel(runId!); } finally { this.reconcile(runId!); } } else this.conversations.requestModel(input.id); },
       converse: (node, message, contextMessageIds) => this.converse(execute(), node, message, contextMessageIds),
       accept: async (node, turn, result, reason, reuse) => this.runs.accept(execute(), node, turn, result, reason, reuse),
       ask: request => {
@@ -51,7 +53,7 @@ export class TaskSupervisor {
         clearTimeout(this.active.get(taskId)?.timer); return question;
       },
       finish: summary => { this.runs.finish(execute(), summary); },
-      stop: (status, reason) => { this.stopActive(execute(), status, reason); },
+      stop: (status, reason) => { this.runs.end(execute(), status, reason); },
       pending: () => {
         this.check();
         if (execution) {
@@ -63,10 +65,11 @@ export class TaskSupervisor {
       },
       submitted: (id, submissionId) => { this.check(); this.conversations.submitted(id, submissionId); },
       observe: ids => { current(); this.runs.observe(taskId, execution ? runId : null, ids); },
-      settle: (id, error) => { this.check(); this.conversations.settle(id, error); },
-      binding: () => { this.check(); return this.conversations.binding(taskId); },
+      // 关闭入口后仍允许已准入输入收尾；所有者退出前业务库仍由应用持有。
+      settle: (id, error) => { this.conversations.settle(id, error); },
+      binding: () => this.conversations.binding(taskId),
       bind: id => { this.check(); this.conversations.bind(taskId, id); },
-      project: (cursor, runId, text) => { this.check(); this.conversations.project(taskId, cursor, runId, text); },
+      project: (cursor, runId, text) => { this.conversations.project(taskId, cursor, runId, text); },
       validateMemory: items => { current(); this.conversations.validateMemory(taskId, items); },
     };
   }
@@ -128,7 +131,7 @@ export class TaskSupervisor {
     const run = this.runs.get(id);
     if (["running", "waiting_input"].includes(run.status)) return;
     const owner = this.active.get(run.taskId);
-    if (owner?.runId === id) owner.controller.abort(new Error("Run stopped"));
+    if (owner?.runId === id) owner.controller.abort(new TaskError("precondition", run.error ?? "任务运行已停止"));
     void this.sessions.closeRun(id).catch(this.fatal);
   }
   private stopActive(id: string, status: EndStatus, reason: string): void {
@@ -219,13 +222,19 @@ export class TaskSupervisor {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     const errors: unknown[] = [];
-    for (const id of this.sessions.runIds()) {
+    const runIds = new Set([...this.sessions.runIds(), ...[...this.active.values()].flatMap(owner => owner.runId ? [owner.runId] : [])]);
+    for (const id of runIds) {
       try {
         const run = this.runs.get(id);
-        if (run.nodes.some(node => ["running", "awaiting_review"].includes(node.status))) this.runs.end(id, "interrupted", "Service stopped with unaccepted ACP work");
+        if (run.status === "running" || run.nodes.some(node => ["running", "awaiting_review"].includes(node.status))) {
+          this.runs.end(id, "interrupted", "服务停止，活动协调或尚未验收的 ACP 工作已中断");
+        }
       } catch (error) { errors.push(error); }
     }
-    for (const active of this.active.values()) { clearTimeout(active.timer); active.controller.abort(new Error("Service stopping")); }
+    for (const active of this.active.values()) {
+      clearTimeout(active.timer);
+      active.controller.abort(new Error(active.runId && this.runs.healthy ? this.runs.get(active.runId).error ?? "服务停止" : "服务停止"));
+    }
     const stopped = await Promise.allSettled([this.sessions.close(), ...[...this.active.values()].map(active => active.completion), ...this.turns]);
     if (stopped[0]?.status === "rejected") errors.push(stopped[0].reason);
     if (errors.length) throw new AggregateError(errors, "Task supervision could not close cleanly");

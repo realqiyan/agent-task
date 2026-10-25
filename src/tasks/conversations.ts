@@ -9,33 +9,39 @@ import { memoryItemData, messageData } from "./validation.js";
 export function inputMessage(taskId: string, runId: string | null, key: string, content: string,
   kind: TaskMessage["kind"], execute: boolean, request = "", now = Date.now()): TaskMessage {
   return { id: randomUUID(), taskId, runId, questionId: null, requestKey: key, request, content, execute,
-    startedAt: null, role: kind === "execution" ? "system" : "user", kind, seen: false, steps: 0, status: "queued",
+    startedAt: null, role: kind === "execution" ? "system" : "user", kind, seen: false, modelCalls: 0, status: "queued",
     submissionId: null, error: null, createdAt: iso(now), finishedAt: null };
 }
 
 /** Reliable input and public history. This service never writes Run state or owns a model loop. */
 export class TaskConversations {
   private closed = false;
+  private accepting = true;
+  stopAdmission(): void { this.accepting = false; }
+  private checkAdmission(): void {
+    this.check();
+    if (!this.accepting) throw new TaskError("unavailable", "Task conversation admission closed");
+  }
   private check(): void { if (this.closed) throw new TaskError("unavailable", "Task conversations closed"); }
   close(): void { this.closed = true; }
   constructor(private readonly store: MessageStore, private readonly configured: () => boolean) {}
 
   duplicate(taskId: string, key: string, request: string): TaskMessage | undefined {
-    this.check();
+    this.checkAdmission();
     const existing = this.store.request(taskId, key);
     if (existing && existing.request !== request) throw new TaskError("conflict", "Input requestKey belongs to different input");
     return existing;
   }
 
   admit(taskId: string): void {
-    this.check();
+    this.checkAdmission();
     this.store.get(taskId);
     if (!this.configured()) throw new TaskError("precondition", "Coordinator is not configured");
     if (this.store.pending(taskId).length >= MAX_PENDING_TASK_INPUTS) throw new TaskError("precondition", "Task input queue is full");
   }
 
   send(value: MessageRequest, now = Date.now()): TaskMessage {
-    this.check();
+    this.checkAdmission();
     const input = messageData.parse(value);
     const request = JSON.stringify({ type: "message", ...input, execute: input.execute ?? false });
     const existing = this.duplicate(input.taskId, input.requestKey, request);
@@ -51,7 +57,7 @@ export class TaskConversations {
   }
 
   list(taskId: string, after = 0, limit = 20) {
-    this.check();
+    this.checkAdmission();
     this.store.get(taskId);
     return this.store.messages(taskId, after, limit, true);
   }
@@ -83,10 +89,10 @@ export class TaskConversations {
     return Date.parse(input.startedAt) + Math.min(MAX_CONVERSATION_SECONDS, task.input.maxRunSeconds) * 1000 - now;
   }
 
-  step(id: string): void {
+  requestModel(id: string): void {
     const input = this.get(id), task = this.store.get(input.taskId);
-    if (input.steps >= task.input.maxSteps) throw new TaskError("precondition", "Conversation turn step budget exhausted");
-    input.steps++;
+    if (input.modelCalls >= task.input.maxModelCalls) throw new TaskError("precondition", "本次对话的模型请求额度已耗尽");
+    input.modelCalls++;
     this.store.saveMessages([input]);
   }
 

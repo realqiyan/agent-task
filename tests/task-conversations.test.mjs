@@ -8,21 +8,21 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createTaskRuntime } from "../dist/application/task-runtime.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
-import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
+import { coordinatorToolBatchError, createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
 import { TaskStore } from "../dist/tasks/storage/store.js";
 import { NodeSessions } from "../dist/tasks/sessions.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { validateToolArguments } from "@earendil-works/pi-ai";
-import { createRegistry, GenerationTask, Harness } from "@earendil-works/pi-durable";
+import { createRegistry, GenerationTask, Harness, ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
 import { memoryUpdateParameters, TaskMemory } from "../dist/integrations/coordinator/memory.js";
 
-function fixture(t) {
+function fixture(t, coordinator = { provider: "openai", model: "not-a-real-model" }) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-conversation-"));
   const open = createExecution({ PATH: "/usr/bin:/bin" });
-  const coordinate = createCoordinator(dir, { provider: "openai", model: "not-a-real-model" });
+  const coordinate = createCoordinator(dir, coordinator);
   const executor = { id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null };
   const service = createTaskRuntime(dir, [executor], open, coordinate, error => { throw error; });
   const store = new TaskStore(dir), sessions = new NodeSessions(open, error => { throw error; });
@@ -49,15 +49,113 @@ function observed(f, message) {
   f.service.runs.observe(f.task.id, message.runId, [message.id]);
 }
 
+test("coordinator decisions must be the only call in a batch, regardless of order or sibling validity", () => {
+  for (const decision of ["task_question_ask", "run_complete", "run_fail"]) {
+    assert.equal(coordinatorToolBatchError([decision]), undefined);
+    for (const sibling of ["task_memory_update", "node_execute", "unknown_tool", decision]) {
+      assert.ok(coordinatorToolBatchError([decision, sibling]));
+      assert.ok(coordinatorToolBatchError([sibling, decision]));
+    }
+  }
+  assert.equal(coordinatorToolBatchError(["task_inspect", "task_memory_read"]), undefined);
+  assert.equal(coordinatorToolBatchError(Array(50).fill("task_inspect")), undefined);
+  assert.ok(coordinatorToolBatchError(Array(51).fill("task_inspect")));
+});
+
+
+test("模型额度耗尽后仍可执行本轮本地动作；整体完成仍须显式决定", t => {
+  const f = fixture(t), actions = f.service.supervisor.actions(f.run.id);
+  for (let i = 0; i < f.task.input.maxModelCalls; i++) actions.requestModel();
+  actions.check();
+  actions.inspect();
+  review(f, f.run.id, "A", "A"); review(f, f.run.id, "B", "B");
+  assert.equal(f.service.runs.get(f.run.id).status, "running");
+  actions.finish("整体目标已核对");
+  const run = f.service.runs.get(f.run.id);
+  assert.equal(run.status, "succeeded");
+  assert.equal(run.modelCalls, f.task.input.maxModelCalls);
+});
+
+test("耗尽额度通过真实 SDK 终止收尾，保留业务原因，不遗留活动 SDK 任务", async t => {
+  const key = "AGENT_TASK_TEST_BUDGET_KEY", previous = process.env[key];
+  process.env[key] = "unused-test-key";
+  t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+  // 额度在 provider 入口前耗尽，不发送网络请求，也不制造模型响应。
+  const f = fixture(t, { provider: "openai-compatible", model: "budget-boundary",
+    baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: key, api: "openai-completions",
+    reasoning: false, contextWindow: 64000, maxTokens: 1024 });
+  for (let i = 0; i < f.task.input.maxModelCalls; i++) f.service.runs.requestModel(f.run.id);
+  f.service.supervisor.tick();
+  for (let i = 0; i < 300 && f.service.supervisor.status().activeTaskIds.length; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(f.service.supervisor.status().activeTaskIds.length, 0);
+  const run = f.service.runs.get(f.run.id), message = f.service.conversations.get(f.run.inputId);
+  assert.equal(run.status, "failed");
+  assert.equal(run.modelCalls, f.task.input.maxModelCalls);
+  assert.match(run.error, /模型请求额度/);
+  assert.equal(message.status, "failed");
+  assert.equal(message.error, run.error);
+  const storage = await openCoordinatorStorage(f.dir, f.task.id, true);
+  const harness = await Harness.open(storage, { models: createModels(), registry: createRegistry() }, context);
+  try {
+    const state = await harness.inspect(context);
+    assert.equal(state.scheduling, "paused");
+    assert.equal(state.tasks.length, 0);
+    assert.equal(state.submissions.length, 0);
+    const receipt = await storage.submissionByRequest(ROOT_CONVERSATION_ID, message.id, context);
+    assert.equal(receipt.status, "unanswered");
+    assert.equal(receipt.reason, "aborted");
+  } finally { await harness.close(context); }
+});
+
+test("取消和停服在真实模型连接等待中先终止 SDK，再释放资源", async t => {
+  for (const mode of ["cancel", "shutdown"]) await t.test(mode, async t => {
+    // 真实 TCP 连接保持未响应，用于验证 I/O 取消；没有实现模型协议或生成响应。
+    const sockets = new Set(), server = createServer(socket => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    t.after(async () => { for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve)); });
+    const key = "AGENT_TASK_TEST_CANCEL_KEY", previous = process.env[key];
+    process.env[key] = "unused-test-key";
+    t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+    const f = fixture(t, { provider: "openai-compatible", model: "cancel-boundary",
+      baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKeyEnv: key, api: "openai-completions",
+      reasoning: false, contextWindow: 64000, maxTokens: 1024 });
+    f.service.supervisor.tick();
+    for (let i = 0; i < 300 && sockets.size === 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(sockets.size > 0);
+    if (mode === "cancel") f.service.supervisor.cancel(f.run.id);
+    else await f.service.close();
+    if (mode === "cancel") {
+      for (let i = 0; i < 300 && f.service.supervisor.status().activeTaskIds.length; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(f.service.supervisor.status().activeTaskIds.length, 0);
+    }
+    const run = f.store.run(f.run.id), input = f.store.message(f.run.inputId);
+    assert.equal(run.status, mode === "cancel" ? "cancelled" : "interrupted");
+    assert.equal(input.status, "failed");
+    assert.equal(input.error, run.error);
+    assert.equal(run.modelCalls, 1);
+    assert.ok(run.nodes.every(node => node.turns.length === 0));
+    const storage = await openCoordinatorStorage(f.dir, f.task.id, true);
+    const harness = await Harness.open(storage, { models: createModels(), registry: createRegistry() }, context);
+    try {
+      const state = await harness.inspect(context);
+      assert.equal(state.tasks.length, 0);
+      assert.equal(state.submissions.length, 0);
+      const receipt = await storage.submissionByRequest(ROOT_CONVERSATION_ID, input.id, context);
+      assert.equal(receipt.status, "unanswered");
+      assert.equal(receipt.reason, "aborted");
+    } finally { await harness.close(context); }
+  });
+});
+
 test("ordinary input is idempotent, does not answer questions or reset budgets, and blocks stale decisions without losing active output", t => {
   const f = fixture(t), actions = f.service.supervisor.actions(f.run.id);
-  actions.step();
+  actions.requestModel();
   f.service.runs.prepareTurn(f.run.id, "A", undefined, f.sessions);
   const input = { taskId: f.task.id, requestKey: "facts", message: "Source X has a corrected count." };
   const receipt = f.service.supervisor.send(input);
   assert.deepEqual(f.service.supervisor.send({ ...input, execute: false }), receipt);
   assert.throws(() => f.service.supervisor.send({ ...input, message: "Different" }), /requestKey/);
-  assert.equal(f.service.runs.get(f.run.id).steps, 1);
+  assert.equal(f.service.runs.get(f.run.id).modelCalls, 1);
   assert.equal(f.service.runs.get(f.run.id).inputId, f.run.inputId);
   f.service.runs.record(f.run.id, "A", "output", null, "Original result");
   f.service.runs.completeTurn(f.run.id, "A", "end_turn");
@@ -197,10 +295,10 @@ test("new input cannot extend elapsed Run time while its cancellation timer is p
   const f = fixture(t);
   f.service.runs.admitCoordinator(f.run.id, Date.now() - f.task.input.maxRunSeconds * 1000 - 1000);
   f.service.supervisor.send({ taskId: f.task.id, requestKey: "late-fact", message: "Another fact, not a new budget." });
-  assert.throws(() => f.service.supervisor.actions(f.run.id).step(), /execution budget elapsed/);
+  assert.throws(() => f.service.supervisor.actions(f.run.id).requestModel(), /execution budget elapsed/);
   const ended = f.service.runs.get(f.run.id);
   assert.equal(ended.status, "timed_out");
-  assert.equal(ended.steps, 0);
+  assert.equal(ended.modelCalls, 0);
   assert.ok(ended.nodes.every(node => node.turns.length === 0));
 });
 
@@ -220,8 +318,8 @@ test("native SDK request preparation observes admitted input, while a memory hoo
   const execute = input => coordinate(f.task.id, input, f.service.supervisor.actions(f.run.id), new AbortController().signal);
   await assert.rejects(execute(f.service.conversations.get(f.run.inputId)), /Coordinator unanswered/);
   assert.equal(f.service.conversations.get(f.run.inputId).seen, true);
-  const steps = f.service.runs.get(f.run.id).steps;
-  assert.equal(steps, 1, "The native provider boundary was reached after request preparation");
+  const modelCalls = f.service.runs.get(f.run.id).modelCalls;
+  assert.equal(modelCalls, 1, "The native provider boundary was reached after request preparation");
   const harness = await Harness.open(await openCoordinatorStorage(f.dir, f.task.id), { models: createModels(), registry: createRegistry() }, context);
   try {
     const root = await harness.root(context);
@@ -231,7 +329,7 @@ test("native SDK request preparation observes admitted input, while a memory hoo
   const next = f.service.supervisor.send({ taskId: f.task.id, requestKey: "memory-check", message: "Read my task context." });
   await assert.rejects(execute(next));
   assert.equal(f.service.conversations.get(next.id).seen, false);
-  assert.equal(f.service.runs.get(f.run.id).steps, steps, "Fail-open SDK hooks must not reach the provider again");
+  assert.equal(f.service.runs.get(f.run.id).modelCalls, modelCalls, "Fail-open SDK hooks must not reach the provider again");
   assert.ok(f.service.runs.get(f.run.id).nodes.every(node => node.turns.length === 0));
   assert.equal(failures.length, 0);
   const memoryEditor = await Harness.open(await openCoordinatorStorage(f.dir, f.task.id), { models: createModels(), registry: createRegistry() }, context);

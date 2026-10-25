@@ -38,10 +38,11 @@ export type OpenExecution = (input: { executor: ExecutorLaunch; workspace: strin
 type ExecutorLaunch = Task["executors"][string];
 
 export type CoordinatorActions = {
-  inspect(runId?: string): { taskId: string; task: TaskInput; run: TaskRun | null; messages: TaskMessage[];
+  inspect(runId?: string): { budget: { modelCalls: number; maxModelCalls: number }; taskId: string; task: TaskInput; run: TaskRun | null; messages: TaskMessage[];
     execution: { runId: string; contextMessages: TaskMessage[] } | null };
   readMessage(messageId: string): TaskMessage;
-  step(): void;
+  check(): void;
+  requestModel(): void;
   converse(nodeId: string, message?: string, contextMessageIds?: string[]): Promise<NodeRun>;
   accept(nodeId: string, turn: number, result: string, reason: string, reuse?: boolean): Promise<Delivery>;
   finish(summary: string): void;

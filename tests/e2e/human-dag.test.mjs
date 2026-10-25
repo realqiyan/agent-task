@@ -18,12 +18,9 @@ function quantityOf(value) {
   return Number(value);
 }
 
-// Check known arithmetic facts without imposing a delivery schema; the coordinator reviews their meaning.
-function verifyQuoteFacts(text, marker, expectedNumbers) {
-  assert.ok(text.includes(marker), "Delivery must preserve the upstream marker");
-  const numbers = (text.replaceAll(marker, "").match(/-?\b\d+(?:,\d{3})*(?:\.\d+)?\b/g) ?? [])
-    .map(value => Number(value.replaceAll(",", "")));
-  for (const expected of expectedNumbers) assert.ok(numbers.includes(expected), `Delivery must include ${expected}`);
+// Literal data transfer keeps this test focused on DAG/session behavior, not model arithmetic.
+function verifyRecord(text, marker, quantity) {
+  assert.deepEqual(JSON.parse(text), { marker, label: "blue", ...(quantity === undefined ? {} : { quantity }) });
 }
 
 // The model and ACP execution are real. Only the human-role input may be a declared test fixture.
@@ -31,31 +28,31 @@ test("real three-node DAG waits for human quantity and resumes without replay", 
   if (answerFile) assert.equal(await readAnswer(), undefined, "Use a new answer file; stale answers must not be replayed");
   else quantityOf(fixtureQuantity);
   const e2e = await startE2e(t, { dependencies: true });
-  const marker = `QUOTE-${randomBytes(8).toString("hex")}`;
+  const marker = `DAG-${randomBytes(8).toString("hex")}`;
   const task = await e2e.create({ inputWaitSeconds: 1800,
     nodes: [
-      { id: "price", executorId: e2e.executor.id, dependsOn: [], maxRunSeconds: 180,
-        prompt: `Calculate 17 * 19 as a unit price. Report the marker ${marker} and the computed unit price in readable text; no fixed format is required. No tools or external side effects are needed.` },
-      { id: "total", executorId: e2e.executor.id, dependsOn: ["price"], maxRunSeconds: 180,
-        prompt: "Read the accepted upstream delivery using the read tool. On the FIRST turn read the price and ask the coordinator to confirm the quantity, even when the context already supplies it; do not deliver a completed quote yet. On a follow-up in this SAME session, use the explicitly supplied human quantity and multiply the actual upstream unit price by it. Report the upstream marker, unit price, quantity and total in readable text; no fixed format is required. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
-      { id: "audit", executorId: e2e.executor.id, dependsOn: ["total"], maxRunSeconds: 180,
-        prompt: "Use the read tool to read the accepted total delivery and independently check its arithmetic. Report the upstream marker, unit price, quantity, total and your verification conclusion in your own words; no fixed format is required. Do not request more human input. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
+      { id: "source", executorId: e2e.executor.id, dependsOn: [], maxRunSeconds: 180,
+        prompt: `只返回 JSON 对象 {"marker":"${marker}","label":"blue"}，不加 Markdown 围栏或说明。不需要工具或外部副作用。` },
+      { id: "record", executorId: e2e.executor.id, dependsOn: ["source"], maxRunSeconds: 180,
+        prompt: "使用 read 读取已验收上游文件。第一轮只读取记录并向协调者请求确认数量，即使上下文已经提供数量也要确认，暂不交付完整记录。在同一会话的后续轮次，原样复制上游 marker 和 label，并将明确提供的数量作为数值 quantity 加入。只返回包含 marker、label、quantity 的 JSON 对象，不加围栏或说明。不计算或编造字段；仅可读取提供的上游文件，不写入、不运行 shell 或网络工具、不产生外部副作用。" },
+      { id: "copy", executorId: e2e.executor.id, dependsOn: ["record"], maxRunSeconds: 180,
+        prompt: "使用 read 读取已验收上游文件。只返回其中的 JSON 对象，保持 marker、label、quantity 不变，不加围栏或说明。不计算或索取更多用户事实；只读提供的上游文件，不写入、不使用 shell 或网络工具、不产生外部副作用。" },
     ],
-    prompt: `Advance the supplied three-node quotation DAG. This is arithmetic, not a purchase or external transaction.
-Execution order is mandatory: run price and accept its delivery only after checking the calculation and marker. BEFORE starting total or audit, call task_question_ask alone, asking the human for an integer quantity from 1 to 9, with completedWork identifying the accepted price. Do not guess a quantity, use a default, or start downstream work before the human reply. Waiting must not depend on retaining the already accepted price session.
-After the human reply, preserve this plan and original price delivery; explicitly revalidate price for the new facts without executing it again. Start total with the answer messageId in its selected context. Its first response asking to confirm quantity is NOT a delivery: confirm the human quantity in a second node_execute to the SAME total session, without requesting human input again. Accept the computed quote only after checking it. Then run audit, review and accept its verification, and run_complete. No writes, shell commands, network tools or side effects; only read the supplied upstream result files. Deliveries are read by agents, not parsed as records. Accept substantive text that preserves the required facts; do not request reformatting for prose, Markdown, headings or explanatory text.` });
+    prompt: `推进给定的三节点数据传递 DAG，原样传递字段，不做算术、购买或外部交易。
+先执行 source，核对 marker 和 label 后验收。在开始 record 或 copy 前，询问用户一个 1 到 9 的整数 quantity，completedWork 说明已验收的 source。不能猜测、使用默认数量或在用户回答前启动下游。等待不能依赖保留已经验收的 source 会话。
+收到回答后保留原计划和 source 原交付；明确重验证 source，不再次执行。给 record 选择包含回答 messageId 的上下文。第一轮请求确认数量的回复不是交付：在同一 record 会话的第二轮确认数量，不再次询问用户。核对 marker、label、quantity 后验收记录，再执行 copy，核对并验收原样副本，最后判断整体完成。只读提供的上游文件，不写入、不使用 shell 或网络工具、不产生外部副作用。交付必须是无围栏、无说明的 JSON 对象，不要求算术或开放式审计。` });
   const waiting = await e2e.waitFor("waiting_input");
   await e2e.save("waiting-run.json", waiting);
   assert.deepEqual(waiting.nodes.map(node => node.definition), task.input.nodes);
   const byName = run => Object.fromEntries(run.nodes.map(node => [node.definition.id, node]));
   const before = byName(waiting);
-  assert.deepEqual(Object.keys(before).sort(), ["audit", "price", "total"]);
-  assert.deepEqual(before.price.definition.dependsOn, []);
-  assert.deepEqual(before.total.definition.dependsOn, ["price"]);
-  assert.deepEqual(before.audit.definition.dependsOn, ["total"]);
-  await verifyDelivery(before.price);
-  verifyQuoteFacts(before.price.result, marker, [323]);
-  for (const node of [before.total, before.audit]) {
+  assert.deepEqual(Object.keys(before).sort(), ["copy", "record", "source"]);
+  assert.deepEqual(before.source.definition.dependsOn, []);
+  assert.deepEqual(before.record.definition.dependsOn, ["source"]);
+  assert.deepEqual(before.copy.definition.dependsOn, ["record"]);
+  await verifyDelivery(before.source);
+  verifyRecord(before.source.result, marker);
+  for (const node of [before.record, before.copy]) {
     assert.equal(node.status, "pending"); assert.equal(node.sessionId, null); assert.equal(node.turns.length, 0);
   }
   assert.equal(waiting.questions.length, 1);
@@ -74,20 +71,20 @@ After the human reply, preserve this plan and original price delivery; explicitl
   await delay(2000);
   const stillWaiting = await e2e.getRun();
   assert.equal(stillWaiting.status, "waiting_input");
-  assert.equal(stillWaiting.steps, waiting.steps);
+  assert.equal(stillWaiting.modelCalls, waiting.modelCalls);
   assert.deepEqual(stillWaiting.nodes, waiting.nodes);
   let quantity;
   if (answerFile) {
     quantity = await e2e.until(async () => {
       const current = await e2e.getRun();
       assert.equal(current.status, "waiting_input");
-      assert.equal(current.steps, waiting.steps);
+      assert.equal(current.modelCalls, waiting.modelCalls);
       const answer = await readAnswer();
       return answer === undefined ? undefined : quantityOf(answer);
     }, manualWaitMs);
   } else quantity = fixtureQuantity;
   const reply = { taskId: task.taskId, questionId: question.questionId, requestKey: "quantity-reply",
-    answer: `The human-approved quantity is ${quantity}. Use exactly this quantity; this is not permission for purchases or other external actions.` };
+    answer: `用户确认数量为 ${quantity}，请使用这个确切值。这不授权购买或其他外部操作。` };
   const receipt = await e2e.call("task_question_answer", reply);
   assert.equal(receipt.runId, waiting.runId);
   assert.equal(receipt.content, reply.answer);
@@ -102,23 +99,23 @@ After the human reply, preserve this plan and original price delivery; explicitl
   assert.equal(run.questions.length, 1); assert.ok(run.waitedMs >= 2000 && run.summary);
   const after = byName(run);
   assert.equal(run.nodes.length, 3);
-  assert.deepEqual(after.price.turns, before.price.turns, "Accepted upstream work must not be replayed");
-  assert.deepEqual(after.price.deliveries[0], before.price.deliveries[0], "Original acceptance is immutable");
-  assert.equal(after.price.resultFile, before.price.resultFile);
-  for (const name of ["price", "total", "audit"]) {
+  assert.deepEqual(after.source.turns, before.source.turns, "Accepted upstream work must not be replayed");
+  assert.deepEqual(after.source.deliveries[0], before.source.deliveries[0], "Original acceptance is immutable");
+  assert.equal(after.source.resultFile, before.source.resultFile);
+  for (const name of ["source", "record", "copy"]) {
     assert.equal(after[name].nodeRunId, before[name].nodeRunId);
     assert.deepEqual(after[name].definition, before[name].definition);
     await verifyDelivery(after[name]);
   }
   assert.equal(new Set(run.nodes.map(node => node.sessionId)).size, 3);
-  assert.equal(after.total.turns.length, 2, "Total must clarify within the same ACP session");
-  assert.ok(after.total.turns[0].output.trim(), "The clarification turn must have an actual response");
-  assert.ok(!after.total.turns[0].output.includes(after.total.result), "The quantity request must not be accepted as the computed delivery");
-  for (const node of [after.total, after.audit]) verifyQuoteFacts(node.result, marker, [323, quantity, 323 * quantity]);
-  assert.deepEqual(after.total.inputFiles, [after.price.resultFile]);
-  assert.deepEqual(after.audit.inputFiles, [after.total.resultFile]);
+  assert.equal(after.record.turns.length, 2, "Record must clarify within the same ACP session");
+  assert.ok(after.record.turns[0].output.trim(), "The clarification turn must have an actual response");
+  assert.ok(!after.record.turns[0].output.includes(after.record.result), "The quantity request must not be accepted as the completed delivery");
+  for (const node of [after.record, after.copy]) verifyRecord(node.result, marker, quantity);
+  assert.deepEqual(after.record.inputFiles, [after.source.resultFile]);
+  assert.deepEqual(after.copy.inputFiles, [after.record.resultFile]);
   assert.equal((await e2e.call("task_question_answer", reply)).messageId, receipt.messageId, "A duplicate answer returns the original receipt");
-  e2e.log("verification_passed", { runId: run.runId, taskId: task.taskId, quantity, total: 323 * quantity, steps: run.steps,
+  e2e.log("verification_passed", { runId: run.runId, taskId: task.taskId, quantity, modelCalls: run.modelCalls,
     sessions: run.nodes.map(node => node.sessionId) });
-  t.diagnostic(`Verified three-node run ${run.runId}: quantity=${quantity}, total=${323 * quantity}, same run resumed, no upstream replay`);
+  t.diagnostic(`Verified three-node run ${run.runId}: quantity=${quantity}, same run resumed, no upstream replay`);
 });

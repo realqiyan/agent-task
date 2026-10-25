@@ -1,7 +1,7 @@
 {
   "name": "agent-task",
   "version": "0.1.0-rc.6",
-  "description": "Install, set up and use Agent Task through its existing MCP tools",
+  "description": "安装、配置并通过现有 MCP 工具使用 Agent Task",
   "author": {
     "name": "realqiyan"
   },

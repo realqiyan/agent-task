@@ -19,7 +19,7 @@
 | 持久读写与事务 | [TaskStore](../src/tasks/storage/store.ts)、[配置文件](../src/configuration/files.ts)、[私有文件操作](../src/infrastructure/private-files.ts) | [task-storage.test.mjs](../tests/task-storage.test.mjs)、[settings.test.mjs](../tests/settings.test.mjs) |
 | 结果文件授权与文件持久化 | [Results](../src/results/service.ts)、[文件能力](../src/results/ports.ts)、[文件实现](../src/results/files.ts) | [results.test.mjs](../tests/results.test.mjs) |
 | ACP、worker 与进程协议 | [ACP 连接](../src/integrations/acp/connection.ts)、[worker 监督](../src/integrations/acp/execution.ts)、[worker 入口](../src/integrations/acp/worker.ts)、[命令映射](../src/integrations/acp/runtime.ts) | [execution.test.mjs](../tests/execution.test.mjs)、[tasks.test.mjs](../tests/tasks.test.mjs) |
-| durable 工具、模型、任务记忆与会话存储 | [协调适配](../src/integrations/coordinator/coordinator.ts)、[Document](../src/integrations/coordinator/memory.ts)、[provider](../src/integrations/coordinator/provider.ts)、[存储](../src/integrations/coordinator/storage.ts) | [coordinator-provider.test.mjs](../tests/coordinator-provider.test.mjs)、[durable.test.mjs](../tests/durable.test.mjs) |
+| durable 工具、模型、任务记忆与会话存储 | [协调适配](../src/integrations/coordinator/coordinator.ts)、[账本视图](../src/integrations/coordinator/context.ts)、[Document](../src/integrations/coordinator/memory.ts)、[provider](../src/integrations/coordinator/provider.ts)、[存储](../src/integrations/coordinator/storage.ts) | [coordinator-provider.test.mjs](../tests/coordinator-provider.test.mjs)、[durable.test.mjs](../tests/durable.test.mjs) |
 | MCP、HTTP 与 Web | [MCP 工具](../src/protocol/mcp.ts)、[输出契约](../src/protocol/mcp-contract.ts)、[stdio 接入](../src/protocol/stdio.ts)、[HTTP 服务](../src/protocol/http/server.ts)、[Web 路由](../src/protocol/http/web.ts)、[页面](../src/web/) | [service.test.mjs](../tests/service.test.mjs)、[web.test.mjs](../tests/web.test.mjs) |
 | CLI 与本机控制协议 | [CLI](../src/protocol/cli/commands.ts)、[管理客户端](../src/protocol/cli/admin-client.ts)、[启动器客户端](../src/integrations/local-service/control.ts) | [web.test.mjs](../tests/web.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs) |
 | 装配、启动、关闭与重启 | [main](../src/application/main.ts)、[MCP 后台启动](../src/application/mcp-entry.ts)、[业务运行实例](../src/application/task-runtime.ts)、[launcher](../src/application/launcher.ts)、[启动准备](../src/application/startup.ts) | [stdio.test.mjs](../tests/stdio.test.mjs)、[restart.test.mjs](../tests/restart.test.mjs)、[service.test.mjs](../tests/service.test.mjs) |
@@ -42,13 +42,13 @@ Task 输入与相关 Run 决策在业务库中提交；SDK inbox 和 Document �
 | 资源 | 创建与关闭责任 |
 | --- | --- |
 | 数据目录排他锁 | 应用入口取得，在业务与网络资源收尾后释放 |
-| 业务 SQLite 与业务服务 | `createTaskRuntime` 创建；关闭先停止业务入口与监督，再关闭存储 |
+| 业务 SQLite 与业务服务 | `createTaskRuntime` 创建；先停止准入和 Run 写入，保留输入回执服务供协调所有者收尾，最后关闭存储 |
 | 协调调用、时钟与取消信号 | `TaskSupervisor` 创建并等待其结束；`TaskRuns` 不持有进程或 SDK 对象 |
 | 节点会话句柄、超时与等待期间的会话 | `NodeSessions` 持有；关闭调用共用同一个完成结果 |
 | 适配器安装进程与安装锁 | `ExecutorRegistry` 管理安装准入与取消，`LocalExecutors` 持有进程和锁；发布后保留旧组件，关闭时等待安装退出 |
 | stdio 接入与共享后台 | `mcp-entry` 连接或启动独立 launcher；stdio 关闭只释放本连接，后台由显式 stop 或服务管理器关闭 |
 | worker 与 ACP 进程组 | ACP 接入创建与回收；监督器只持有窄会话能力 |
-| durable storage 与 Harness | 按 Task 寻址，每次唤醒打开同一会话；打开失败关闭存储，成功后由 Harness 关闭其存储 |
+| durable storage 与 Harness | 按 Task 寻址，每次唤醒打开同一会话；正常决定等待 SDK 回执，系统停止先 abort 收尾再 close。打开失败关闭存储，成功后由 Harness 关闭其存储 |
 | HTTP listener 与 MCP transport/server | `HttpServer` 持有；请求断开只释放请求资源，应用关闭停止新请求并收尾 |
 | 配置和结果文件描述符 | 文件适配器在单次操作内打开，并在 `finally` 中关闭 |
 

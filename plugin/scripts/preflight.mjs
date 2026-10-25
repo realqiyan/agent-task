@@ -47,25 +47,25 @@ export async function inspectInstallation({ env = process.env, cwd = process.cwd
 }
 
 const reasons = {
-  "command-unavailable": "The agent-task command could not start. It may be uninstalled, outside this host's PATH, or missing its Node interpreter.",
-  "setup-missing": "Agent Task is installed but setup is missing for the checked home.",
-  "setup-incomplete": "Agent Task initialization is incomplete. Inspect it before explicitly resuming; do not reset or reinstall it.",
-  "setup-invalid": "Agent Task installation or private configuration could not be validated. Check the selected home and existing files; do not automatically reinstall.",
-  "coordinator-missing": "Agent Task has no complete coordinator configuration. MCP inspection may work, but executable tasks need coordinator setup.",
-  "unsupported-runtime": "Agent Task needs Linux/macOS and Node.js 22.19 or later.",
-  "check-failed": "The Agent Task read-only check failed, is unsupported by this service build, or timed out. This does not prove the service is uninstalled. Inspect the command, Node version and selected home.",
+  "command-unavailable": "agent-task 命令无法启动，可能未安装、不在宿主 PATH 中或缺少 Node 解释器。",
+  "setup-missing": "Agent Task 已安装，但所检查 home 尚未初始化。",
+  "setup-incomplete": "Agent Task 初始化未完成。先核查再明确续接，不重置或重新安装。",
+  "setup-invalid": "无法验证 Agent Task 安装或私有配置。请核查所选 home 和现有文件，不自动重装。",
+  "coordinator-missing": "Agent Task 缺少完整协调配置。MCP 查询可能可用，但执行任务前须完成协调配置。",
+  "unsupported-runtime": "Agent Task 要求 Linux/macOS 和 Node.js 22.19 或更高版本。",
+  "check-failed": "Agent Task 只读检查失败、不受当前服务支持或已超时。这不证明未安装，请核查命令、Node 版本和所选 home。",
 };
 
 export function onboardingNotice(state, host) {
   const entry = { pi: "/skill:using-agent-task", claude: "/agent-task:using-agent-task", codex: "$using-agent-task" }[host];
   if (!entry || !reasons[state]) return null;
-  const message = reasons[state] + " Run " + entry + " for guidance. No installation, repair or service start was attempted.";
+  const message = reasons[state] + " 请运行 " + entry + " 查看引导。本次未尝试安装、修复或启动服务。";
   return {
     systemMessage: message,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: "Agent Task startup check: " + reasons[state] +
-        " If the user wants Agent Task, read the installed using-agent-task skill before attempting MCP operations. Verify the configured command/home; the check is not a live MCP health test. Obtain confirmation before installation or configuration changes. Do not replay work.",
+      additionalContext: "Agent Task 启动检查：" + reasons[state] +
+        " 用户要使用 Agent Task 时，先读取已安装的 using-agent-task 技能，再尝试 MCP 操作。核查所配置命令与 home；本检查不是实时 MCP 健康测试。安装或改配置前须确认，不重放工作。",
     },
   };
 }

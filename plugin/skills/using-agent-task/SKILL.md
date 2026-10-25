@@ -1,28 +1,25 @@
 ---
 name: using-agent-task
-description: Use Agent Task from Pi, Claude Code or Codex. Covers installing the service, setup and MCP connection, submitting caller-defined task DAGs, inspecting runs and deliveries, discussing a persistent Task, requesting explicit supplementary work, answering user-fact questions, registering custom local stdio ACP executors through the administrator CLI, and diagnosing connection failures.
+description: 使用 Agent Task。适用于 MCP 连接、提交调用方定义的 DAG、查询运行和交付、持续 Task 对话、显式补充工作、回答用户事实问题、通过管理员 CLI 注册本机 stdio ACP 执行端及排查连接故障。
 ---
 
-# Using Agent Task
+# 使用 Agent Task
 
-Use this skill when the user wants to use or connect Agent Task. It is guidance for the existing CLI and MCP tools, not a task executor, planner, scheduler or separate task API.
+## 选择下一步
 
-## Choose the next step
+- **首次使用、服务缺失或安装/连接请求**：读取[安装说明](references/installation.md)。获得确认后，用宿主 shell 工具执行安装，而不是只给出命令。
+- **自定义 ACP 执行端**：读取[注册说明](references/custom-acp.md)，确认后使用管理员 CLI。注册无需重启；不通过任务 MCP 工具传递启动命令。
+- **已连接并准备提交任务**：读取[任务使用](references/tasks.md)，发现宿主实际工具及当前契约。不要每次提交任务都重新 setup 或安装。
+- **连接或执行故障**：读取[故障排查](references/troubleshooting.md)，先核查再修改。不确定结果不授予重放权限。
 
-- **First use, missing service, or setup/connection request:** read [installation](references/installation.md). With user confirmation, execute the npm installation through the host's shell tool; do not merely suggest the command when you can perform the approved operation. Credentials stay in the user's terminal or private files.
-- **Custom ACP executor request:** read [custom ACP registration](references/custom-acp.md). Use the administrator CLI after confirmation; registration applies without a service restart. Do not expose launch commands through task MCP tools.
-- **Connected and ready to work:** read [task usage](references/tasks.md). Discover the host's actual MCP tools and their current schemas. Do not run setup or reinstall the service on every task request.
-- **Connection or execution problem:** read [troubleshooting](references/troubleshooting.md). Inspect before changing anything; an uncertain outcome is not permission to replay work.
+引用路径相对于本技能目录。引用文件随插件分发，使用引导不依赖另行安装服务包或检出仓库文档。
 
-Resolve reference paths from this skill directory. These files ship inside the plugin, so onboarding does not require the service package or repository documentation.
+## 边界
 
-## Boundaries
+- MCP 调用方定义固定 DAG，并为每个节点选择已就绪 ACP 执行端。
+- 直接使用现有 MCP 工具。从实际契约读取字段、默认值和错误，不复制完整契约或创建转发层。
+- 凭据不进入聊天、命令参数或宿主 MCP 配置；不把私有环境文件读入模型上下文。
+- 协议 turn 结束或提交成功不等于任务完成；分别报告已验收交付、失败和等待用户。
+- 不自动重试中断工作、切换执行端、删除历史或清理工作目录来修复状态。
 
-- MCP callers define the fixed DAG and assign an existing ready ACP executor to each node. The service coordinator advances that DAG; it does not decompose the goal or change the plan.
-- Use existing MCP tools directly. Learn fields, defaults and errors from their live schemas, not a copied contract or a new wrapper.
-- Installation, native login, adapter readiness and tool authorization are different facts. Never disable sandboxing or widen approvals to make an operation work.
-- Keep credentials out of chat, command arguments and host MCP configuration. Do not read private environment files into model context.
-- A completed protocol turn or successful task submission is not a completed task. Report accepted delivery, failure and waiting-for-user states distinctly.
-- No automatic retries of interrupted work, executor switching, history deletion or workspace cleanup to repair state.
-
-Explicit invocation: Pi `/skill:using-agent-task`; Claude Code `/agent-task:using-agent-task`; Codex `$using-agent-task` or select it in `/skills`.
+显式调用：Pi `/skill:using-agent-task`；Claude Code `/agent-task:using-agent-task`；Codex `$using-agent-task` 或在 `/skills` 中选择。

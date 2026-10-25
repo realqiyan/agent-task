@@ -32,9 +32,16 @@ export function createTaskRuntime(directory: string, profiles: readonly Executor
       close(): Promise<void> {
         return closing ??= (async () => {
           definitions.close();
+          conversations.stopAdmission();
           const stopped = supervisor.close();
-          runs.close(); conversations.close();
-          try { await Promise.all([stopped, executors.close()]); } finally { store.close(); }
+          runs.close();
+          // 拒绝新的 Run 写入，但保留输入回执服务，直到协调所有者完成投影和收尾。
+          try {
+            const outcomes = await Promise.allSettled([stopped, executors.close()]);
+            const errors = outcomes.flatMap(outcome => outcome.status === "rejected" ? [outcome.reason] : []);
+            if (errors.length) throw new AggregateError(errors, "任务运行实例收尾失败");
+          }
+          finally { conversations.close(); store.close(); }
         })();
       },
     };

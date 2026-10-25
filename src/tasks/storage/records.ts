@@ -19,7 +19,7 @@ export const messageSchema = z.object({
   id: z.string().uuid(), taskId: z.string().uuid(), runId: z.string().uuid().nullable(), questionId: z.string().uuid().nullable(),
   role: z.enum(["user", "coordinator", "system"]), kind: z.enum(["message", "supplement", "answer", "execution", "question", "result", "error"]),
   content: z.string(), startedAt: timestamp.nullable(), requestKey: z.string(), request: z.string(), execute: z.boolean(), seen: z.boolean(),
-  steps: z.number().int().nonnegative(), status: z.enum(["queued", "submitted", "processed", "failed"]),
+  modelCalls: z.number().int().nonnegative(), status: z.enum(["queued", "submitted", "processed", "failed"]),
   submissionId: z.string().nullable(), error: z.string().nullable(), createdAt: timestamp, finishedAt: timestamp.nullable(),
 }).strict();
 export const roundSchema = z.object({
@@ -31,7 +31,7 @@ export const roundSchema = z.object({
   ]),
   status: runStatusSchema,
   createdAt: timestamp, finishedAt: timestamp.nullable(), error: z.string().nullable(), skippedCount: z.number().int().nonnegative(),
-  steps: z.number().int().nonnegative(), coordinatorStartedAt: timestamp.nullable(), summary: z.string().nullable(),
+  modelCalls: z.number().int().nonnegative(), coordinatorStartedAt: timestamp.nullable(), summary: z.string().nullable(),
   waitedMs: z.number().finite().nonnegative(),
   questions: z.array(questionData.extend({
     id: z.string().uuid(), createdAt: timestamp, expiresAt: timestamp, sessionExpiresAt: timestamp.nullable(),

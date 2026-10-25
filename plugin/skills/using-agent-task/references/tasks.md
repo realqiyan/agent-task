@@ -1,37 +1,33 @@
-# Work through the existing MCP tools
+# 通过现有 MCP 工具工作
 
-Discover the host's Agent Task server, its instructions and current input/output schemas before calling tools. Use the actual host namespace. Do not implement a forwarding tool, copy full schemas into this skill, or replace MCP operations with direct database/file writes.
+调用前发现宿主的 Agent Task 服务、说明及当前输入输出契约，使用实际命名空间。不新增转发工具，不复制完整契约，不用直接写数据库或文件替代 MCP 操作。
 
-## Submit work
+## 提交工作
 
-- Establish the user's goal, intended delivery, execution timing and existing absolute workspace. Ask for missing facts rather than guessing. The plugin/cache directory is not the task workspace; give an explicit workspace unless the stdio launch directory is known to be correct.
-- Call `executor_list`. Select only existing ready executors appropriate for the user-authorized work. Adapter readiness alone does not establish native model login or tool permissions.
-- As the MCP caller, define the complete DAG and executor assignment for each node to match the user's request. Make dependencies and each node's work/acceptance criteria explicit; use one node when sufficient. Clarify material ambiguity or consequential actions before submission. Do not ask the service coordinator to invent or change the plan.
-- Read `task_create`'s current schema for timing, limits and request-key semantics. Keep the original submission identity and parameters when checking an uncertain response; do not create a fresh request key to replay work.
-- Call `task_create` only for authorized work. Save/report the task ID and workspace. Submission confirms persistence, not successful execution.
+- 明确用户目标、预期交付、执行时机和已有绝对工作目录。缺少事实时询问，不猜测。插件或缓存目录不是任务工作目录；除非已确认 stdio 启动目录正确，否则显式提供 workspace。
+- 调用 `executor_list`，只选择已有、就绪且适用于用户授权工作的执行端。适配器就绪不证明原生登录或工具权限。
+- 作为 MCP 调用方，定义完整 DAG 和各节点执行端。明确依赖、工作要求和验收标准；一个节点足够时不增加节点。提交前澄清重要歧义及有后果的操作，不要求服务协调者另行制定计划。
+- 从 `task_create` 当前契约读取时间、资源与去重语义。响应不明时保留原提交身份和参数，不换 requestKey 重放。
+- 只为已授权工作调用 `task_create`，保存并报告 Task ID 和 workspace。提交仅证明已持久接收，不证明成功。
 
-## Inspect progress and delivery
+## 查询进度与交付
 
-Use `task_list` to locate tasks, `task_get` for definitions, `task_run_list` for run history and `task_run_get` for run details and accepted delivery. Follow pagination using the returned continuation value and unchanged filters; avoid rapid, unbounded polling.
+用 `task_list` 查任务、`task_get` 查定义、`task_run_list` 查运行历史、`task_run_get` 查详情与已验收交付。分页保持过滤条件并使用返回游标，不进行快速无界轮询。
 
-Distinguish task trigger state from a particular run's outcome. Explain whether work is scheduled, executing, waiting for user facts, failed or delivered using the returned facts. A protocol turn ending or raw executor output is not accepted delivery. Read the accepted content and disclose missing evidence instead of treating a success label as proof of completeness.
+区分未来触发状态与具体 Run 结果。依据记录说明工作尚未触发、执行中、等待事实、失败或已交付。原始输出和协议 turn 结束都不是验收；读取交付内容，说明缺失证据，不把成功标签当作完整性证明。
 
-## Discuss a Task or request supplementary work
+## 持续对话与补充执行
 
-Use `task_message_send` to address the Task coordinator and `task_message_list` to read public conversation records. Do not address nodes as separate chats. A saved or submitted receipt does not prove the coordinator considered the facts or that any work completed.
+用 `task_message_send` 联系 Task 协调者，`task_message_list` 查看公开对话。节点不是独立聊天入口。已保存或提交的回执不证明事实已被考虑或工作已完成。
 
-Ordinary messages do not start idle ACP work, answer a pending question or reopen a terminal Run. Additional work needs explicit user intent and the message tool's execution option and Run reference. After completion, use a successful Run of the same Task as the baseline. Preserve old deliveries and inspect source references; never automatically rerun the DAG or repeat publication because upstream facts changed. Task memory is advisory, not authority or proof.
+## 回答问题
 
-## Answer questions
+读取最新未回答问题及期限，向用户展示实际问题和已完成工作。用 `task_question_answer` 提交用户原意，遵循 Task、问题身份和去重契约。该操作返回输入回执，执行结果仍需查询所属 Run。
 
-When a run needs user facts, retrieve its current unanswered question and applicable deadlines. Present the actual question and relevant completed work to the user. Submit their answer through `task_question_answer` using the Task and question identities and the tool's request-key contract. This returns an input receipt; inspect the owning Run for its execution outcome.
+## 控制未来触发或取消 Run
 
-Do not invent an answer, substitute your own assumptions, treat a fact reply as permission, or start a new task to bypass the wait. If a reply's outcome is uncertain, inspect the existing run before further writes.
+`task_schedule_control` 控制未来触发，`task_run_cancel` 停止具体 Run。先确认用户要控制的范围；更改未来触发不取消当前 Run，取消也不回滚外部副作用。
 
-## Control future work or cancel a run
+对于中断或外部结果不明，报告阻断并要求核查，不自动重试、重放已完成节点、切换执行端、改 DAG 或创建替代任务。
 
-Use `task_schedule_control` for future-trigger pause/resume/cancel, and `task_run_cancel` to stop a particular run. Confirm which scope the user intends; changing future triggers does not cancel the current run. Cancellation cannot undo external side effects.
-
-For interrupted or unknown external outcomes, report the block and ask for investigation. Do not automatically retry, replay completed nodes, switch executors, edit the DAG or create replacement work to evade the block.
-
-Service administration uses the existing `agent-task` CLI, not task MCP wrappers. Consult `agent-task --help` and the relevant subcommand help for settings, executor discovery and lifecycle actions. Ask before applying configuration, upgrading adapters or restarting a service with active work.
+服务管理使用现有 `agent-task` CLI。通过命令帮助查询配置、执行端和生命周期操作；应用配置、升级适配器或重启有活动工作的服务前须确认。

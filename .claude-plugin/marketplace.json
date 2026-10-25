@@ -1,7 +1,7 @@
 {
   "name": "agent-task",
   "metadata": {
-    "description": "Agent Task installation, usage guidance and native MCP connection"
+    "description": "Agent Task 安装、使用引导与原生 MCP 连接"
   },
   "owner": {
     "name": "realqiyan"
@@ -15,7 +15,7 @@
         "version": "0.1.0-rc.6",
         "registry": "https://registry.npmjs.org"
       },
-      "description": "Using Agent Task: installation, setup and existing MCP tools"
+      "description": "使用 Agent Task：安装、初始化与现有 MCP 工具"
     }
   ]
 }

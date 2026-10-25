@@ -1,67 +1,63 @@
-# Install and connect Agent Task
+# 安装与连接 Agent Task
 
-The plugin can be installed before the service. Its read-only startup check can show a using-agent-task reminder even when MCP cannot start. This check does not grant installation permission or prove MCP health; do not treat an inconclusive check as proof the service is absent. Plugin installation itself has no npm install hook and does not initialize a service. Claude Code/Codex may report an unavailable bundled MCP server until installation and setup are complete; the skill remains usable.
+## 检查与安装
 
-## Check and install
+1. 确认宿主、操作系统、安装位置和配置范围。要求 Linux/macOS、Node.js 22.19+ 和 npm；检查 `node --version`、`npm --version`、`command -v agent-task`，已找到时查询 `agent-task --version`。不把插件目录当 workspace。
+2. 先检查已有安装、自定义 --home 和 MCP 连接。命令不在 PATH 时查询用户已知安装与 `npm prefix -g`；PATH 问题不需要第二份安装。
+3. 确认缺失后，说明安装会把 npm 包下载到当前用户的全局 prefix，取得安装 `@realqiyan/agent-task` 的确认。用户指定版本时先核实版本，不虚构版本或假定插件同版服务已发布。
+4. 获准后用宿主 shell 工具**执行** `npm install -g @realqiyan/agent-task`，遵循原生权限检查。不自动 sudo、更改 prefix 或放宽安全策略。权限/网络不足时报告失败，提供相同命令供用户终端执行，不扩大权限重试。
+5. 检查退出码及安装版本；必要时使用确认 prefix 下 bin/ 的绝对路径。未经明确批准不升级已有安装。
 
-1. Identify the host, OS, intended installation and configuration scope. Require Linux/macOS, Node.js 22.19+ and npm; check `node --version`, `npm --version`, `command -v agent-task` and, when found, `agent-task --version`. Do not infer the task workspace from the plugin directory.
-2. Check whether this is an existing installation, a custom `--home`, or an already configured MCP connection. If the command is not on PATH, first check the user's known installation and `npm prefix -g`; a PATH problem does not require a second install.
-3. If the service is absent, explain that installation downloads a global npm package into the current user's npm prefix. Ask for confirmation to install `@realqiyan/agent-task`. Use an explicitly requested version when supplied; do not invent a version or imply the integration bundle version is already published.
-4. After confirmation, **execute** `npm install -g @realqiyan/agent-task` with the host's shell tool and normal permission checks. Do not use sudo, change the user's npm prefix or relax host security automatically. If permission or network access is unavailable, report the failure and offer the same command for the user's terminal. Do not retry with broader access.
-5. Check the exit status and installed `agent-task --version`. If necessary, locate the executable under the confirmed prefix's `bin/` and use its absolute path. Keep an existing installation unchanged unless the user explicitly approves an upgrade.
+## 使用现有 CLI 初始化
 
-Do not run installation in an MCP command, session-start hook, or `npx -y` launcher. Reconnection must not install or upgrade the service. Do not silently fall back from a failed release install to source builds.
+请用户在自己的终端运行 `agent-task setup`，自定义安装使用 `agent-task setup --home /absolute/private/agent-task`。由用户确认目录、端口、独立服务/管理员令牌及协调 provider/model。不在聊天索要秘密、不打印凭据文件、不复用宿主模型登录作为协调凭据。
 
-## Initialize through the existing CLI
+用户要求非交互 setup 时，先读 `agent-task setup --help`，只使用已确认选项和用户准备的私有凭据文件，确认后可代执行。不猜模型配置，不未经同意生成令牌，不在参数放秘密。未配置协调者时可以管理，但不能接收可执行任务。
 
-Ask the user to run `agent-task setup` in their own terminal, or `agent-task setup --home /absolute/private/agent-task` for the chosen custom home. Let them confirm directories, port, independent service/admin tokens and coordinator provider/model in that wizard. Do not request secret values in chat, print credential files, or reuse the host's model login as coordinator credentials.
+保留已有配置；中断初始化须明确批准 --resume，不删除历史或猜测修复。后台至少能发现原生 pi、codex、claude、opencode 中的一种，或已有[自定义就绪 ACP 执行端](custom-acp.md)。各执行端使用自己的原生登录和授权。连接前说明 MCP 初始化可能下载缺失的 ACP 适配器；就绪不证明认证和完整工具权限。
 
-For a user-requested noninteractive setup, read `agent-task setup --help` and use only explicitly confirmed options and a user-prepared private credentials file. You may execute that command after confirmation. Do not invent model settings, generate tokens without consent or put secret values in arguments. Without a configured coordinator, management can work but executable tasks cannot be accepted.
+## 启动检查与信任
 
-Preserve existing setup. Interrupted initialization needs an explicitly approved `--resume`; do not delete history or guess repairs. At least one native pi, codex, claude or opencode CLI must be visible to the service, or a [custom local stdio ACP executor](custom-acp.md) must be registered and ready. Each uses its own native login and authorization. Explain before connecting that MCP initialization may download missing ACP adapters. Readiness is not proof of authentication or complete tool authorization.
+插件通过有时长和输出限制的 `agent-task setup --check --json` 只读检查，不自动修复。失败或不支持时只能报告不确定；已初始化但停止的后台不是未安装。
 
-## Startup-check scope and trust
+根据提示行动前核对命令和 home。配置自定义 MCP 时，经确认在宿主启动环境设置 `AGENT_TASK_PREFLIGHT_COMMAND` 与 `AGENT_TASK_PREFLIGHT_HOME`。它们是非敏感的诊断目标，不配置 MCP 或服务；不写入服务凭据，也不假设插件识别了手工宿主配置。
 
-The plugin checks `agent-task setup --check --json`, with bounded time/output and no automatic repair. Unsupported or failed checks are inconclusive. An initialized but stopped backend is not a missing installation.
+Codex 需要用户在 /hooks 审查并信任 hook，不绕过信任。hook/扩展禁用或 Node 无法启动时使用显式技能入口；没有提示不证明就绪。用户可以禁用检查而保留技能。
 
-Check the user's selected command/home before acting on a notice. When configuring a custom MCP connection, also set `AGENT_TASK_PREFLIGHT_COMMAND` and `AGENT_TASK_PREFLIGHT_HOME` in the host launch environment after confirmation. These non-secret variables select only the diagnostic target, not MCP or the service. Do not write them into service credentials or assume the plugin inferred manual host configuration.
+## 注册或重连
 
-Codex needs the user to review and trust the plugin hook in `/hooks`. Never bypass hook trust. If hooks/extensions are disabled or Node itself cannot start, use the explicit skill entry; lack of a notice does not establish readiness. The user can disable the check in the host while retaining the skill.
+使用 setup 对应的 OS 用户、原生环境与 home。stdio 私下读取服务凭据，不把令牌或端口复制到宿主配置。修改前检查已有条目、保留其他设置，仅保留一条 Agent Task 连接。
 
-## Register or reconnect
+### Pi 1.4.0+ 原生 MCP
 
-Use the same OS user, native environment and home as setup. Stdio reads service credentials privately; do not copy token values or ports into host configuration. Inspect existing entries before adding or replacing one, preserve unrelated settings and keep only one Agent Task connection.
-
-### Pi 1.4.0+ native MCP
-
-After confirmation, execute:
+确认后执行：
 
 ```bash
 pi mcp add agent-task -- agent-task mcp
 pi mcp list
 ```
 
-For a custom installation, replace the add command with:
+自定义安装改用：
 
 ```bash
 pi mcp add agent-task -- /absolute/bin/agent-task mcp --home /absolute/private/agent-task
 ```
 
-These are user-level entries; use `--local` only if the user chooses project scope. `add` replaces an existing same-name entry. Reload with `/reload` or start a new session. If another extension replaces Pi's native MCP, ask the user which integration to keep instead of installing a second bridge.
+这是用户级条目；仅在用户选择项目范围时用 --local。add 会替换同名条目。使用 /reload 或新会话重载。若其他扩展替代了原生 MCP，应先询问保留哪种接入，不再安装第二座桥接。
 
-### Claude Code and Codex plugins
+### Claude Code 与 Codex 插件
 
-The enabled plugin already declares `agent-task mcp`. Do not also add a manual connection for the default installation. Complete setup, then start a new session; Claude Code also allows reconnecting the plugin server in `/mcp`. Inspect `/mcp` in the new session.
+启用的插件已声明 `agent-task mcp`，默认安装不要再手工添加。setup 后开启新会话；Claude Code 也可在 /mcp 重连。核查新会话的 /mcp 状态。
 
-For a custom home or executable, keep the skill but disable the bundled MCP entry before registering a manual connection. Do not edit an update-managed plugin cache.
+自定义 home 或程序路径时保留技能，先禁用随包 MCP 再手工注册；不修改更新管理的插件缓存。
 
-- Claude Code: ask the user to disable the plugin's Agent Task server in `/mcp`, then, with confirmation, execute:
+Claude Code：请用户在 /mcp 禁用插件的 Agent Task 服务，确认后执行：
 
 ```bash
 claude mcp add --transport stdio --scope user agent-task -- /absolute/bin/agent-task mcp --home /absolute/private/agent-task
 ```
 
-- Codex: with confirmation, merge this single table into the user's config without replacing other settings, then register the manual connection:
+Codex：确认后只合并以下表，保留其他配置，再注册连接：
 
 ```toml
 [plugins."agent-task@agent-task".mcp_servers.agent-task]
@@ -72,12 +68,12 @@ enabled = false
 codex mcp add agent-task -- /absolute/bin/agent-task mcp --home /absolute/private/agent-task
 ```
 
-Restart the session and confirm only the intended connection is enabled. GUI hosts must also be able to find Node and the native execution CLI.
+重启会话并核对只有目标连接启用。GUI 宿主也须能找到 Node 和原生执行 CLI。
 
-## Verify without executing domain work
+## 不执行领域工作的验证
 
-1. Confirm the host reports a connected server and lists its existing tools. A static configuration listing alone is not evidence of connection.
-2. Discover and call `executor_list` and `task_list` with `{}` through the host's MCP interface. Pi uses native tool search/codemode by default. Use the actual server/tool namespace.
-3. Report connection and read-only call results separately from executor readiness. If adapters are preparing, inspect later; do not submit a task or invoke a paid model merely to test installation.
+1. 确认宿主实际连接并列出工具；静态配置列表不证明连接。
+2. 通过实际 MCP 命名空间发现并调用 `executor_list({})`、`task_list({})`。Pi 默认使用原生工具搜索/codemode。
+3. 分别报告连接、只读调用与执行端就绪；适配器准备中则稍后查询，不为验证安装提交任务或调用收费模型。
 
-Append the selected `--home` to later service CLI commands. `agent-task mcp` starts or reuses a shared background service; host exit does not stop it. Confirm before stopping or restarting active work.
+后续 CLI 使用相同 --home。`agent-task mcp` 启动或复用共享后台，宿主退出不停止它。停止或重启活动工作前须确认。
