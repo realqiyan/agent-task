@@ -12,7 +12,7 @@ export function argumentsFor(argv) {
     const key = argv[i].replace(/^--/, "");
     if (!argv[i].startsWith("--") || key in options) throw new Error("Invalid or repeated option");
     if (flags.has(key)) options[key] = true;
-    else if (["home", "data-dir", "provider", "model", "port", "token-env", "credentials-file", "base-url", "api", "api-key-env", "context-window", "max-tokens"].includes(key) && argv[i + 1] && !argv[i + 1].startsWith("--")) options[key] = argv[++i];
+    else if (["home", "data-dir", "provider", "model", "port", "token-env", "credentials-file", "base-url", "api", "api-key-env", "context-window", "max-tokens", "backup"].includes(key) && argv[i + 1] && !argv[i + 1].startsWith("--")) options[key] = argv[++i];
     else throw new Error("Unknown option or missing value: " + key);
   }
   return options;
@@ -47,10 +47,13 @@ export function operationLock(root) {
   catch { db.close(); throw new Error("Another setup operation owns this installation"); }
   return () => db.close();
 }
-export function readManifest(root) {
+export function readManifest(root, allowMigration = false) {
   if (realpathSync(root) !== root || lstatSync(root).uid !== process.getuid() || (lstatSync(root).mode & 0o077)) throw new Error("Installation home must be canonical, owned and private");
   const value = json(join(root, "installation.json"));
   if (value.project !== "agent-task" || value.root !== root || value.platform !== process.platform || value.home !== homedir() || typeof value.node !== "string" || !isAbsolute(value.node) || value.app !== packageRoot) throw new Error("Installation ownership does not match this user/platform");
+  if (!allowMigration && existsSync(join(root, "migration.json")) && json(join(root, "migration.json")).phase !== "completed") {
+    throw new Error("数据迁移未完成；请保持停服，核查备份后运行 agent-task migrate --resume --yes（使用相同 --home）");
+  }
   return value;
 }
 export function saveManifest(root, manifest) {

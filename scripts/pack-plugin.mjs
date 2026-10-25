@@ -9,7 +9,7 @@ const root = new URL("../plugin/", import.meta.url);
 const json = name => JSON.parse(readFileSync(new URL(name, root), "utf8"));
 const pkg = json("package.json");
 const project = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-assert(process.argv.length <= 3, "Usage: node scripts/pack-plugin.mjs [output-directory]");
+assert(process.argv.length <= 3, "用法：node scripts/pack-plugin.mjs [输出目录]");
 const destination = resolve(process.argv[2] ?? fileURLToPath(new URL("..", root)));
 assert.equal(pkg.name, "@realqiyan/agent-task-plugin");
 assert.equal(pkg.version, project.version);

@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-if (process.argv.length !== 2) throw new Error("Usage: node scripts/create-plugin-marketplace.mjs");
+if (process.argv.length !== 2) throw new Error("用法：node scripts/create-plugin-marketplace.mjs");
 const root = mkdtempSync(join(tmpdir(), "agent-task-plugin-marketplace-"));
 cpSync(new URL("../plugin/", import.meta.url), join(root, "plugin"), { recursive: true });
 for (const [directory, source] of [

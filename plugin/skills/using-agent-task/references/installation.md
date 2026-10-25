@@ -13,7 +13,7 @@
 1. 核对已有命令路径、npm prefix、安装版本及同一个 `--home`，确认目标版本和升级授权。不要另装一份来修复 PATH。
 2. 用 `agent-task status` 和现有 Task/Run 查询检查活动协调、ACP 会话及待回答 Run；仅看活动调用列表不能证明没有待回答工作。说明停服影响并取得确认，确认前不停止服务。
 3. 执行 `agent-task stop`，确认后台已停止，再由用户安全备份安装目录和数据目录；备份不读入聊天。后台原已停止时不为升级启动它。
-4. 使用已确认的 npm prefix 执行 `npm install -g @realqiyan/agent-task`；指定版本须先核实。检查退出码及 `agent-task --version`。不重复 setup、不自动迁移、删除历史或重放任务；安装失败后停止流程并报告现状。
+4. 使用已确认的 npm prefix 执行 `npm install -g @realqiyan/agent-task`；指定版本须先核实。检查退出码及 `agent-task --version`。不重复 setup、不自动删除历史或重放任务；安装失败后停止流程并报告现状。继续保持宿主断开，用同一 `--home` 执行 `agent-task migrate --check`。需要迁移时先读 `migrate --help`，确认备份位置后执行 `agent-task migrate --backup /absolute/private/backup --yes`；中断时核查备份并明确使用 `--resume --yes`。格式未知、缺表或校验失败时停止，不手工补表。
 5. 请用户在宿主中重新建立 MCP 连接：Pi `/reload`；Claude Code 在 `/mcp` 重连或新开会话；Codex 新开会话。连接会启动新版后台。`agent-task restart` 只重启服务运行进程，不能代替 launcher 的完整停服和宿主 stdio 进程重连。
 6. 用同一命令路径和 home 查询 `agent-task status`，核对安装、launcher 和服务版本一致且 `restartRequired=false`；再通过实际 MCP 调用 `service_status` 核对 `serviceVersion`，并调用 `executor_list` 验证只读连接。不为验证创建任务或调用模型。
 

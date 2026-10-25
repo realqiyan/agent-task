@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { TaskStore } from "../dist/tasks/storage/store.js";
+import { StorageError } from "../dist/shared/errors.js";
 import { createTaskRuntime } from "../dist/application/task-runtime.js";
 import { executorRecord } from "../dist/executors/validation.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
@@ -300,7 +301,7 @@ test("an unrelated database is rejected without changing its records", t => {
   const path = join(dir, "tasks.sqlite");
   const db = new DatabaseSync(path);
   db.exec("CREATE TABLE history(text); INSERT INTO history VALUES('preserve');"); db.close();
-  assert.throws(() => new TaskStore(dir), /no such table/);
+  assert.throws(() => new TaskStore(dir), StorageError);
   const reader = new DatabaseSync(path, { readOnly: true });
   assert.equal(reader.prepare("SELECT text FROM history").get().text, "preserve"); reader.close();
 });

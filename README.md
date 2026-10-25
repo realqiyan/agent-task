@@ -9,6 +9,7 @@
 | 目的 | 入口 |
 | --- | --- |
 | 安装、配置、运行 | [部署说明](docs/deployment.md) |
+| 数据格式检查与离线迁移 | [升级说明](docs/upgrades.md) |
 | Pi、Claude Code、Codex 接入包与 using-agent-task 使用引导 | [宿主接入](docs/host-integrations.md) |
 | 本机控制台、配置保存与 Web/CLI 重启 | [控制台说明](docs/web-console.md) |
 | 命令行配置、凭据和任务管理 | [CLI 说明](docs/cli.md) |
@@ -44,7 +45,7 @@ setup 确认本机配置；MCP 连接自动启动或复用独立后台，宿主�
 
 完整命令与参数使用 `agent-task --help`、`agent-task <命令> --help` 查询，不在文档中维护副本。
 
-- 安装与运行：`setup`、`mcp`、`start`、`stop`、`restart`、`status`，见[部署说明](docs/deployment.md)。
+- 安装与运行：`setup`、`mcp`、`start`、`stop`、`restart`、`status`，见[部署说明](docs/deployment.md)；离线升级使用 `migrate`，见[升级说明](docs/upgrades.md)。
 - 配置与凭据：`config`、`executor`、`coordinator`、`credential`；任务与运行：`task`、`run`，见 [CLI 说明](docs/cli.md)。
 
 ## 许可证

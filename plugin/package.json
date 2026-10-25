@@ -1,6 +1,6 @@
 {
   "name": "@realqiyan/agent-task-plugin",
-  "version": "0.1.0-rc.8",
+  "version": "0.1.0",
   "type": "module",
   "description": "在 Pi、Claude Code 和 Codex 中安装、配置并通过现有 MCP 工具使用 Agent Task",
   "license": "MIT",

@@ -12,7 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 process.umask(0o077);
 const args = process.argv.slice(2), registry = args.includes("--registry");
 const positional = args.filter(arg => arg !== "--registry");
-if ((registry && positional.length) || (!registry && positional.length !== 1)) throw new Error("Usage: node scripts/verify-install.mjs TARBALL | --registry");
+if ((registry && positional.length) || (!registry && positional.length !== 1)) throw new Error("用法：node scripts/verify-install.mjs 安装包路径 | --registry");
 if (!["linux", "darwin"].includes(process.platform)) throw new Error(`Installation validation is unavailable on ${process.platform}; use Linux or macOS`);
 const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
 if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 19)) throw new Error(`Installation validation requires Node.js 22.19+; current version is ${process.version}`);
@@ -26,7 +26,7 @@ const prefix = join(root, "prefix"), workspace = join(root, "workspace"), home =
 const isolatedHome = join(root, "native-home"), userConfig = join(root, "npmrc");
 for (const path of [prefix, workspace, isolatedHome]) mkdirSync(path, { mode: 0o700 });
 writeFileSync(userConfig, "", { mode: 0o600 });
-console.log("Installation validation directory: " + root);
+console.log("安装验收目录：" + root);
 const env = { PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(":"), HOME: isolatedHome, LANG: "en_US.UTF-8",
   npm_config_userconfig: userConfig, npm_config_cache: process.env.npm_config_cache ?? join(root, "npm-cache"), npm_config_registry: registry ? "https://registry.npmjs.org/" : (process.env.npm_config_registry ?? "https://registry.npmjs.org/") };
 let logs = "", child, closed, mcpClient, backgroundStarted = false, secrets = [];

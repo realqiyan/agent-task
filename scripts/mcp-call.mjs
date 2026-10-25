@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { version } from "../dist/infrastructure/version.js";
 const [tool, input = "{}"] = process.argv.slice(2);
 if (!tool || !process.env.AGENT_TASK_TOKEN) {
-  console.error("Usage: AGENT_TASK_TOKEN=... node scripts/mcp-call.mjs <tool|--list> '[JSON arguments]'\nAGENT_TASK_URL defaults to http://127.0.0.1:8765/mcp");
+  console.error("用法：安全注入 AGENT_TASK_TOKEN 后，运行 node scripts/mcp-call.mjs <工具名|--list> '[JSON参数]'\nAGENT_TASK_URL 默认为 http://127.0.0.1:8765/mcp");
   process.exit(2);
 }
 const client = new Client({ name: "agent-task-command", version });

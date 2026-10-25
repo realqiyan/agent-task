@@ -7,6 +7,50 @@ import type { DefinitionStore, RunStore } from "../ports.js";
 import { StorageError, TaskError } from "../../shared/errors.js";
 import { definitionSchema, messageSchema, roundSchema } from "./records.js";
 
+// 数据格式使用首次引入该格式的项目版本，不随无关包升级递增。
+export const taskStorageFormat = "0.1.0";
+const formatSql = `CREATE TABLE storage_format(singleton INTEGER PRIMARY KEY CHECK(singleton=1), version TEXT NOT NULL);
+  INSERT INTO storage_format VALUES(1,'${taskStorageFormat}');`;
+
+/** 校验数据格式与记录，不修改数据库。 */
+export function inspectTaskStorage(db: DatabaseSync) {
+  try {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(row => row["name"]);
+    if (!["definitions", "rounds", "messages"].every(name => tables.includes(name)) ||
+      tables.some(name => !["definitions", "rounds", "messages", "storage_format"].includes(String(name)))) throw new Error();
+    const marked = tables.includes("storage_format");
+    if (marked) {
+      const rows = db.prepare("SELECT singleton,version FROM storage_format").all();
+      if (rows.length !== 1 || rows[0]?.["singleton"] !== 1 || rows[0]?.["version"] !== taskStorageFormat) throw new Error();
+    }
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map(row => row["name"]);
+    if (!["active_task_run", "message_queue"].every(name => indexes.includes(name))) throw new Error();
+    db.prepare("SELECT seq,id,workspace,request_key,data FROM definitions LIMIT 0").all();
+    db.prepare("SELECT seq,id,task_id,scheduled_at,data FROM rounds LIMIT 0").all();
+    db.prepare("SELECT seq,id,task_id,request_key,data FROM messages LIMIT 0").all();
+    for (const [table, schema] of [["definitions", definitionSchema], ["rounds", roundSchema], ["messages", messageSchema]] as const) {
+      for (const row of db.prepare(`SELECT data FROM ${table}`).all()) {
+        try { schema.parse(JSON.parse(String(row["data"]))); }
+        catch (cause) { throw new StorageError("Invalid stored task data; no conversion or repair performed", { cause }); }
+      }
+    }
+    if (db.prepare("PRAGMA quick_check").all().some(row => row["quick_check"] !== "ok") || db.prepare("PRAGMA foreign_key_check").all().length) throw new Error();
+    return { format: taskStorageFormat, marked };
+  } catch (cause) {
+    if (cause instanceof StorageError) throw cause;
+    throw new StorageError("任务数据库格式不受支持或数据不完整。请保留数据并运行 agent-task migrate --check；不要手工补表。", { cause });
+  }
+}
+
+/** 仅由显式离线迁移调用；事务失败不留下半个格式标记。 */
+export function markTaskStorage(db: DatabaseSync): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (!inspectTaskStorage(db).marked) db.exec(formatSql);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+}
+
 /** Task definitions and rounds share one transactional store. */
 export class TaskStore implements DefinitionStore, RunStore {
   private db: DatabaseSync;
@@ -17,13 +61,7 @@ export class TaskStore implements DefinitionStore, RunStore {
     this.db = new DatabaseSync(join(directory, "tasks.sqlite"));
     try {
       const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-      if (tables.length) {
-        this.db.prepare("SELECT seq,id,workspace,request_key,data FROM definitions LIMIT 0").all();
-        this.db.prepare("SELECT seq,id,task_id,scheduled_at,data FROM rounds LIMIT 0").all();
-        this.db.prepare("SELECT seq,id,task_id,request_key,data FROM messages LIMIT 0").all();
-        this.definitions(); this.rounds();
-        for (const row of this.db.prepare("SELECT data FROM messages").all()) this.decode(messageSchema, row["data"]);
-      }
+      if (tables.length) inspectTaskStorage(this.db);
       this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON");
       if (!tables.length) this.db.exec(`BEGIN IMMEDIATE;
         CREATE TABLE definitions(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, workspace TEXT NOT NULL,
@@ -34,6 +72,7 @@ export class TaskStore implements DefinitionStore, RunStore {
         CREATE TABLE messages(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, task_id TEXT NOT NULL REFERENCES definitions(id),
           request_key TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(task_id,request_key));
         CREATE INDEX message_queue ON messages(task_id,json_extract(data,'$.status'));
+        ${formatSql}
         COMMIT;`);
     } catch (error) {
       this.close();

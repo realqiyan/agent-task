@@ -1,10 +1,10 @@
 # npm 发布
 
-npm 包为 [@realqiyan/agent-task](https://www.npmjs.com/package/@realqiyan/agent-task)，发布账号 **realqiyan**，许可证 [MIT](../LICENSE)。候选版有意使用 **latest**，因此默认 `npm install -g @realqiyan/agent-task` 会安装最新候选版；这不表示已达到稳定或生产可用状态。实际完成情况见[验证说明](validation.md#npm-发布候选验证)。
+npm 包为 [@realqiyan/agent-task](https://www.npmjs.com/package/@realqiyan/agent-task)，发布账号 **realqiyan**，许可证 [MIT](../LICENSE)。发布使用 **latest**，默认 `npm install -g @realqiyan/agent-task` 安装该标签指向的版本。版本号不替代生产可用性验证。实际完成情况见[验证说明](validation.md#npm-发布候选验证)。
 
 版本、引擎、公开文件和 registry 设置以 [package.json](../package.json) 为准。[打包门禁](../scripts/pack-release.mjs)检查实际包清单；消费者安装不运行构建脚本。不要发布工作目录、私有环境、SQLite、运行日志、模型会话或测试证据。
 
-## 本地候选验收
+## 本地发布验收
 
 ```bash
 npm ci --ignore-scripts
@@ -15,6 +15,8 @@ npm run pack:release
 VERSION=$(node -p "require('./package.json').version")
 npm run test:install -- "./realqiyan-agent-task-$VERSION.tgz"
 ```
+
+涉及存储格式变化的发布还须通过[数据迁移验收](upgrades.md#支持范围)，不能以新安装成功替代已有数据升级验证。
 
 [安装验证](../scripts/verify-install.mjs)在独立临时目录执行真正的全局 npm 安装，禁用 lifecycle scripts，不依赖项目源码或编译器。它检查服务生命周期和认证，不调用模型或启动 ACP 工作；具体检查项以脚本为准。
 

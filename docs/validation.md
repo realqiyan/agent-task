@@ -14,6 +14,10 @@ git diff --check
 
 [MCP 服务测试](../tests/service.test.mjs)通过真实 HTTP 和 SDK 校验器检查输入/输出契约、成功与失败响应及列表查询。契约不使用数组形式的 `type`，可空字段仍必填并接受 `null`；实现见 [mcp-contract.ts](../src/protocol/mcp-contract.ts)。这不替代曾报告契约警告的客户端复验，其名称和版本尚未提供。
 
+## 数据升级与运行提示
+
+`0.1.0` 的[迁移测试](../tests/migration.test.mjs)使用真实文件、SQLite 和 CLI 验证独占拒绝、备份、格式登记、记录与会话保留、持久阶段续接，以及缺表和不安全路径拒绝。[SQLite 测试](../tests/sqlite.test.mjs)验证真实 SDK 存储加载不输出 SQLite 实验性提示，其他警告仍可见。Linux x64、Node 22.19.0 与 24.15.0 已通过这些检查。支持格式和操作步骤见[数据升级](upgrades.md)；未验证断电、磁盘满或其他数据格式转换，不据此推导模型或 ACP 工作可恢复。
+
 ## Task 持续对话与记忆
 
 当前未发布源码（基于 `0.1.0-rc.6`，pi durable 1.3.0）的[对话测试](../tests/task-conversations.test.mjs)、[人工输入测试](../tests/human-input.test.mjs)和[持久化测试](../tests/task-storage.test.mjs)覆盖可靠输入、待决问题隔离、旧准入拒绝、未处理消息屏障、不可变交付、显式补充与不确定结果阻断。交付与观察状态使用结构化账本输入，只验证业务规则，不冒充 ACP 成功。

@@ -9,7 +9,7 @@ const args = process.argv.slice(2);
 const options = {};
 for (let i = 0; i < args.length; i += 2) {
   if (!["--repeat", "--quantity", "--answer-file", "--suite"].includes(args[i]) || !args[i + 1]) {
-    throw new Error("Usage: npm run test:e2e:human -- [--suite human|single|conversation] [--repeat 1..5] [--quantity 1..9 | --answer-file NEW_PATH]");
+    throw new Error("用法：npm run test:e2e:human -- [--suite human|single|conversation] [--repeat 1..5] [--quantity 1..9 | --answer-file 新文件路径]");
   }
   options[args[i]] = args[i + 1];
 }
@@ -37,10 +37,10 @@ const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
 const nativeBin = join(dir, "native-bin"); mkdirSync(nativeBin, { mode: 0o700 });
 const wrapper = join(nativeBin, "pi");
 writeFileSync(wrapper, `#!/bin/sh\nunset DEEPSEEK_API_KEY AGENT_TASK_E2E_TOKEN\nexec ${quote(pi)} --tools read --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve --offline "$@"\n`, { mode: 0o700 });
-console.log(`Private acceptance logs: ${dir}`);
-console.log(`Suite: ${suite}; coordinator/native model: ${settings.defaultModel}`);
-console.log("Real models; billable. Native Pi read tool only (not an OS sandbox). Shared approved test key, not independent-account isolation.");
-if (suite === "human") console.log(options["--answer-file"] ? `Manual answer file: ${resolve(options["--answer-file"])}` : `Human-role input source: declared fixture quantity=${quantity}`);
+console.log(`私有验收日志：${dir}`);
+console.log(`用例：${suite}；协调与原生模型：${settings.defaultModel}`);
+console.log("使用真实模型并产生费用。原生 Pi 仅启用 read 工具，不是 OS 沙箱。两端共用获准测试密钥，不是独立账户隔离。");
+if (suite === "human") console.log(options["--answer-file"] ? `人工回复文件：${resolve(options["--answer-file"])}` : `人工角色输入来源：声明的测试数量 quantity=${quantity}`);
 let child, killTimer, stopped = false;
 const signalGroup = signal => {
   if (!child?.pid) return;
@@ -67,11 +67,11 @@ try {
           ...(options["--answer-file"] ? { AGENT_TASK_E2E_ANSWER_FILE: resolve(options["--answer-file"]) } : {}),
         }, stdio: ["ignore", fd, fd],
       });
-      console.log(`Run ${attempt}/${repeat}: ${join(dir, `test-${attempt}.log`)}`);
+      console.log(`运行 ${attempt}/${repeat}：${join(dir, `test-${attempt}.log`)}`);
       const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", code => resolve(code)); });
       child = undefined;
       clearTimeout(killTimer); killTimer = undefined;
-      console.log(`Run ${attempt}: ${code === 0 && !stopped ? "PASS" : "FAIL"}`);
+      console.log(`运行 ${attempt}：${code === 0 && !stopped ? "PASS" : "FAIL"}`);
       if (code !== 0 || stopped) { process.exitCode = 1; break; } // No automatic retry of failed or uncertain work.
     } finally { closeSync(fd); }
   }
@@ -79,5 +79,5 @@ try {
   clearTimeout(killTimer);
   writeFileSync(join(agent, "auth.json"), "{}\n", { mode: 0o600 });
   process.off("SIGINT", onInt); process.off("SIGTERM", onTerm);
-  console.log("Temporary native credential cleared; all run/session evidence retained.");
+  console.log("临时原生凭据已清理；运行与会话证据均保留。");
 }

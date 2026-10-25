@@ -10,6 +10,15 @@ test("SQLite loads quietly while other runtime warnings remain visible", () => {
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
     import assert from "node:assert/strict";
     const original = process.emitWarning;
+    const { openCoordinatorStorage } = await import("./dist/integrations/coordinator/storage.js");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = mkdtempSync(join(tmpdir(), "agent-task-sqlite-notice-"));
+    try {
+      const storage = await openCoordinatorStorage(root, "00000000-0000-4000-8000-000000000001");
+      await storage.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
     const { DatabaseSync } = await import("./dist/infrastructure/sqlite.js");
     assert.equal(process.emitWarning, original);
     const db = new DatabaseSync(":memory:");

@@ -1,52 +1,52 @@
-# Agent Task host integration
+# Agent Task 宿主接入
 
-A dependency-free Pi package and Claude Code/Codex plugin. The plugin remains named `agent-task`; its skill is `using-agent-task`. It guides service installation, setup, MCP connection and daily task use. All task operations use the existing Agent Task MCP tools.
+不含服务依赖的 Pi 接入包及 Claude Code/Codex 插件。插件名为 `agent-task`，技能名为 `using-agent-task`，用于引导安装、初始化、MCP 连接和日常任务操作。任务操作使用现有 Agent Task MCP 工具。
 
-## Install before the service
+## 安装接入包
 
-Service and plugin sources share one Git repository, but ship as separate npm packages. Do not install `@realqiyan/agent-task` as a Pi plugin. This plugin is `@realqiyan/agent-task-plugin`.
-
-After the plugin package and its matching marketplace entries are published:
+服务与插件在同一仓库开发，作为两个 npm 包独立分发。插件包为 `@realqiyan/agent-task-plugin`，不要将服务包 `@realqiyan/agent-task` 当作 Pi 插件安装。
 
 ```bash
 pi install npm:@realqiyan/agent-task-plugin
-# Or Claude Code: fetch only the marketplace index, then the npm plugin
+# Claude Code：先获取 marketplace 索引，再安装 npm 插件
 claude plugin marketplace add https://raw.githubusercontent.com/realqiyan/agent-task/master/.claude-plugin/marketplace.json
 claude plugin install agent-task@agent-task --scope user
-# Or Codex: sparse-checkout the index, then fetch the npm plugin
+# Codex：稀疏检出索引，再安装 npm 插件
 codex plugin marketplace add realqiyan/agent-task --sparse .agents/plugins
 codex plugin add agent-task@agent-task
 ```
 
-The catalogs pin the reviewed npm plugin version. Their existence is not proof that the package has been published. Codex sparse checkout does not eliminate all Git metadata or root files.
+marketplace 固定插件版本。发布状态与验收范围见[验证说明](https://github.com/realqiyan/agent-task/blob/master/docs/validation.md#宿主接入包)。Codex 稀疏检出仍可能下载 Git 元数据及根目录文件。
 
-For unpublished source, Pi can install the repository's `plugin/` directory directly. Claude/Codex developers can run `node scripts/create-plugin-marketplace.mjs` in the repository and register its output directory, then install `agent-task@agent-task-dev`. The snapshot has a local source and does not use npm. Do not enable development and release copies together.
+未发布源码可由 Pi 直接安装仓库的 `plugin/` 目录。Claude Code/Codex 开发者在仓库运行 `node scripts/create-plugin-marketplace.mjs`，注册输出目录，再安装 `agent-task@agent-task-dev`。开发快照使用本地来源；不要同时启用开发版与正式版。
 
-There is no npm install hook or service dependency. This package does not silently run `npm install -g @realqiyan/agent-task`. In a new session, invoke:
+插件没有 npm 安装 hook，不自动安装服务。新会话中调用：
 
-- Pi: `/skill:using-agent-task`
-- Claude Code: `/agent-task:using-agent-task`
-- Codex: `$using-agent-task` or select it in `/skills`
+- Pi：`/skill:using-agent-task`
+- Claude Code：`/agent-task:using-agent-task`
+- Codex：`$using-agent-task`，或在 `/skills` 中选择。
 
-The skill checks the installation and, with your confirmation, runs the service's npm install command using the host's shell tool. It then guides `agent-task setup`; credentials stay in your terminal/private files, not chat. Agent Task requires Linux/macOS, Node.js 22.19+ and npm. The host itself needs its own model access to follow the skill.
+技能先检查已有安装，取得确认后通过宿主 shell 安装服务，再引导运行 `agent-task setup`。凭据只在用户终端或私有文件中处理，不进入聊天。服务要求 Linux/macOS、Node.js 22.19+ 和 npm；运行技能还需要宿主自己的模型访问能力。
 
-Pi registers MCP after setup. Claude Code/Codex declare MCP in the plugin; a missing-command/setup error is expected before initialization. Reconnect or start a new session after setup. Do not add a duplicate manual connection.
+Pi 在 setup 完成后注册本项目 MCP。Claude Code/Codex 插件已声明 MCP；服务缺失或初始化未完成时连接失败是预期行为。完成 setup 后重连或新开会话，不重复添加连接。
 
-## Startup reminders
+## 启动检查
 
-The Pi extension and Claude Code/Codex SessionStart hooks check installation state independently of MCP. When the check finds a problem, they show the skill entry point and supply brief model context. Healthy checks are silent; no model turn, installation, repair or service start is triggered.
+Pi 扩展和 Claude Code/Codex 的 `SessionStart` hook 独立于 MCP 连接检查安装状态。异常时显示技能入口并提供简短上下文；正常时保持安静，不触发模型、安装、修复或服务启动。
 
-The check runs `agent-task setup --check --json`, then `agent-task status --json` for valid configurations, within a shared time/output limit. The second query contacts only the existing local backend and compares installed, launcher and service versions; it never starts or restarts the backend. It does not interpret private files or forward child-process diagnostics. Missing version data and failed checks are inconclusive, not proof that installation is missing or versions match. This runs at session start, not continuously, and does not verify the host's MCP connection.
+检查先调用 `agent-task setup --check --json`，配置有效后调用 `agent-task status --json`。两步共享时限，输出受限。状态查询只访问已有本机后台，比较安装、launcher 和服务版本，不启动或重启后台。插件不读取私有配置，不转发子进程原始诊断；版本缺失或检查失败不能视为未安装或版本一致。
 
-For a custom MCP command/home, set `AGENT_TASK_PREFLIGHT_COMMAND` and `AGENT_TASK_PREFLIGHT_HOME` in the environment that launches your host. They select only the check target; configure MCP separately with the same executable/home. Disable this hook/extension in the host if you do not want checks, or use a different connection.
+检查只在会话启动时运行，不持续监控，也不验证宿主 MCP 连接。当前会话内升级后仍须主动重连验证。
 
-Review and trust Codex's plugin hook in `/hooks` before expecting it to run. Disabled/untrusted hooks or a missing Node runtime cannot show the custom notice. Do not bypass hook trust. The skill remains available independently.
+自定义 MCP 命令或 home 时，在宿主启动环境设置 `AGENT_TASK_PREFLIGHT_COMMAND` 和 `AGENT_TASK_PREFLIGHT_HOME`；它们只选择检查目标，MCP 须另行配置相同程序和 home。不需要检查或使用其他连接时，可在宿主中禁用对应 hook/扩展。
 
-## Guides
+Codex hook 须先在 `/hooks` 中审查并信任。不绕过信任。检查禁用、未获信任或 Node 无法启动时，技能仍可显式调用。
 
-- [Install, setup and connect](skills/using-agent-task/references/installation.md)
-- [Submit tasks, inspect delivery and answer questions](skills/using-agent-task/references/tasks.md)
-- [Troubleshoot](skills/using-agent-task/references/troubleshooting.md)
-- [Full host installation and removal guide](https://github.com/realqiyan/agent-task/blob/master/docs/host-integrations.md)
+## 使用引导
 
-Removing the plugin does not stop the shared service or delete task history. Pi's manually registered MCP entry must be removed separately. No plugin installation or skill grants executor tool permissions.
+- [安装、升级与连接](skills/using-agent-task/references/installation.md)
+- [提交任务、查看交付和回答问题](skills/using-agent-task/references/tasks.md)
+- [故障排查](skills/using-agent-task/references/troubleshooting.md)
+- [宿主安装与移除](https://github.com/realqiyan/agent-task/blob/master/docs/host-integrations.md)
+
+卸载插件不会停止共享服务或删除任务历史。Pi 中单独注册的 MCP 连接须另行移除。安装插件或使用技能不授予执行端工具权限。
