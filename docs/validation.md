@@ -20,7 +20,7 @@ git diff --check
 
 ## Task 持续对话与记忆
 
-当前未发布源码（基于 `0.1.0-rc.6`，pi durable 1.3.0）的[对话测试](../tests/task-conversations.test.mjs)、[人工输入测试](../tests/human-input.test.mjs)和[持久化测试](../tests/task-storage.test.mjs)覆盖可靠输入、待决问题隔离、旧准入拒绝、未处理消息屏障、不可变交付、显式补充与不确定结果阻断。交付与观察状态使用结构化账本输入，只验证业务规则，不冒充 ACP 成功。
+`0.1.0`（pi durable 1.3.0）的[对话测试](../tests/task-conversations.test.mjs)、[人工输入测试](../tests/human-input.test.mjs)和[持久化测试](../tests/task-storage.test.mjs)覆盖可靠输入、待决问题隔离、旧准入拒绝、未处理消息屏障、不可变交付、显式补充与不确定结果阻断。交付与观察状态使用结构化账本输入，只验证业务规则，不冒充 ACP 成功。
 
 [durable 测试](../tests/durable.test.mjs)以真实 SQLite/SDK 验证同一 Task 的提交去重及 conversation-scoped Document 关闭重开后保留，不同 Task 隔离。[对话测试](../tests/task-conversations.test.mjs)还验证已绑定会话文件丢失时不创建空替代，以及终结 Run 的只读对账不调度待运行 SDK 任务。原生 SDK 向已关闭本机端口请求的失败路径验证了输入观察边界、记忆 hook 失败后阻断 provider，以及业务存储失败向应用所有者上报；没有模拟 provider 或成功模型响应。新增资源与收尾测试使用真实 SDK 和本机 TCP 连接验证：耗尽模型额度后不发起下一次请求，本轮本地决定不重复计数；预算停止、连接等待中的取消和停服先终止 SDK，回执保留原因且无活动任务遗留。TCP 测试不实现模型协议或生成响应。这些失败路径不证明模型或记忆工具成功运行。
 
@@ -36,7 +36,9 @@ git diff --check
 
 正式接入包为 `@realqiyan/agent-task-plugin`。维护者已主动删除旧名 `@realqiyan/agent-task-hosts`，不恢复旧名发布，也不自动改写用户的旧包注册。
 
-`@realqiyan/agent-task-plugin@0.1.0-rc.6` 已发布，npmjs latest 指向该版本；本机发布，无 GitHub provenance。Linux x64、Node 24.15.0 的隔离 HOME/空 npm 缓存中，Pi 1.4.0 的 npm 安装、Claude Code 2.1.302 的清单 URL → npm 安装、Codex CLI 0.164.0 的同仓稀疏索引 → npm 安装均通过。Pi 的 skill 发现和缺少服务命令时的通知、Codex 的 skill/hook 发现通过；没有授予 hook 信任或调用模型。证据：`/tmp/agent-task-rc6-native-b6lchl/remote-report.json`、同目录 `report.json`、`pi-runtime.jsonl`、`codex-runtime.json`。本地开发快照的安装证据为 `/tmp/agent-task-npm-source-nNH1U9/local-report.json`。本次 npm 分发验收不代替上文的 MCP 连接证据或真实任务验收。
+`@realqiyan/agent-task-plugin@0.1.0` 已发布，npmjs latest 指向该版本；本机发布，无 GitHub provenance。Linux x64、Node 24.15.0 下，隔离 HOME/空 npm 缓存的原生 Pi npm 安装通过，证据：`/tmp/agent-task-010-plugin-mP7HwB/install.log`；本地基础测试与补跑的原生 Pi 通知测试合计 91 项通过。未重新验收 Claude/Codex 原生安装或真实模型任务。
+
+以下为 `0.1.0-rc.6` 的历史宿主分发证据，不代表正式版复验：Linux x64、Node 24.15.0 的隔离 HOME/空 npm 缓存中，Pi 1.4.0 的 npm 安装、Claude Code 2.1.302 的清单 URL → npm 安装、Codex CLI 0.164.0 的同仓稀疏索引 → npm 安装均通过。Pi 的 skill 发现和缺少服务命令时的通知、Codex 的 skill/hook 发现通过；没有授予 hook 信任或调用模型。证据：`/tmp/agent-task-rc6-native-b6lchl/remote-report.json`、同目录 `report.json`、`pi-runtime.jsonl`、`codex-runtime.json`。本地开发快照的安装证据为 `/tmp/agent-task-npm-source-nNH1U9/local-report.json`。本次 npm 分发验收不代替上文的 MCP 连接证据或真实任务验收。
 
 未执行三种宿主的模型驱动安装/setup/日常使用会话、Pi/Claude 模型侧工具调用、真实 TUI 告警展示、Codex 用户信任后的 hook 调用、macOS 接入或自定义 home 的宿主 UI 禁用流程。探针不运行模型或 ACP 领域工作；可发现的真实失败程序只提供连接前置条件，不证明执行端能完成任务。操作入口见[宿主接入](host-integrations.md)。
 
@@ -75,7 +77,7 @@ git diff --check
 
 `0.1.0-rc.9` 通知功能候选工作树，Linux x64、Node 24.15.0，协调者与隔离原生 Pi 均使用 DeepSeek `deepseek-flash`：单节点、人工续答 DAG（测试数量 3）、持续对话三组真实 E2E 各一次全部通过，临时原生凭据已清理。证据分别为 `/tmp/agent-task-pi-human-JCNSBo/test-1.log`、`/tmp/agent-task-pi-human-mTZ7BV/test-1.log`、`/tmp/agent-task-pi-human-UB32Hm/test-1.log`。同一工作树的 91 项基础测试（含三项原生 Pi 通知用例）全部通过，无跳过；不据此推导模型稳定性、真实 TUI 或其他平台已验收。
 
-当前未发布的中文协调重构工作树（`0.1.0-rc.6`，基于 `459f46b`），Linux x64、Node 24.15.0、pi durable 1.3.0，协调者与原生 Pi 均使用 DeepSeek `deepseek-flash`：三组字面字段 E2E 各执行一次均通过。单节点使用 3/6 次模型请求，人工续答 DAG 使用 11/18，持续对话两次 Run 使用 6/25、5/25。只读核查 6 个库、4 个 Run、8 个原生会话及 9 个 turn，交付、依赖文件读取、旧记录保留和来源引用一致；9 个 SDK 输入全部 done，无活动 SDK 任务或工具错误。证据：`/tmp/agent-task-coordinator-refactor-jJBkc9/audit.json`。这是一次通过，不证明稳定性或复杂领域判断；新模型请求单位不能与旧混合步数直接比较。
+发布前的中文协调重构工作树（`0.1.0-rc.6`，基于 `459f46b`），Linux x64、Node 24.15.0、pi durable 1.3.0，协调者与原生 Pi 均使用 DeepSeek `deepseek-flash`：三组字面字段 E2E 各执行一次均通过。单节点使用 3/6 次模型请求，人工续答 DAG 使用 11/18，持续对话两次 Run 使用 6/25、5/25。只读核查 6 个库、4 个 Run、8 个原生会话及 9 个 turn，交付、依赖文件读取、旧记录保留和来源引用一致；9 个 SDK 输入全部 done，无活动 SDK 任务或工具错误。证据：`/tmp/agent-task-coordinator-refactor-jJBkc9/audit.json`。这是一次通过，不证明稳定性或复杂领域判断；新模型请求单位不能与旧混合步数直接比较。
 
 以下旧模型结果属于混合步数机制，用于保留不同失败边界，不证明新资源和收尾机制。
 
@@ -113,7 +115,7 @@ Linux x64、Node 24.15.0 的隔离环境证据：
 
 下载成功与 initialize 不证明原生认证、工具授权或任务成功。
 
-自定义本机 stdio ACP 的源码测试入口：[执行端测试](../tests/executors.test.mjs)、[Web/CLI](../tests/web.test.mjs)、[MCP](../tests/service.test.mjs)。它们校验私有注册持久化、即时准入、重启保留、启动快照不被替换、仅自定义执行端时的 MCP 接入及管理员/MCP 权限分离；[任务测试](../tests/tasks.test.mjs)另以真实失败进程验证可选启动 `cwd` 及任务 workspace 保持不变。真实本地程序只证明参数直传、启动目录与失败路径，不证明自定义 ACP 兼容或任务交付。自定义执行端尚未进行真实 ACP/模型验收，也不表示该能力已发布。
+自定义本机 stdio ACP 的源码测试入口：[执行端测试](../tests/executors.test.mjs)、[Web/CLI](../tests/web.test.mjs)、[MCP](../tests/service.test.mjs)。它们校验私有注册持久化、即时准入、重启保留、启动快照不被替换、仅自定义执行端时的 MCP 接入及管理员/MCP 权限分离；[任务测试](../tests/tasks.test.mjs)另以真实失败进程验证可选启动 `cwd` 及任务 workspace 保持不变。真实本地程序只证明参数直传、启动目录与失败路径，不证明自定义 ACP 兼容或任务交付。自定义执行端尚未进行真实 ACP/模型验收。
 
 ## npm 发布候选验证
 
@@ -121,11 +123,11 @@ Linux x64、Node 24.15.0 的隔离环境证据：
 
 | 范围 | 结论 | 证据 |
 | --- | --- | --- |
-| `0.1.0-rc.6`，提交 `4dbab08` | Node 22.19.0/24.x 基础检查、包门禁、Linux 独立安装、GitHub OIDC 发布及 npmjs 默认安装验收通过；公开包有 provenance，latest 指向该版本 | [发布运行](https://github.com/realqiyan/agent-task/actions/runs/40109848894)、[npm 版本](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0-rc.6) |
-| 同版本，Linux x64、Node 24.15.0 | 从 npmjs 默认安装到独立 prefix，通过前台、Web/CLI 重启、stdio 后台、断开后健康及 stop 检查；捕获输出未发现验证凭据 | `/tmp/agent-task-npm-frokWM/report.json` |
+| `0.1.0`，提交 `3619588` | Node 22.19.0/24.x 基础检查、包门禁、Linux 独立安装、GitHub OIDC 发布及 npmjs 默认安装验收通过；公开包有 provenance，latest 指向该版本 | [发布运行](https://github.com/realqiyan/agent-task/actions/runs/40218094281)、[npm 版本](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0) |
+| 同版本，Linux x64、Node 24.15.0 | 从 npmjs 默认安装到独立 prefix，通过前台、Web/CLI 重启、stdio 后台、断开后健康及 stop 检查；捕获输出未发现验证凭据 | `/tmp/agent-task-npm-JL5ZVA/report.json` |
 | `0.0.1-rc.2`，提交 `48549ea`，历史平台证据 | Ubuntu x64 与 macOS ARM64 hosted runner 在 Node 22.19.0 下使用 CI tarball、无源码完成安装、前台、重启及认证检查 | [Validate 运行](https://github.com/realqiyan/agent-task/actions/runs/39829900075) |
 
-`0.1.0-rc.6` 的发布验收未执行 macOS、浏览器或真实模型/ACP 任务；旧 macOS 证据不覆盖当前版本、Intel Mac、休眠或用户注销。安装检查使用真实失败程序提供可发现路径，不证明成功 ACP 执行。PTY 能力不可用时测试明确跳过，跳过不是通过。
+`0.1.0` 的发布验收未执行 macOS、浏览器或真实模型/ACP 任务；旧 macOS 证据不覆盖当前版本、Intel Mac、休眠或用户注销。安装检查使用真实失败程序提供可发现路径，不证明成功 ACP 执行。PTY 能力不可用时测试明确跳过，跳过不是通过。
 
 上述发布状态是验收时的事实，不是实时 registry 查询；包内文档是发布提交的快照。
 

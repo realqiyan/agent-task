@@ -2,7 +2,7 @@
 
 本文保留产品目标和当前架构取舍。实现入口见[代码导航](technical-design.md)，实际证据见[验证说明](validation.md)。
 
-Task 会话连续性、可靠输入、Document 记忆与补充交付的设计理由见[会话设计](task-conversation-plan.md)。这些源码能力尚未发布，真实模型验收边界见[验证说明](validation.md#task-持续对话与记忆)。
+Task 会话连续性、可靠输入、Document 记忆与补充交付的设计理由见[会话设计](task-conversation-plan.md)。真实模型验收边界见[验证说明](validation.md#task-持续对话与记忆)。
 
 使用流程简化的决策原因见[请求去重范围](adr/0001-task-request-scope.md)、[工作目录来源](adr/0002-mcp-workspace-source.md)和[适配器安装](adr/0003-adapter-installation.md)。
 
