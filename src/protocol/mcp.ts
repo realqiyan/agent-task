@@ -44,7 +44,7 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
     });
   }
   register("service_status", "创建工作前或诊断停滞时，检查监督器、存储、协调配置和容量。不探测模型凭据或可用性；执行端就绪状态见 executor_list。",
-    z.object({}).strict(), statusOutput, () => service.supervisor.status());
+    z.object({}).strict(), statusOutput, () => ({ ...service.supervisor.status(), serviceVersion: version }));
   register("executor_list", "查询可用于 task_create 的本机 ACP 执行端 ID 和适配器准备状态。只选择 state=ready；这只证明启动依赖已准备，不证明原生认证或工具授权。不刷新发现或安装适配器。",
     z.object({}).strict(), executorsOutput, () => ({ executors: service.executors.list().executors.map(executorStatus) }));
   register("task_create", "创建立即、单次或 Cron 触发的持久 Task。提供完整固定 DAG，并为每个节点指定就绪执行端；协调者判断、澄清、记忆和验收，不重写计划或改派。要求 service_status.coordinatorConfigured=true。返回任务定义，不是执行结果；用 task_run_list(taskId) 查运行。MCP 断开不取消后台工作。重复提交须使用相同 requestKey 和参数，不创建替代任务。",

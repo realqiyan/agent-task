@@ -5,7 +5,8 @@ import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
 import { connectAdmin } from "./admin-client.js";
-import { controlService } from "../../integrations/local-service/control.js";
+import { controlService, ControlError } from "../../integrations/local-service/control.js";
+import { version, versionStatus } from "../../infrastructure/version.js";
 import type { Settings } from "../../configuration/settings.js";
 import type { previewSettings } from "../../configuration/management.js";
 import type { ExecutorStatus } from "../../executors/model.js";
@@ -60,7 +61,7 @@ Only future triggers change; current runs continue. Resume does not catch up. Ca
   run: `run list [--task ID] [--after NUMBER] [--limit NUMBER]
 run show ID
 show includes nodes, turns, accepted deliveries, errors, questions and existing replies.`,
-  status: "status\nAuthenticated health, active runs/sessions and pending configuration changes.",
+  status: "status\n认证健康、活动工作、待生效配置及安装/launcher/服务版本；restartRequired=null 表示版本未知。",
   restart: "restart\nApply saved settings and verify the new instance. Active ACP sessions close; uncertain work is not replayed.",
 };
 type Options = Record<string, string | true>;
@@ -183,11 +184,20 @@ export async function runCli(command: string, args: string[], resolveHome: (home
   const output = (value: unknown) => console.log(JSON.stringify(value, null, options.json ? undefined : 2));
   if (command === "restart") { output({ event: "restarted", ...await controlService(home, "restart") }); return; }
   if (command === "status") {
-    const ready = await controlService(home, "status");
-    if (!ready.consoleUrl) { output({ event: "healthy", ...ready, adminEnabled: false }); return; }
+    try {
+      const ready = await controlService(home, "status");
+      if (!ready.consoleUrl) { output({ event: "healthy", ...ready, adminEnabled: false, ...versionStatus(ready) }); return; }
+    } catch (error) {
+      if (!(error instanceof ControlError) || error.kind !== "unreachable" || !options.json) throw error;
+      output({ event: "unreachable", installedVersion: version });
+      process.exitCode = 1;
+      return;
+    }
   }
   const client = await connectAdmin(home);
-  if (command === "status") { output({ event: "healthy", ...client.ready, ...await client.request<object>("/status") }); return; }
+  if (command === "status") {
+    output({ event: "healthy", ...client.ready, ...await client.request<object>("/status"), ...versionStatus(client.ready) }); return;
+  }
   if (command === "executor" && ["register", "unregister"].includes(action!)) {
     const input = action === "register" ? readJson(text(options, "file", true)!) : { id };
     process.stderr.write("Custom ACP registration controls local code execution. No secrets in launch arguments. Applies immediately; existing task assignments and active processes are not changed.\n");

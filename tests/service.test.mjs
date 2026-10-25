@@ -16,6 +16,7 @@ import { taskSchema } from "../dist/protocol/task-contract.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
 import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
+import { version } from "../dist/infrastructure/version.js";
 
 async function until(fn, timeout = 10_000) {
   const deadline = Date.now() + timeout;
@@ -165,6 +166,7 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   }
   const status = await call(client, "service_status");
   assert.equal(status.coordinatorConfigured, true);
+  assert.equal(status.serviceVersion, version);
   assert.deepEqual(status.limits, { maxActiveConversations: 4, maxTasks: 1000, maxNodeSessions: 8 });
   const missingId = randomUUID();
   for (const name of ["task_get", "task_schedule_control", "task_run_get", "task_run_cancel"]) {

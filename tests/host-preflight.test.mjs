@@ -4,7 +4,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { inspectInstallation } from "../plugin/scripts/preflight.mjs";
+import { inspectInstallation, runtimeState, onboardingNotice } from "../plugin/scripts/preflight.mjs";
+import { version, versionStatus } from "../dist/infrastructure/version.js";
 
 const cli = resolve("bin/agent-task.mjs");
 const hook = resolve("plugin/scripts/session-start.mjs");
@@ -29,6 +30,31 @@ function fixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return { root, bin, home, env };
 }
+
+test("runtime version reports distinguish mismatch, missing evidence and stopped backends", () => {
+  const same = { launcherVersion: version, serviceVersion: version };
+  assert.equal(versionStatus(same).restartRequired, false);
+  assert.equal(versionStatus({ ...same, serviceVersion: null }).restartRequired, null);
+  assert.equal(versionStatus({ launcherVersion: null, serviceVersion: null }).restartRequired, null);
+  const different = version + "-different";
+  assert.equal(versionStatus({ ...same, launcherVersion: different }).restartRequired, true);
+  assert.equal(versionStatus({ launcherVersion: different, serviceVersion: null }).restartRequired, true);
+  const report = { event: "healthy", ...versionStatus(same) };
+  assert.equal(runtimeState(report, 0), "ready");
+  for (const field of ["launcherVersion", "serviceVersion"]) {
+    assert.equal(runtimeState({ ...report, [field]: different }, 0), "runtime-outdated");
+    for (const value of [undefined, null, "", 42]) {
+      assert.equal(runtimeState({ ...report, [field]: value }, 0), "runtime-unknown");
+    }
+  }
+  assert.equal(runtimeState({ event: "healthy" }, 0), "runtime-unknown");
+  assert.equal(runtimeState(report, 1), "runtime-unknown");
+  assert.equal(runtimeState({ event: "unreachable", installedVersion: version }, 1), "ready");
+  assert.equal(runtimeState({ event: "unreachable" }, 1), "runtime-unknown");
+  for (const state of ["runtime-outdated", "runtime-unknown"]) {
+    for (const host of ["pi", "claude", "codex"]) assert(onboardingNotice(state, host));
+  }
+});
 
 test("preflight distinguishes missing executable, setup and failed processes without writing state", async t => {
   const { root, home, env } = fixture(t);

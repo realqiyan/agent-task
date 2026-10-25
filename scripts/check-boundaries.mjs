@@ -38,6 +38,7 @@ const adapterEdges = new Set([
   "protocol/cli/admin-client.ts -> configuration/files.ts",
   "protocol/cli/admin-client.ts -> integrations/local-service/control.ts",
   "protocol/cli/commands.ts -> integrations/local-service/control.ts",
+  "protocol/cli/commands.ts -> infrastructure/version.ts",
   "protocol/mcp.ts -> infrastructure/version.ts",
   "protocol/stdio.ts -> infrastructure/version.ts",
 ]);

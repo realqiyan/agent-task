@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { acquireLauncherLock } from "../infrastructure/lock.js";
+import { version } from "../infrastructure/version.js";
 import { prepareStartup } from "./startup.js";
 import { startupPaths } from "../configuration/files.js";
 import type { Ready } from "../integrations/local-service/control.js";
@@ -111,7 +112,7 @@ export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv)
       });
     });
     try {
-      const value = (await message(child, "ready")).ready!;
+      const value = { ...(await message(child, "ready")).ready!, launcherVersion: version };
       await health(value, inputs.environment[inputs.config.tokenEnv]!);
       current = child; ready = { info: value, token: inputs.environment[inputs.config.tokenEnv]! };
       return value;

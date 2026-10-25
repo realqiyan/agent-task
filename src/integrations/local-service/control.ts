@@ -2,7 +2,8 @@ import { request } from "node:http";
 import { join } from "node:path";
 import { startupPaths } from "../../configuration/files.js";
 
-export type Ready = { instanceId: string; url: string; consoleUrl: string | null; pid: number };
+export type Ready = { instanceId: string; url: string; consoleUrl: string | null; pid: number;
+  launcherVersion: string | null; serviceVersion: string | null };
 export type Stopped = { stopped: true };
 
 export class ControlError extends Error {
@@ -34,6 +35,11 @@ export function controlService(home: string, action: "status" | "restart" | "sto
           } else {
             if (typeof value.instanceId !== "string" || typeof value.url !== "string" || !Number.isInteger(value.pid) ||
               !(value.consoleUrl === null || typeof value.consoleUrl === "string")) throw new Error();
+            // 旧进程未报告的版本保持未知，不从磁盘补成当前版本。
+            for (const key of ["launcherVersion", "serviceVersion"] as const) {
+              if (value[key] === undefined) value[key] = null;
+              if (value[key] !== null && (typeof value[key] !== "string" || !value[key].length || value[key].length > 128)) throw new Error();
+            }
             resolve(value as Ready);
           }
         } catch { reject(new ControlError("invalid", "Invalid launcher response")); }

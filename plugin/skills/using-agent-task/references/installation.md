@@ -8,6 +8,17 @@
 4. 获准后用宿主 shell 工具**执行** `npm install -g @realqiyan/agent-task`，遵循原生权限检查。不自动 sudo、更改 prefix 或放宽安全策略。权限/网络不足时报告失败，提供相同命令供用户终端执行，不扩大权限重试。
 5. 检查退出码及安装版本；必要时使用确认 prefix 下 bin/ 的绝对路径。未经明确批准不升级已有安装。
 
+## 升级已有服务
+
+1. 核对已有命令路径、npm prefix、安装版本及同一个 `--home`，确认目标版本和升级授权。不要另装一份来修复 PATH。
+2. 用 `agent-task status` 和现有 Task/Run 查询检查活动协调、ACP 会话及待回答 Run；仅看活动调用列表不能证明没有待回答工作。说明停服影响并取得确认，确认前不停止服务。
+3. 执行 `agent-task stop`，确认后台已停止，再由用户安全备份安装目录和数据目录；备份不读入聊天。后台原已停止时不为升级启动它。
+4. 使用已确认的 npm prefix 执行 `npm install -g @realqiyan/agent-task`；指定版本须先核实。检查退出码及 `agent-task --version`。不重复 setup、不自动迁移、删除历史或重放任务；安装失败后停止流程并报告现状。
+5. 请用户在宿主中重新建立 MCP 连接：Pi `/reload`；Claude Code 在 `/mcp` 重连或新开会话；Codex 新开会话。连接会启动新版后台。`agent-task restart` 只重启服务运行进程，不能代替 launcher 的完整停服和宿主 stdio 进程重连。
+6. 用同一命令路径和 home 查询 `agent-task status`，核对安装、launcher 和服务版本一致且 `restartRequired=false`；再通过实际 MCP 调用 `service_status` 核对 `serviceVersion`，并调用 `executor_list` 验证只读连接。不为验证创建任务或调用模型。
+
+仅 npm 安装成功时报告“安装完成，尚待重连验证”，不能报告升级完成。旧进程不提供版本信息时报告无法确认，不从安装版本推断运行版本。同版本覆盖安装也不能靠版本号识别，开发快照仍须完整停服重连。自定义安装的所有管理命令使用相同 `--home`；保留现有 MCP 注册，不重新添加连接。
+
 ## 使用现有 CLI 初始化
 
 请用户在自己的终端运行 `agent-task setup`，自定义安装使用 `agent-task setup --home /absolute/private/agent-task`。由用户确认目录、端口、独立服务/管理员令牌及协调 provider/model。不在聊天索要秘密、不打印凭据文件、不复用宿主模型登录作为协调凭据。
@@ -18,7 +29,7 @@
 
 ## 启动检查与信任
 
-插件通过有时长和输出限制的 `agent-task setup --check --json` 只读检查，不自动修复。失败或不支持时只能报告不确定；已初始化但停止的后台不是未安装。
+插件通过有时长和输出限制的 `agent-task setup --check --json` 只读检查；配置有效后，用 `agent-task status --json` 查询已有后台的运行版本。不自动启动、重启或修复。失败或不支持时只能报告不确定；已初始化但停止的后台不是未安装。启动检查不是持续监控，当前会话中升级仍须按上述流程完成重连验证。
 
 根据提示行动前核对命令和 home。配置自定义 MCP 时，经确认在宿主启动环境设置 `AGENT_TASK_PREFLIGHT_COMMAND` 与 `AGENT_TASK_PREFLIGHT_HOME`。它们是非敏感的诊断目标，不配置 MCP 或服务；不写入服务凭据，也不假设插件识别了手工宿主配置。
 
@@ -30,20 +41,20 @@ Codex 需要用户在 /hooks 审查并信任 hook，不绕过信任。hook/扩�
 
 ### Pi 1.4.0+ 原生 MCP
 
-确认后执行：
+确认目标项目目录后，在该目录执行：
 
 ```bash
-pi mcp add agent-task -- agent-task mcp
+pi mcp add --local agent-task -- agent-task mcp
 pi mcp list
 ```
 
 自定义安装改用：
 
 ```bash
-pi mcp add agent-task -- /absolute/bin/agent-task mcp --home /absolute/private/agent-task
+pi mcp add --local agent-task -- /absolute/bin/agent-task mcp --home /absolute/private/agent-task
 ```
 
-这是用户级条目；仅在用户选择项目范围时用 --local。add 会替换同名条目。使用 /reload 或新会话重载。若其他扩展替代了原生 MCP，应先询问保留哪种接入，不再安装第二座桥接。
+默认用 `--local` 将 MCP 条目写入本项目的 `.pi/mcp.json`；仅在用户明确选择用户范围时省略 `--local`。add 会替换同名条目。使用 /reload 或新会话重载。若其他扩展替代了原生 MCP，应先询问保留哪种接入，不再安装第二座桥接。
 
 ### Claude Code 与 Codex 插件
 

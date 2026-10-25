@@ -78,6 +78,8 @@ stdio 退出只关闭当前连接。由 `mcp` 启动的后台使用独立进程�
 
 `restart` 与 Web 的重启入口使用同一启动器，应用已保存配置。只有新实例通过带 MCP token 的健康检查才返回成功，并给出实例标识及地址。端口变化时以该地址为准。重启关闭 ACP 会话，不保证等待人工回复的运行能无损继续。请求超时先用 `status` 核对，不盲目重复操作。
 
+服务包升级须完整停止后台、备份、安装，再由宿主重新建立 MCP 连接；仅宿主重连会复用旧后台，仅 `restart` 不更新 launcher 或宿主 stdio 进程。完整操作见[升级引导](../plugin/skills/using-agent-task/references/installation.md#升级已有服务)。`agent-task status` 显示安装、launcher 和服务版本及是否需要重启；MCP `service_status` 显示后台启动版本。缺少版本信息保持未知；同版本覆盖安装不能靠版本号识别。契约见 [CLI](../src/protocol/cli/commands.ts) 和 [MCP](../src/protocol/mcp-contract.ts)。
+
 MCP 接入不会自动重启一个已存在但不可用的后台。故障时查看安装目录的 `launcher.log` 和当前数据目录的 `service.log`；修正私有启动文件后显式重启，启动器已退出时重新连接或运行 `start`。启动失败不会回滚配置或重放工作。
 
 ## 数据目录与管理

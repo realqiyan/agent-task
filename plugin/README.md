@@ -36,7 +36,7 @@ Pi registers MCP after setup. Claude Code/Codex declare MCP in the plugin; a mis
 
 The Pi extension and Claude Code/Codex SessionStart hooks check installation state independently of MCP. When the check finds a problem, they show the skill entry point and supply brief model context. Healthy checks are silent; no model turn, installation, repair or service start is triggered.
 
-The check runs `agent-task setup --check --json` with a time/output limit. It does not interpret private files or forward child-process diagnostics. Unsupported check commands are reported as inconclusive, not treated as proof that installation is missing. This is not a live MCP health check.
+The check runs `agent-task setup --check --json`, then `agent-task status --json` for valid configurations, within a shared time/output limit. The second query contacts only the existing local backend and compares installed, launcher and service versions; it never starts or restarts the backend. It does not interpret private files or forward child-process diagnostics. Missing version data and failed checks are inconclusive, not proof that installation is missing or versions match. This runs at session start, not continuously, and does not verify the host's MCP connection.
 
 For a custom MCP command/home, set `AGENT_TASK_PREFLIGHT_COMMAND` and `AGENT_TASK_PREFLIGHT_HOME` in the environment that launches your host. They select only the check target; configure MCP separately with the same executable/home. Disable this hook/extension in the host if you do not want checks, or use a different connection.
 

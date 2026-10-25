@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { controlService } from "../dist/integrations/local-service/control.js";
+import { inspectInstallation } from "../plugin/scripts/preflight.mjs";
 
 const cli = resolve("bin/agent-task.mjs");
 async function until(read, timeout = 10_000) {
@@ -24,8 +25,8 @@ async function call(client, name, args = {}) {
   assert.equal(result.isError, false, JSON.stringify(result));
   return result.structuredContent.data;
 }
-function connection(home, cwd, env) {
-  const child = spawn(process.execPath, [cli, "mcp", "--home", home], {
+function connection(home, cwd, env, command = cli) {
+  const child = spawn(process.execPath, [command, "mcp", "--home", home], {
     cwd, env, detached: true, stdio: ["pipe", "pipe", "pipe"],
   });
   let stdout = "", stderr = "";
@@ -155,4 +156,94 @@ test("concurrent stdio projects share one backend whose future tasks survive EOF
   }
   assert.equal(JSON.parse(invoke("stop", "--json")).stopped, true);
   await assert.rejects(controlService(home, "status"), error => error.kind === "unreachable");
+});
+
+test("package updates retain process versions until full stop and MCP reconnect; preflight never restarts the backend", { timeout: 30_000 }, async t => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-upgrade-"));
+  const app = join(root, "app"), home = join(root, "private"), bin = join(root, "bin");
+  const user = join(root, "user"), workspace = join(root, "workspace");
+  for (const directory of [app, bin, user, workspace]) mkdirSync(directory, { mode: 0o700 });
+  // 使用隔离的真实服务包；只更新副本的包版本，不修改仓库或伪造协议响应。
+  for (const entry of ["bin", "scripts", "dist", "package.json"]) cpSync(resolve(entry), join(app, entry), { recursive: true });
+  symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
+  const command = join(app, "bin/agent-task.mjs"), packagePath = join(app, "package.json");
+  const manifest = JSON.parse(readFileSync(packagePath, "utf8")), initialVersion = manifest.version;
+  const updatedVersion = initialVersion + ".upgrade-test";
+  symlinkSync(process.execPath, join(bin, "node"));
+  symlinkSync("/usr/bin/false", join(bin, "opencode"));
+  const env = { PATH: bin, HOME: user, AGENT_TASK_PREFLIGHT_COMMAND: command, AGENT_TASK_PREFLIGHT_HOME: home };
+  const invoke = (...args) => execFileSync(process.execPath, [command, ...args, "--home", home], {
+    env, encoding: "utf8", stdio: "pipe", timeout: 10_000,
+  });
+  const peers = [];
+  t.after(async () => {
+    for (const peer of peers) {
+      await peer.client.close(); peer.child.stdin.end();
+      await waitClosed(peer);
+    }
+    try { await controlService(home, "stop", 8000); }
+    catch (error) { if (error.kind !== "unreachable") throw error; }
+    rmSync(root, { recursive: true, force: true });
+  });
+  invoke("setup", "--data-dir", join(home, "data"), "--port", "0", "--generate-tokens", "--yes");
+  assert.equal(await inspectInstallation({ env }), "coordinator-missing");
+  assert.equal(existsSync(join(home, "launcher.log")), false, "version checking must not start a stopped backend");
+  const first = connection(home, workspace, env, command); peers.push(first);
+  await first.connect();
+  const initial = JSON.parse(invoke("status", "--json"));
+  assert.equal(initial.installedVersion, initialVersion);
+  assert.equal(initial.launcherVersion, initialVersion);
+  assert.equal(initial.serviceVersion, initialVersion);
+  assert.equal(initial.restartRequired, false);
+  assert.equal((await call(first.client, "service_status")).serviceVersion, initialVersion);
+
+  // 暂停真实服务进程验证超时和进行中的取消，不提供模拟健康响应。
+  process.kill(initial.pid, "SIGSTOP");
+  try {
+    assert.equal(await inspectInstallation({ env }), "runtime-unknown");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 500);
+    try { assert.equal(await inspectInstallation({ env, signal: controller.signal }), "cancelled"); }
+    finally { clearTimeout(timer); }
+  } finally { process.kill(initial.pid, "SIGCONT"); }
+  assert.equal((await controlService(home, "status")).instanceId, initial.instanceId);
+
+  writeFileSync(packagePath, JSON.stringify({ ...manifest, version: updatedVersion }));
+  const upgraded = JSON.parse(invoke("status", "--json"));
+  assert.equal(upgraded.installedVersion, updatedVersion);
+  assert.equal(upgraded.launcherVersion, initialVersion);
+  assert.equal(upgraded.serviceVersion, initialVersion);
+  assert.equal(upgraded.restartRequired, true);
+  assert.equal((await call(first.client, "service_status")).serviceVersion, initialVersion);
+  assert.equal(await inspectInstallation({ env }), "runtime-outdated");
+  assert.equal((await controlService(home, "status")).instanceId, initial.instanceId);
+
+  // 重启只更新服务子进程，旧 launcher 仍须被识别。
+  const restarted = JSON.parse(invoke("restart"));
+  assert.equal(restarted.launcherVersion, initialVersion);
+  assert.equal(restarted.serviceVersion, updatedVersion);
+  assert.notEqual(restarted.instanceId, initial.instanceId);
+  assert.equal(JSON.parse(invoke("status", "--json")).restartRequired, true);
+  assert.equal(await inspectInstallation({ env }), "runtime-outdated");
+  await first.client.close(); first.child.stdin.end(); await waitClosed(first);
+  invoke("stop");
+  assert.equal(await inspectInstallation({ env }), "coordinator-missing");
+  await assert.rejects(controlService(home, "status"), error => error.kind === "unreachable");
+
+  // 关闭管理员接口仍须显示运行版本，检查不依赖管理员 API 是否启用。
+  const environmentPath = join(home, "data/environment.json");
+  const environment = JSON.parse(readFileSync(environmentPath, "utf8"));
+  delete environment.AGENT_TASK_ADMIN_TOKEN;
+  writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
+  const second = connection(home, workspace, env, command); peers.push(second);
+  await second.connect();
+  const current = JSON.parse(invoke("status", "--json"));
+  assert.equal(current.installedVersion, updatedVersion);
+  assert.equal(current.launcherVersion, updatedVersion);
+  assert.equal(current.serviceVersion, updatedVersion);
+  assert.equal(current.restartRequired, false);
+  assert.equal(current.adminEnabled, false);
+  assert.equal((await call(second.client, "service_status")).serviceVersion, updatedVersion);
+  assert((await call(second.client, "executor_list")).executors.some(entry => entry.state === "ready"));
+  assert.equal(await inspectInstallation({ env }), "coordinator-missing");
 });

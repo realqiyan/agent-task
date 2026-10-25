@@ -8,6 +8,7 @@ import { baseEnvironment, validateServiceEnvironment } from "../configuration/en
 import { readEnvironment } from "../configuration/files.js";
 import { Settings } from "../configuration/settings.js";
 import { acquireLock } from "../infrastructure/lock.js";
+import { version } from "../infrastructure/version.js";
 import { errorText } from "../shared/errors.js";
 import { createExecution } from "../integrations/acp/execution.js";
 import { executorEnvironment } from "../executors/environment.js";
@@ -87,7 +88,7 @@ try {
   const origin = await http.listen(config.port);
   if (shutting) throw new Error("Startup stopped");
   tasks.supervisor.start();
-  const ready = { instanceId, pid: process.pid, url: origin + "/mcp", consoleUrl: settings ? origin + "/admin/" : null };
+  const ready = { instanceId, pid: process.pid, url: origin + "/mcp", consoleUrl: settings ? origin + "/admin/" : null, serviceVersion: version };
   console.log(JSON.stringify({ event: "ready", ...ready }));
   process.send?.({ type: "ready", ready });
 } catch (error) { fatal(error); }

@@ -190,6 +190,7 @@ export const runSummaryOutput = z.object({
 }).strict().describe("用于查询的 Run 摘要，不是完整快照。");
 
 export const statusOutput = z.object({
+  serviceVersion: z.string().min(1).describe("后台服务进程启动时的包版本，不是磁盘安装版本或宿主 stdio 连接版本。"),
   running: z.boolean().describe("监督器计时器是否运行且存储健康；不表示模型或执行端就绪。"),
   activeTaskIds: z.array(z.string().uuid()).describe("具有协调所有者的 Task，包括纯讨论。"),
   activeTaskRunIds: z.array(z.string().uuid()).describe("具有活动协调调用的 Run，不包括所有未终结 Run。"),
