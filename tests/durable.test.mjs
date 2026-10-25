@@ -9,6 +9,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { CompactionTask, GenerationTask, Harness, createRegistry } from "@earendil-works/pi-durable";
 import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
+import { TaskMemory } from "../dist/integrations/coordinator/memory.js";
 
 test("pending SDK tasks reopen unchanged while unsupported versions and kinds still fail closed", async t => {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-pending-"));
@@ -48,13 +49,16 @@ test("pending SDK tasks reopen unchanged while unsupported versions and kinds st
   }
 });
 
-test("real durable SQLite preserves a submission across reopen and isolates task runs", async t => {
+test("real durable SQLite preserves Task memory and submissions across reopen, and isolates Tasks", async t => {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-durable-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const id = randomUUID();
   const open = async runId => Harness.open(await openCoordinatorStorage(dir, runId), { models: createModels(), registry: createRegistry() }, context);
   let harness = await open(id);
   const root = await harness.root(context);
+  const items = [{ key: "source", kind: "fact", text: "Use the named source",
+    sources: [{ type: "task", taskId: id }], scope: { type: "task" }, basis: "reported" }];
+  await root.commit(async tx => { (await tx.doc(TaskMemory, root.id)).items = items; }, context);
   const input = { type: "input", content: "No model is configured; check durable admission only.", requestId: "stable" };
   const first = await root.submit(input, context);
   const settled = await first.wait(context);
@@ -64,11 +68,18 @@ test("real durable SQLite preserves a submission across reopen and isolates task
   try {
     assert.equal((await harness.inspect(context)).scheduling, "paused");
     const restored = await harness.root(context);
+    assert.equal(restored.id, root.id);
+    assert.deepEqual(await harness.snapshot(TaskMemory, restored.id, context), { items });
+    const later = await restored.submit({ type: "input", content: "A later conversation turn", requestId: "later" }, context);
+    assert.equal((await later.wait(context)).reason, "no_model");
+    assert.deepEqual(await harness.snapshot(TaskMemory, restored.id, context), { items });
     assert.equal((await restored.submit(input, context)).id, first.id);
     assert.equal((await harness.submission(first.id, context)).id, first.id);
   } finally { await harness.close(context); }
   const other = await open(randomUUID());
   try {
     assert.equal(await other.submission(first.id, context), undefined);
+    const otherRoot = await other.root(context);
+    assert.equal(await other.snapshot(TaskMemory, otherRoot.id, context), undefined);
   } finally { await other.close(context); }
 });

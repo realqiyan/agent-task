@@ -117,10 +117,10 @@ test("concurrent stdio projects share one backend whose future tasks survive EOF
   const taskB = await call(second.client, "task_create", input);
   const taskC = await call(first.client, "task_create", { ...input, requestKey: "override", workspace: override });
   assert.equal(taskA.workspace, projectA); assert.equal(taskB.workspace, projectB); assert.equal(taskC.workspace, override);
-  assert.notEqual(taskA.id, taskB.id, "request keys are scoped to the resolved task directory");
-  assert.equal((await call(first.client, "task_create", input)).id, taskA.id);
-  assert.equal((await call(second.client, "task_get", { id: taskA.id })).workspace, projectA);
-  assert.equal((await call(second.client, "task_run_list", { taskId: taskA.id })).items.length, 0);
+  assert.notEqual(taskA.taskId, taskB.taskId, "request keys are scoped to the resolved task directory");
+  assert.equal((await call(first.client, "task_create", input)).taskId, taskA.taskId);
+  assert.equal((await call(second.client, "task_get", { taskId: taskA.taskId })).workspace, projectA);
+  assert.equal((await call(second.client, "task_run_list", { taskId: taskA.taskId })).items.length, 0);
   await first.client.close(); first.child.stdin.end();
   await waitClosed(first);
   process.kill(-second.child.pid, "SIGHUP");
@@ -136,7 +136,7 @@ test("concurrent stdio projects share one backend whose future tasks survive EOF
     assert.equal(response.status, 200);
     return (await response.json()).data;
   };
-  const ids = new Set([taskA.id, taskB.id, taskC.id]);
+  const ids = new Set([taskA.taskId, taskB.taskId, taskC.taskId]);
   const runs = await until(async () => {
     const items = (await admin("/runs")).items.filter(run => ids.has(run.taskId));
     return items.length === 3 && items.every(run => run.status === "failed") && items;

@@ -14,6 +14,14 @@ git diff --check
 
 [MCP 服务测试](../tests/service.test.mjs)通过真实 HTTP 和 SDK 校验器检查输入/输出契约、成功与失败响应及列表查询。契约不使用数组形式的 `type`，可空字段仍必填并接受 `null`；实现见 [mcp-contract.ts](../src/protocol/mcp-contract.ts)。这不替代曾报告契约警告的客户端复验，其名称和版本尚未提供。
 
+## Task 持续对话与记忆
+
+当前未发布源码（基于 `0.1.0-rc.6`，pi durable 1.3.0）的[对话测试](../tests/task-conversations.test.mjs)、[人工输入测试](../tests/human-input.test.mjs)和[持久化测试](../tests/task-storage.test.mjs)覆盖可靠输入、待决问题隔离、旧准入拒绝、未处理消息屏障、不可变交付、显式补充与不确定结果阻断。交付与观察状态使用结构化账本输入，只验证业务规则，不冒充 ACP 成功。
+
+[durable 测试](../tests/durable.test.mjs)以真实 SQLite/SDK 验证同一 Task 的提交去重及 conversation-scoped Document 关闭重开后保留，不同 Task 隔离。[对话测试](../tests/task-conversations.test.mjs)还验证已绑定会话文件丢失时不创建空替代，以及终结 Run 的只读对账不调度待运行 SDK 任务。原生 SDK 向已关闭本机端口请求的失败路径验证了输入观察边界、记忆 hook 失败后阻断 provider，以及业务存储失败向应用所有者上报；没有模拟 provider 或成功模型响应。这些失败路径不证明模型或记忆工具成功运行。
+
+[真实对话用例](../tests/e2e/task-conversation.test.mjs)已验证模型写入笔记、空闲服务重启后读取、普通讨论与执行隔离，以及补充 Run 的新交付和下游复核。适用环境、证据和模型引用错误统一见[真实模型结论](#已验证结论)及[限制](#必须保留的限制)；不据此推导自动压缩、活动 ACP 恢复或记忆维护普遍可靠。
+
 ## 宿主接入包
 
 `0.1.0-rc.4` 基线上的接入资产，Linux x64、Node 24.15.0，在无个人凭据的隔离 HOME/宿主配置中验证：未安装服务时，Pi 1.4.0、Claude Code 2.1.302、Codex CLI 0.164.0 均可安装本地接入包并发现 `using-agent-task`。随后用本地构建服务完成 setup，Pi 工具发现、Claude MCP 健康连接、Codex app-server 连接及 `executor_list`、`task_list` 调用通过。证据：`/tmp/agent-task-native-hosts-TvywpQ/report.json`、同目录 `codex-runtime.json`。这是本地资产验证，不表示已发布到 npm 或远端 marketplace。
@@ -38,25 +46,35 @@ git diff --check
 
 仅在获准环境显式运行，会产生模型费用；不使用个人凭据或真实交易：
 
-- 单节点：`npm run test:e2e`。需安全注入 `DEEPSEEK_API_KEY`，并将 `AGENT_TASK_E2E_EXECUTOR` 设为获准的 `pi`、`codex`、`claude` 或 `opencode`。执行端须另行准备原生认证及无领域副作用的配置，不继承协调密钥。连接时准备缺少的适配器。
-- DAG 与人工回复：`npm run test:e2e:human -- --quantity 4`。需已安装 Pi 和获准 DeepSeek 测试凭据；适配器在连接时准备。数量由测试客户端提供，不冒充真人回答。
+需安全注入获准的 `DEEPSEEK_API_KEY`。隔离 Pi 验收使用已安装的 Pi，适配器在连接时准备：
+
+- 单节点：`npm run test:e2e:human -- --suite single`。
+- DAG 与问题回答：`npm run test:e2e:human -- --quantity 4`。数量由测试客户端提供，不冒充真人回答。
+- 持续对话、记忆重开与补充执行：`npm run test:e2e:human -- --suite conversation`。用例仅在无活动协调或 ACP 工作时重启自己的隔离服务；SDK 观察器不写记忆、不恢复任务，也不提供模型响应。
 - 真人模式：`npm run test:e2e:human -- --answer-file /absolute/private/path/quantity.txt`。使用新文件，等待旁边的 `.question.json` 出现，再写入答案。
+
+其他已获准且原生认证与无领域副作用配置已准备的执行端可用 `npm run test:e2e`，将 `AGENT_TASK_E2E_EXECUTOR` 设为对应类型。此入口不代为隔离原生配置，不继承协调密钥；就绪不代表授权或成功。
 
 完整前置检查、参数和断言见 [E2E 用例](../tests/e2e/)、[Pi 启动器](../scripts/run-pi-human-e2e.mjs)。Pi 启动器为两端共用获准测试密钥，创建独立原生配置，只启用 read；这不是 OS 沙箱或独立账户隔离。强杀或断电不能保证临时认证清理，需管理员核查。
 
 ### 已验证结论
 
-`0.1.0-rc.1`：2026-10-23，Linux x64、Node 24.15.0，DeepSeek `deepseek-flash` 协调员、隔离的只读 Pi 原生配置及连接时安装的 pi-acp 0.0.34。单节点和三节点 DAG 用例均通过内容断言：
+2026-10-25，未发布的 Task 会话重构工作树（包版本 `0.1.0-rc.6`，基于提交 `a185e2a`）：Linux x64、Node 24.15.0、pi durable 1.3.0、Pi 1.4.0、pi-acp 0.0.34；协调员和执行端均用 DeepSeek `deepseek-flash`，独立 HOME/数据目录，原生工具仅 read。三组真实用例检查内容与持久状态，保留成功及失败结果，不以成功标签替代交付检查。以下为结构化来源接口的证据：
 
 | 范围 | 结论 | 证据目录 |
 | --- | --- | --- |
-| 单节点 | 真实 ACP 交付保留必需标识与数值，结果文件持久化成功 | `/tmp/agent-task-real-e2e-Igj91J` |
-| 三节点 DAG 与人工回复 | 等待后续接同一 Run，在同一节点会话内澄清；已接受上游不重放，文本交付保留必需内容 | `/tmp/agent-task-real-e2e-oreA3j` |
+| 单节点 | 真实 ACP 输出保留标识与正确乘积 323，验收文本与持久结果一致 | `/tmp/agent-task-real-e2e-ALJyUL` |
+| 三节点 DAG 与问题回答 | 有成功样例：同一 Run/ACP 会话续接，上游只重验证，最终数值 1292；最终重复验收因 35 步预算耗尽失败，不能宣称稳定完成 | 成功 `/tmp/agent-task-real-e2e-hGnB7A`；失败 `/tmp/agent-task-real-e2e-NNsCbz` |
+| 持续对话、记忆与补充 | 普通讨论不启动 ACP 或回答问题；有来源的笔记重启后被实际读取；补充节点同时选用 Task 级与本轮消息，新交付为 1615，旧 Run 的 969 及旧文件不变；此次无工具错误 | `/tmp/agent-task-real-e2e-Lm1NrB` |
 
-两项用例均在提交后断开客户端，再由新连接观察结果。原始测试日志：`/tmp/agent-task-pi-human-6N0Zlj/test-1.log`。数量来自测试客户端，不是真人文件回复。此证据不代表后续版本已完成模型复验，也不覆盖 Codex、Claude、OpenCode 的模型任务、真实宿主退出或模型执行中重启。
+适用接口、结果及原始日志定位：`/tmp/agent-task-real-e2e-Lm1NrB/acceptance-report.json`。DAG 成功样例在读取参数名称统一前完成；最终重复失败另列，未重放或覆盖。记忆快照、工具结果和原生会话保留在报告指向的私有目录。临时原生认证与服务凭据已清理。数量和消息来自声明的测试客户端，不是真人回答。
+
+这些结果覆盖当前源码的上述只读算术场景，不代表已发布包、其他执行端或模型、自动历史压缩、已验收 ACP 活动会话内的补充工作、模型执行中重启或外部写操作已验收。
 
 ### 必须保留的限制
 
+- **引用正确不证明笔记语义正确。** 旧接口曾出现来源 ID 类型混用及上下文规则过度概括，证据为 `/tmp/agent-task-real-e2e-aqywJK/coordinator-evidence.json`。结构化引用和可选上下文列表改善了选择，但笔记的陈述/推断归类及适用范围仍由模型判断，不构成用户确认；新对话证据中，本次数量仍被写成 Task 级笔记。定向记忆写入与重开读取不证明自主记忆维护可靠。
+- **模型参数错误会消耗执行预算。** 最终 DAG 复验中，模型添加了未声明的记忆字段，校验拒绝后纠正；随后耗尽 35 步预算，audit 输出虽已完成却未验收，Run 失败。证据为该失败目录的 `coordinator-evidence.json`、`latest-run.json`。预算阻断有效，不代表该预算下任务稳定完成。
 - **运行成功状态不证明交付完整。** 文本交付验收曾发现：原始输出含必需标识，但协调员接受的摘录遗漏标识，仍将运行标为 `succeeded`；内容断言拒绝了该结果。后续通过不能证明模型始终完整摘录。反例证据：`/tmp/agent-task-real-e2e-XgRgeo`。
 - **原生只读配置和 `--offline` 不证明整个执行栈无外部访问。** Pi ACP 验收留下适配器启动时的 `npm view` 版本检查记录；日志没有查询结果，不能确认 registry 请求是否完成。原生记录：`/tmp/agent-task-pi-human-lpMTR3/home/`。原始 stderr 与完整 ACP 通信未保留，也不能据此排除其他访问或诊断错误。
 - **检查点不保证外部副作用 exactly-once。** 早期 durable 的真实 SQLite/文件/SIGKILL 研究曾观察到，外部写入后、结果提交前崩溃会使恢复重复写入。这不是 ACP 恢复验收；原记录未提供实验附件链接，不能据此扩大恢复保证。

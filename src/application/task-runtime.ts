@@ -8,7 +8,8 @@ import { LocalResultFiles } from "../results/files.js";
 import { Results } from "../results/service.js";
 import { TaskDefinitions } from "../tasks/definitions.js";
 import { TaskRuns } from "../tasks/runs.js";
-import { RunSupervisor } from "../tasks/supervisor.js";
+import { TaskConversations } from "../tasks/conversations.js";
+import { TaskSupervisor } from "../tasks/supervisor.js";
 import { TaskStore } from "../tasks/storage/store.js";
 import type { Coordinate, OpenExecution } from "../tasks/ports.js";
 
@@ -23,15 +24,16 @@ export function createTaskRuntime(directory: string, profiles: readonly Executor
     const workspaces = { resolve: resolveWorkspace, check: checkWorkspace };
     const results = new Results(new LocalResultFiles(join(directory, "results"), true));
     const definitions = new TaskDefinitions(store, executors, workspaces, Boolean(coordinate));
-    const runs = new TaskRuns(store, executors, results, workspaces);
-    const supervisor = new RunSupervisor(runs, openExecution, coordinate, fatal);
+    const conversations = new TaskConversations(store, () => Boolean(coordinate));
+    const runs = new TaskRuns(store, executors, results, workspaces, conversations);
+    const supervisor = new TaskSupervisor(runs, conversations, openExecution, coordinate, fatal);
     let closing: Promise<void> | undefined;
-    return { definitions, runs, supervisor, executors,
+    return { definitions, runs, conversations, supervisor, executors,
       close(): Promise<void> {
         return closing ??= (async () => {
           definitions.close();
           const stopped = supervisor.close();
-          runs.close();
+          runs.close(); conversations.close();
           try { await Promise.all([stopped, executors.close()]); } finally { store.close(); }
         })();
       },

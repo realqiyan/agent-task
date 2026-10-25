@@ -144,7 +144,7 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   const client = await connect();
   const tools = (await client.listTools()).tools;
   const names = tools.map(tool => tool.name);
-  assert.equal(names.length, 10);
+  assert.equal(names.length, 12);
   // The SDK normally skips output validation on errors: explicitly validate every tool's error envelope.
   for (const name of names) {
     const result = await checkedCall(client, name, { unexpected: true });
@@ -165,23 +165,23 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   }
   const status = await call(client, "service_status");
   assert.equal(status.coordinatorConfigured, true);
-  assert.deepEqual(status.limits, { maxActiveRuns: 4, maxTasks: 1000, maxNodeSessions: 8 });
+  assert.deepEqual(status.limits, { maxActiveConversations: 4, maxTasks: 1000, maxNodeSessions: 8 });
   const missingId = randomUUID();
-  for (const name of ["task_get", "task_update", "task_run_get", "task_run_cancel"]) {
-    const result = await checkedCall(client, name, { id: missingId, ...(name === "task_update" ? { action: "cancel" } : {}) });
+  for (const name of ["task_get", "task_schedule_control", "task_run_get", "task_run_cancel"]) {
+    const result = await checkedCall(client, name, { [name.startsWith("task_run_") ? "runId" : "taskId"]: missingId, ...(name === "task_schedule_control" ? { action: "cancel" } : {}) });
     assert.equal(result.isError, true);
     assert.equal(result.structuredContent.code, "not_found", name);
   }
   assert.deepEqual(await call(client, "task_run_list", { taskId: missingId }), { items: [], next: null });
-  const updateTool = tools.find(tool => tool.name === "task_update");
+  const updateTool = tools.find(tool => tool.name === "task_schedule_control");
   assert.deepEqual(updateTool.inputSchema.properties.action.enum, ["pause", "resume", "cancel"]);
   // Resuming future triggers can launch external model/ACP work.
   assert.equal(updateTool.annotations.openWorldHint, true);
-  for (const old of ["task_pause", "task_resume", "task_cancel"]) {
+  for (const old of ["task_pause", "task_resume", "task_cancel", "task_update", "task_run_reply"]) {
     assert(!names.includes(old));
     assert.equal((await checkedCall(client, old, { id: waitingTask.id })).isError, true);
   }
-  assert.equal((await checkedCall(client, "task_update", { id: waitingTask.id, action: "edit" })).isError, true);
+  assert.equal((await checkedCall(client, "task_schedule_control", { taskId: waitingTask.id, action: "edit" })).isError, true);
   const nodes = [
     { id: "inspect", prompt: "Inspect project", executorId: "opencode", dependsOn: [], maxRunSeconds: 60 },
     { id: "review", prompt: "Review the inspection", executorId: "opencode", dependsOn: ["inspect"], maxRunSeconds: 60 },
@@ -191,7 +191,7 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   assert.deepEqual(future.input.schedule, { type: "cron", expression: "0 9 * * 1-5", timezone: "Asia/Shanghai" });
   assert.equal(typeof future.nextAt, "string");
   assert(!("command" in future.executors.opencode) && !("args" in future.executors.opencode));
-  assert.deepEqual((await call(client, "task_get", { id: future.id })).input.nodes, [nodes[0]]);
+  assert.deepEqual((await call(client, "task_get", { taskId: future.taskId })).input.nodes, [nodes[0]]);
   const invalid = await checkedCall(client, "task_create", {
     requestKey: "invalid", name: "invalid", prompt: "Inspect", schedule: { type: "now" }, nodes: [nodes[0]],
   });
@@ -202,49 +202,54 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   assert.equal(page.next, 1);
   assert.deepEqual(page.items[0].nodeIds, ["inspect"]);
   assert(!("input" in page.items[0]));
-  assert.equal((await call(client, "task_list", { after: page.next, limit: 1 })).items[0].id, future.id);
+  assert.equal((await call(client, "task_list", { after: page.next, limit: 1 })).items[0].taskId, future.taskId);
   const validateTask = contracts.get(client).get("task_get");
-  assert.equal(validateTask({ ok: true, data: { ...future, status: "invalid" } }).valid, false);
+  assert.equal(validateTask({ ok: true, data: { ...future, scheduleStatus: "invalid" } }).valid, false);
   assert.equal(validateTask({ ok: true, data: { ...future, input: { ...future.input, nodes: [{}] } } }).valid, false);
   for (const [action, status] of [["pause", "paused"], ["resume", "active"], ["cancel", "cancelled"]]) {
-    assert.equal((await call(client, "task_update", { id: future.id, action })).status, status);
+    assert.equal((await call(client, "task_schedule_control", { taskId: future.taskId, action })).scheduleStatus, status);
   }
-  assert.equal((await call(client, "task_run_get", { id: waitingRun.id })).status, "waiting_input");
+  assert.equal((await call(client, "task_run_get", { runId: waitingRun.id })).status, "waiting_input");
   // Admit a complete DAG through MCP. Read scope is validated even before model work.
   const task = await call(client, "task_create", { requestKey: "one", name: "one", prompt: "Inspect project",
     workspace: dir, nodes, schedule: { type: "once", at: new Date(Date.now() + 1000).toISOString() } });
   assert.deepEqual(task.input.nodes, nodes);
   await client.close();
   const reader = await connect();
-  const summary = await until(async () => (await call(reader, "task_run_list", { taskId: task.id, status: "failed" })).items[0], 20_000);
+  const summary = await until(async () => (await call(reader, "task_run_list", { taskId: task.taskId, status: "failed" })).items[0], 20_000);
   assert.equal(summary.nodes[0].turnCount, 0);
   assert(!("turns" in summary.nodes[0]));
-  const run = await call(reader, "task_run_get", { id: summary.id });
+  const run = await call(reader, "task_run_get", { runId: summary.runId });
   assert.match(run.error, /no_model/);
   assert.deepEqual(run.nodes.map(node => node.definition), nodes);
   assert.ok(run.nodes.every(node => node.status === "blocked" && node.sessionId === null && node.turns.length === 0));
   assert.equal((await call(reader, "service_status")).running, true);
-  assert.equal((await call(reader, "task_run_get", { id: waitingRun.id })).status, "waiting_input");
-  const answer = { runId: waitingRun.id, questionId: question.id, requestKey: "answer", answer: "Source X" };
-  const replied = await call(reader, "task_run_reply", answer);
-  assert.equal(replied.id, waitingRun.id);
-  assert.equal(replied.questions[0].reply.answer, "Source X");
-  await until(async () => (await call(reader, "task_run_get", { id: waitingRun.id })).status === "failed", 20_000);
-  const duplicate = await call(reader, "task_run_reply", answer);
+  assert.equal((await call(reader, "task_run_get", { runId: waitingRun.id })).status, "waiting_input");
+  const chat = await call(reader, "task_message_send", { taskId: waitingTask.id, requestKey: "discussion", message: "Explain the pending question; this is not its answer." });
+  assert.equal(chat.kind, "message");
+  assert.equal((await call(reader, "task_run_get", { runId: waitingRun.id })).status, "waiting_input");
+  const history = await call(reader, "task_message_list", { taskId: waitingTask.id });
+  assert(history.items.some(message => message.messageId === chat.messageId));
+  const answer = { taskId: waitingTask.id, questionId: question.id, requestKey: "answer", answer: "Source X" };
+  const replied = await call(reader, "task_question_answer", answer);
+  assert.equal(replied.runId, waitingRun.id);
+  assert.equal(replied.content, "Source X");
+  await until(async () => (await call(reader, "task_run_get", { runId: waitingRun.id })).status === "failed", 20_000);
+  const duplicate = await call(reader, "task_question_answer", answer);
   assert.equal(duplicate.status, "failed");
-  assert.equal(duplicate.questions.length, 1);
-  const conflict = await checkedCall(reader, "task_run_reply", { ...answer, answer: "different" });
+  assert.equal(duplicate.messageId, replied.messageId);
+  const conflict = await checkedCall(reader, "task_question_answer", { ...answer, answer: "different" });
   assert.equal(conflict.isError, true);
-  assert.equal((await call(reader, "task_run_cancel", { id: run.id })).status, "failed");
+  assert.equal((await call(reader, "task_run_cancel", { runId: run.runId })).status, "failed");
   const validateRun = contracts.get(reader).get("task_run_get");
   assert.equal(validateRun({ ok: true, data: { ...replied, questions: [{}] } }).valid, false);
   assert.equal(validateRun({ ok: true, data: { ...run, nodes: [{ ...run.nodes[0], turns: [{ output: 1 }] }] } }).valid, false);
   const customTask = await call(reader, "task_create", { requestKey: "custom", name: "custom", prompt: "Inspect",
     workspace: dir, nodes: [{ id: "inspect", prompt: "Inspect", executorId: "custom-acp" }],
     schedule: { type: "once", at: new Date(Date.now() + 3_600_000).toISOString() } });
-  assert.deepEqual((await call(reader, "task_get", { id: customTask.id })).executors, customTask.executors);
+  assert.deepEqual((await call(reader, "task_get", { taskId: customTask.taskId })).executors, customTask.executors);
   assert.equal(customTask.executors["custom-acp"].nativePath, await realpath("/usr/bin/false"));
   assert(!("args" in customTask.executors["custom-acp"]));
-  await call(reader, "task_update", { id: customTask.id, action: "cancel" });
+  await call(reader, "task_schedule_control", { taskId: customTask.taskId, action: "cancel" });
   assert.deepEqual([...successfulTools].sort(), names.sort());
 });

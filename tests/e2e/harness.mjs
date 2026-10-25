@@ -33,32 +33,38 @@ export async function startE2e(t, { dependencies = false } = {}) {
     coordinator: { provider: "deepseek", model: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash" },
     disabledExecutors: ["pi", "codex", "claude", "opencode"].filter(value => value !== type),
   });
-  const child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", configPath, "--environment", environmentPath], {
-    env: process.env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let readyUrl, spawnError, client, taskId;
-  const closed = new Promise(resolve => child.once("close", resolve));
-  child.once("error", error => { spawnError = error; });
-  let pending = "";
-  child.stdout.on("data", chunk => {
-    pending += chunk.toString();
-    const lines = pending.split("\n"); pending = lines.pop().slice(-8192);
-    for (const line of lines) {
-      try { const event = JSON.parse(line); if (event.event === "ready") { readyUrl = event.url; log("service_ready"); } } catch {}
-    }
-  });
-  // Raw errors may contain secrets. Business errors remain in the private run snapshot.
-  child.stderr.resume();
+  let child, closed, readyUrl, spawnError, client, taskId;
+  function startService() {
+    readyUrl = undefined; spawnError = undefined;
+    child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", configPath, "--environment", environmentPath], {
+      env: process.env, stdio: ["ignore", "pipe", "pipe"],
+    });
+    closed = new Promise(resolve => child.once("close", resolve));
+    child.once("error", error => { spawnError = error; });
+    let pending = "";
+    child.stdout.on("data", chunk => {
+      pending += chunk.toString();
+      const lines = pending.split("\n"); pending = lines.pop().slice(-8192);
+      for (const line of lines) {
+        try { const event = JSON.parse(line); if (event.event === "ready") { readyUrl = event.url; log("service_ready", { pid: child.pid, instanceId: event.instanceId }); } } catch {}
+      }
+    });
+    // Raw errors may contain secrets. Business errors remain in the private run snapshot.
+    child.stderr.resume();
+  }
+  async function stopService() {
+    await client?.close().catch(() => {}); client = undefined;
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    const timer = setTimeout(() => child.kill("SIGKILL"), 6000);
+    await closed; clearTimeout(timer);
+    log("service_closed", { pid: child.pid, exitCode: child.exitCode, signal: child.signalCode });
+  }
+  startService();
   t.after(async () => {
     if (client && taskId && child.exitCode === null) {
       try { await save("last-runs.json", await call("task_run_list", { taskId })); } catch {}
     }
-    await client?.close().catch(() => {});
-    child.kill("SIGTERM");
-    const timer = setTimeout(() => child.kill("SIGKILL"), 6000);
-    await closed; clearTimeout(timer);
-    log("service_closed", { exitCode: child.exitCode, signal: child.signalCode });
+    await stopService();
     await writeFile(environmentPath, "{}\n", { mode: 0o600 });
   });
   async function until(fn, milliseconds = 200000) {
@@ -84,7 +90,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
   async function create(input) {
     const task = await call("task_create", { requestKey: "real-e2e", name: "Real ACP E2E",
       workspace, schedule: { type: "now" }, maxRunSeconds: 300, maxSteps: 35, maxNodeTurns: 3, ...input });
-    taskId = task.id;
+    taskId = task.taskId;
     log("task_created", { taskId });
     await save("task.json", task);
     await client.close();
@@ -93,23 +99,60 @@ export async function startE2e(t, { dependencies = false } = {}) {
     return task;
   }
   let lastState;
-  async function getRun() {
-    const { items } = await call("task_run_list", { taskId });
-    if (!items[0]) return;
-    const run = await call("task_run_get", { id: items[0].id });
+  async function getRun(runId) {
+    if (!runId) {
+      const { items } = await call("task_run_list", { taskId });
+      if (!items[0]) return;
+      runId = items[0].runId;
+    }
+    const run = await call("task_run_get", { runId });
     await save("latest-run.json", run);
-    const state = { runId: run.id, status: run.status, steps: run.steps, questions: run.questions.length,
-      nodes: run.nodes.map(node => ({ id: node.id, name: node.definition.id, status: node.status, sessionId: node.sessionId, turns: node.turns.length })) };
+    const state = { runId: run.runId, status: run.status, steps: run.steps, questions: run.questions.length,
+      nodes: run.nodes.map(node => ({ nodeRunId: node.nodeRunId, name: node.definition.id, status: node.status, sessionId: node.sessionId, turns: node.turns.length })) };
     if (JSON.stringify(state) !== lastState) { log("run_progress", state); lastState = JSON.stringify(state); }
     return run;
   }
-  async function waitFor(status, milliseconds) {
+  async function waitFor(status, milliseconds, runId) {
     return until(async () => {
-      const run = await getRun();
+      const run = await getRun(runId);
       if (!run) return;
       if (run.status === status) return run;
       assert.equal(run.status, "running", `Unexpected ${run.status}; inspect latest-run.json`);
     }, milliseconds);
+  }
+  async function messages() {
+    const items = [];
+    let after = 0;
+    do {
+      const page = await call("task_message_list", { taskId, after, limit: 100 });
+      items.push(...page.items); after = page.next;
+    } while (after !== null);
+    await save("messages.json", items);
+    return items;
+  }
+  async function waitMessage(receipt) {
+    return until(async () => {
+      const message = (await messages()).find(item => item.messageId === receipt.messageId);
+      assert.ok(message, "Input receipt must remain visible");
+      assert.notEqual(message.status, "failed", "Input failed; inspect private messages.json");
+      return message.status === "processed" ? message : undefined;
+    }, 130000);
+  }
+  async function idle() {
+    await until(async () => {
+      const status = await call("service_status", {});
+      return status.activeTaskIds.length === 0 && status.activeNodeRunIds.length === 0;
+    }, 30000);
+  }
+  async function restart(inspect) {
+    await idle();
+    await stopService();
+    const observation = await inspect?.(dataDir);
+    startService();
+    await until(() => readyUrl, 15000);
+    await connect();
+    log("idle_service_restarted");
+    return observation;
   }
   await until(() => readyUrl, 15000);
   await connect();
@@ -119,7 +162,8 @@ export async function startE2e(t, { dependencies = false } = {}) {
     assert.notEqual(state.state, "error", "Adapter preparation failed; inspect private state");
     return state.state === "ready" ? state : undefined;
   }, 300000);
-  return { dir, executor, log, save, until, call, create, getRun, waitFor };
+  await save("executor.json", executor);
+  return { dir, executor, log, save, until, call, create, getRun, waitFor, messages, waitMessage, idle, restart };
 }
 
 export async function verifyDelivery(node) {

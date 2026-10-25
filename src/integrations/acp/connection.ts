@@ -133,10 +133,10 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
     cancel.throwIfAborted();
     return {
       close, closed,
-      async prompt(text: string): Promise<string> {
+      async prompt(text: string, files: string[] = inputFiles): Promise<string> {
         cancel.throwIfAborted();
         if (closing || busy) throw new Error("ACP session closed or busy");
-        busy = true;
+        inputFiles = [...files]; busy = true;
         try {
           const result = await connection!.agent.request(acp.methods.agent.session.prompt, {
             sessionId: sessionId!, prompt: [{ type: "text", text }],

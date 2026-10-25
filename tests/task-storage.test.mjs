@@ -54,6 +54,7 @@ test("a failed run admission rolls back its task cursor in the same SQLite trans
     assert.throws(() => f.runtime.runs.trigger(f.task.nextAt), /Task commit failed/);
     assert.equal(JSON.parse(db.prepare("SELECT data FROM definitions WHERE id=?").get(f.task.id).data).nextAt, f.task.nextAt);
     assert.equal(db.prepare("SELECT count(*) AS count FROM rounds").get().count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM messages").get().count, 0);
     assert.equal(f.runtime.runs.healthy, false);
     assert.throws(() => f.runtime.runs.trigger(), /storage closed/);
   } finally { db.close(); }

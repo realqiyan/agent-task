@@ -37,13 +37,13 @@ test("real three-node DAG waits for human quantity and resumes without replay", 
       { id: "price", executorId: e2e.executor.id, dependsOn: [], maxRunSeconds: 180,
         prompt: `Calculate 17 * 19 as a unit price. Report the marker ${marker} and the computed unit price in readable text; no fixed format is required. No tools or external side effects are needed.` },
       { id: "total", executorId: e2e.executor.id, dependsOn: ["price"], maxRunSeconds: 180,
-        prompt: "Read the accepted upstream delivery using the read tool. The purchase quantity is deliberately absent from this prompt. On the FIRST turn ask for the missing quantity in your own words, not a completed quote. On a follow-up in this SAME session, use the explicitly supplied human quantity and multiply the actual upstream unit price by it. Report the upstream marker, unit price, quantity and total in readable text; no fixed format is required. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
+        prompt: "Read the accepted upstream delivery using the read tool. On the FIRST turn read the price and ask the coordinator to confirm the quantity, even when the context already supplies it; do not deliver a completed quote yet. On a follow-up in this SAME session, use the explicitly supplied human quantity and multiply the actual upstream unit price by it. Report the upstream marker, unit price, quantity and total in readable text; no fixed format is required. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
       { id: "audit", executorId: e2e.executor.id, dependsOn: ["total"], maxRunSeconds: 180,
         prompt: "Use the read tool to read the accepted total delivery and independently check its arithmetic. Report the upstream marker, unit price, quantity, total and your verification conclusion in your own words; no fixed format is required. Do not request more human input. No writes, shell commands, network tools or side effects; only read the supplied upstream result file." },
     ],
     prompt: `Advance the supplied three-node quotation DAG. This is arithmetic, not a purchase or external transaction.
-Execution order is mandatory: run price and accept its delivery only after checking the calculation and marker. BEFORE starting total or audit, call request_input alone, asking the human for an integer quantity from 1 to 9, with completedWork identifying the accepted price. Do not guess a quantity, use a default, or start downstream work before the human reply. There must be no open ACP session when waiting.
-After the human reply, preserve this plan and price delivery. Start total with its committed prompt (no message on first converse). Its first response asking for quantity is NOT a delivery: send the human quantity in a second converse to the SAME total session, without requesting human input again. Accept the computed quote only after checking it. Then run audit, review and accept its verification, and finish_run. No writes, shell commands, network tools or side effects; only read the supplied upstream result files. Deliveries are read by agents, not parsed as records. Accept substantive text that preserves the required facts; do not request reformatting for prose, Markdown, headings or explanatory text.` });
+Execution order is mandatory: run price and accept its delivery only after checking the calculation and marker. BEFORE starting total or audit, call task_question_ask alone, asking the human for an integer quantity from 1 to 9, with completedWork identifying the accepted price. Do not guess a quantity, use a default, or start downstream work before the human reply. Waiting must not depend on retaining the already accepted price session.
+After the human reply, preserve this plan and original price delivery; explicitly revalidate price for the new facts without executing it again. Start total with the answer messageId in its selected context. Its first response asking to confirm quantity is NOT a delivery: confirm the human quantity in a second node_execute to the SAME total session, without requesting human input again. Accept the computed quote only after checking it. Then run audit, review and accept its verification, and run_complete. No writes, shell commands, network tools or side effects; only read the supplied upstream result files. Deliveries are read by agents, not parsed as records. Accept substantive text that preserves the required facts; do not request reformatting for prose, Markdown, headings or explanatory text.` });
   const waiting = await e2e.waitFor("waiting_input");
   await e2e.save("waiting-run.json", waiting);
   assert.deepEqual(waiting.nodes.map(node => node.definition), task.input.nodes);
@@ -62,11 +62,11 @@ After the human reply, preserve this plan and price delivery. Start total with i
   const question = waiting.questions[0];
   assert.equal(question.reply, null);
   assert.equal(question.sessionExpiresAt, null, "Human wait must not depend on a short-lived ACP connection");
-  const questionNotice = { runId: waiting.id, questionId: question.id, question: question.question,
+  const questionNotice = { runId: waiting.runId, questionId: question.questionId, question: question.question,
     evidenceDir: e2e.dir, answerFile: answerFile ?? null, expiresAt: new Date(Date.now() + manualWaitMs).toISOString() };
   await e2e.save("question.json", questionNotice);
   if (answerFile) await writeFile(answerFile + ".question.json", JSON.stringify(questionNotice, null, 2), { mode: 0o600, flag: "wx" });
-  e2e.log("waiting_for_human", { runId: waiting.id, questionId: question.id,
+  e2e.log("waiting_for_human", { runId: waiting.runId, questionId: question.questionId,
     source: answerFile ? "manual-answer-file" : "declared-test-fixture", question: question.question });
   t.diagnostic(`Human question: ${question.question}`);
   if (answerFile) t.diagnostic(`Write one integer (1–9) to ${answerFile} to reply through MCP. Deadline: 15 minutes.`);
@@ -86,25 +86,27 @@ After the human reply, preserve this plan and price delivery. Start total with i
       return answer === undefined ? undefined : quantityOf(answer);
     }, manualWaitMs);
   } else quantity = fixtureQuantity;
-  const reply = { runId: waiting.id, questionId: question.id, requestKey: "quantity-reply",
+  const reply = { taskId: task.taskId, questionId: question.questionId, requestKey: "quantity-reply",
     answer: `The human-approved quantity is ${quantity}. Use exactly this quantity; this is not permission for purchases or other external actions.` };
-  const receipt = await e2e.call("task_run_reply", reply);
-  assert.equal(receipt.id, waiting.id);
-  assert.equal(receipt.questions[0].reply.answer, reply.answer);
-  assert.deepEqual(receipt.nodes, waiting.nodes, "Accepting the reply itself must not mutate node identities or deliveries");
-  e2e.log("human_reply_submitted", { runId: waiting.id, questionId: question.id, quantity, source: answerFile ? "manual-answer-file" : "declared-test-fixture" });
-  const duplicate = await e2e.call("task_run_reply", reply);
-  assert.equal(duplicate.questions.length, 1);
-  assert.equal(duplicate.questions[0].reply.receivedAt, receipt.questions[0].reply.receivedAt);
+  const receipt = await e2e.call("task_question_answer", reply);
+  assert.equal(receipt.runId, waiting.runId);
+  assert.equal(receipt.content, reply.answer);
+  assert.equal(receipt.questionId, question.questionId);
+  e2e.log("human_reply_submitted", { runId: waiting.runId, questionId: question.questionId, quantity, source: answerFile ? "manual-answer-file" : "declared-test-fixture" });
+  const duplicate = await e2e.call("task_question_answer", reply);
+  assert.equal(duplicate.messageId, receipt.messageId);
+  assert.equal(duplicate.createdAt, receipt.createdAt);
   const run = await e2e.waitFor("succeeded", 200000);
   await e2e.save("run.json", run);
-  assert.equal(run.id, waiting.id); assert.equal(run.taskId, task.id);
+  assert.equal(run.runId, waiting.runId); assert.equal(run.taskId, task.taskId);
   assert.equal(run.questions.length, 1); assert.ok(run.waitedMs >= 2000 && run.summary);
   const after = byName(run);
   assert.equal(run.nodes.length, 3);
-  assert.deepEqual(after.price, before.price, "Accepted upstream work must not be replayed or rewritten");
+  assert.deepEqual(after.price.turns, before.price.turns, "Accepted upstream work must not be replayed");
+  assert.deepEqual(after.price.deliveries[0], before.price.deliveries[0], "Original acceptance is immutable");
+  assert.equal(after.price.resultFile, before.price.resultFile);
   for (const name of ["price", "total", "audit"]) {
-    assert.equal(after[name].id, before[name].id);
+    assert.equal(after[name].nodeRunId, before[name].nodeRunId);
     assert.deepEqual(after[name].definition, before[name].definition);
     await verifyDelivery(after[name]);
   }
@@ -115,8 +117,8 @@ After the human reply, preserve this plan and price delivery. Start total with i
   for (const node of [after.total, after.audit]) verifyQuoteFacts(node.result, marker, [323, quantity, 323 * quantity]);
   assert.deepEqual(after.total.inputFiles, [after.price.resultFile]);
   assert.deepEqual(after.audit.inputFiles, [after.total.resultFile]);
-  assert.deepEqual(await e2e.call("task_run_reply", reply), run, "A duplicate reply after completion must not reactivate the run");
-  e2e.log("verification_passed", { runId: run.id, taskId: task.id, quantity, total: 323 * quantity, steps: run.steps,
+  assert.equal((await e2e.call("task_question_answer", reply)).messageId, receipt.messageId, "A duplicate answer returns the original receipt");
+  e2e.log("verification_passed", { runId: run.runId, taskId: task.taskId, quantity, total: 323 * quantity, steps: run.steps,
     sessions: run.nodes.map(node => node.sessionId) });
-  t.diagnostic(`Verified three-node run ${run.id}: quantity=${quantity}, total=${323 * quantity}, same run resumed, no upstream replay`);
+  t.diagnostic(`Verified three-node run ${run.runId}: quantity=${quantity}, total=${323 * quantity}, same run resumed, no upstream replay`);
 });

@@ -53,9 +53,9 @@ Values are never accepted as command arguments or printed. Saves apply on next s
 Service/admin tokens and executor native authentication are not managed here.`,
   task: `task list [--after NUMBER] [--limit NUMBER]
 task show ID
-task pause ID [--yes]
-task resume ID [--yes]
-task cancel ID [--yes]
+task schedule pause TASK_ID [--yes]
+task schedule resume TASK_ID [--yes]
+task schedule cancel TASK_ID [--yes]
 Only future triggers change; current runs continue. Resume does not catch up. Cancel is irreversible for future triggers.`,
   run: `run list [--task ID] [--after NUMBER] [--limit NUMBER]
 run show ID
@@ -139,7 +139,7 @@ export async function runCli(command: string, args: string[], resolveHome: (home
   if (options.help || (positionals.length === 0 && !["status", "restart"].includes(command))) {
     console.log("Usage: agent-task " + help[command] + "\n" + common); return;
   }
-  const [action, id] = positionals;
+  const schedule = command === "task" && positionals[0] === "schedule"; const [action, id] = schedule ? positionals.slice(1) : positionals;
   let allowed: string[] = [], count = 1;
   switch (command) {
     case "status": case "restart": count = 0; break;
@@ -169,9 +169,9 @@ export async function runCli(command: string, args: string[], resolveHome: (home
       if (action !== "set" && action !== "delete") throw new Error("Unknown credential action");
       count = 2; allowed = action === "set" ? ["stdin", "yes"] : ["yes"]; break;
     case "task": case "run":
-      if (action === "list") allowed = ["after", "limit", ...(command === "run" ? ["task"] : [])];
-      else if (action === "show") count = 2;
-      else if (command === "task" && ["pause", "resume", "cancel"].includes(action!)) { count = 2; allowed = ["yes"]; }
+      if (!schedule && action === "list") allowed = ["after", "limit", ...(command === "run" ? ["task"] : [])];
+      else if (!schedule && action === "show") count = 2;
+      else if (schedule && ["pause", "resume", "cancel"].includes(action!)) { count = 3; allowed = ["yes"]; }
       else throw new Error("Unknown " + command + " action");
   }
   if (positionals.length !== count) throw new Error("Unexpected or missing arguments; use " + command + " --help");
@@ -220,7 +220,7 @@ export async function runCli(command: string, args: string[], resolveHome: (home
       const task = await client.request("/tasks/" + encodeURIComponent(id!));
       process.stderr.write(JSON.stringify({ action, task }) + "\nOnly future triggers change; current runs continue. Resume does not catch up; cancel cannot be undone.\n");
       await confirm(options, "Change future triggers?");
-      output(await client.request("/task-update", { id, action }));
+      output(await client.request("/task-schedule-control", { taskId: id, action }));
     }
     return;
   }

@@ -10,7 +10,7 @@ import { taskSchema } from "../dist/protocol/task-contract.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 const openExecution = createExecution({ PATH: "/usr/bin:/bin" });
 import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
-import { coordinatorInput } from "../dist/tasks/human-input.js";
+import { TaskMemory } from "../dist/integrations/coordinator/memory.js";
 import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { Harness, createRegistry } from "@earendil-works/pi-durable";
@@ -36,11 +36,11 @@ function fixture(t) {
     } };
 }
 const request = { question: "Which source?", completedWork: "No external work started" };
-const reply = (run, question) => ({ runId: run.id, questionId: question.id, requestKey: "answer", answer: "Source X" });
+const reply = (run, question) => ({ taskId: run.taskId, questionId: question.id, requestKey: "answer", answer: "Source X" });
 
 test("waiting survives reopen, skips overlapping slots, and a persisted reply resumes the same durable conversation once", async t => {
   const f = fixture(t);
-  const execute = () => f.coordinate(f.run.id, coordinatorInput(f.service.runs.get(f.run.id)),
+  const execute = () => f.coordinate(f.task.id, f.service.conversations.get(f.service.runs.get(f.run.id).inputId),
     f.service.supervisor.actions(f.run.id), new AbortController().signal);
   // Real no-model error path, not successful model/ACP execution.
   await assert.rejects(execute(), /no_model/);
@@ -50,18 +50,19 @@ test("waiting survives reopen, skips overlapping slots, and a persisted reply re
   await f.reopen();
   assert.equal(f.service.runs.get(f.run.id).status, "waiting_input");
   assert.deepEqual(f.service.runs.get(f.run.id).nodes, f.run.nodes);
-  f.service.supervisor.reply(reply(f.run, question));
-  const input = coordinatorInput(f.service.runs.get(f.run.id));
+  f.service.supervisor.answer(reply(f.run, question));
+  const input = f.service.conversations.get(f.service.runs.get(f.run.id).inputId);
   await f.reopen(); // Business reply committed before durable admission.
-  assert.equal(coordinatorInput(f.service.runs.get(f.run.id)).requestId, input.requestId);
+  assert.equal(f.service.runs.get(f.run.id).inputId, input.id);
   await assert.rejects(execute(), /no_model/);
   const inspect = async () => {
-    const storage = await openCoordinatorStorage(f.dir, f.run.id);
+    const storage = await openCoordinatorStorage(f.dir, f.task.id);
     const harness = await Harness.open(storage, { models: createModels(), registry: createRegistry() }, context);
     try {
       const root = await harness.root(context);
-      return { root: root.id, initial: await storage.submissionByRequest(root.id, "run:" + f.run.id, context),
-        answer: await storage.submissionByRequest(root.id, input.requestId, context) };
+      assert.deepEqual(await harness.snapshot(TaskMemory, root.id, context), { items: [] });
+      return { root: root.id, initial: await storage.submissionByRequest(root.id, f.run.inputId, context),
+        answer: await storage.submissionByRequest(root.id, input.id, context) };
     } finally { await harness.close(context); }
   };
   const first = await inspect();
@@ -80,7 +81,8 @@ test("a fast human reply is not failed by the previous coordinator finishing", a
   const f = fixture(t);
   f.service.supervisor.tick();
   const question = f.service.supervisor.actions(f.run.id).ask(request);
-  f.service.supervisor.reply(reply(f.run, question));
+  const receipt = f.service.supervisor.answer(reply(f.run, question));
+  assert.equal(f.service.runs.get(f.run.id).inputId, receipt.id);
   const drain = async () => {
     for (let i = 0; i < 100; i++) {
       if (!f.service.supervisor.status().activeTaskRunIds.length) return;
@@ -89,9 +91,7 @@ test("a fast human reply is not failed by the previous coordinator finishing", a
     throw new Error("Coordinator did not close");
   };
   await drain();
-  assert.equal(f.service.runs.get(f.run.id).status, "running");
-  f.service.supervisor.tick();
-  await drain();
+  assert.equal(f.service.conversations.get(receipt.id).status, "failed");
   assert.equal(f.service.runs.get(f.run.id).status, "failed");
   assert.match(f.service.runs.get(f.run.id).error, /no_model/);
 });
@@ -99,12 +99,12 @@ test("a fast human reply is not failed by the previous coordinator finishing", a
 test("expired and cancelled questions reject replies without reactivating work", async t => {
   const expired = fixture(t), cancelled = fixture(t);
   const question = expired.service.supervisor.actions(expired.run.id).ask(request);
-  assert.throws(() => expired.service.supervisor.reply(reply(expired.run, question), Date.parse(question.expiresAt)), /not waiting/);
+  assert.throws(() => expired.service.supervisor.answer(reply(expired.run, question), Date.parse(question.expiresAt)), /not waiting/);
   assert.equal(expired.service.runs.get(expired.run.id).status, "timed_out");
-  assert.equal(expired.service.definitions.get(expired.task.id).status, "paused");
+  assert.equal(expired.service.definitions.get(expired.task.id).scheduleStatus, "paused");
   const other = cancelled.service.supervisor.actions(cancelled.run.id).ask(request);
   cancelled.service.supervisor.cancel(cancelled.run.id);
-  assert.throws(() => cancelled.service.supervisor.reply(reply(cancelled.run, other)), /not waiting/);
+  assert.throws(() => cancelled.service.supervisor.answer(reply(cancelled.run, other)), /not waiting/);
   assert.equal(cancelled.service.runs.get(cancelled.run.id).questions[0].reply, null);
 });
 
@@ -114,13 +114,13 @@ test("missing ACP sessions and expired retention never authorize replay after a 
     // Persisted state contract only; no fabricated ACP server.
     const run = f.store.run(f.run.id);
     run.nodes[0].status = "awaiting_review"; run.nodes[0].startedAt = new Date().toISOString();
-    run.nodes[0].turns = [{ prompt: "Inspect", output: "Which source?", stopReason: "end_turn" }];
+    run.nodes[0].turns = [{ prompt: "Inspect", output: "Which source?", stopReason: "end_turn", sessionId: null, inputDeliveries: [], messageIds: [], contextMessageIds: [] }];
     f.store.commitRun( run);
     const question = f.service.supervisor.actions(run.id).ask({ ...request, nodeId: "A" });
     assert.ok(Date.parse(question.sessionExpiresAt) <= Date.parse(question.createdAt) + 300_000);
-    if (mode === "reply") assert.throws(() => f.service.supervisor.reply(reply(run, question)), /session unavailable/);
-    else if (mode === "recovery") { await f.reopen(); assert.throws(() => f.service.supervisor.reply(reply(run, question)), /not waiting/); }
-    else assert.throws(() => f.service.supervisor.reply(reply(run, question), Date.parse(question.sessionExpiresAt)), /not waiting/);
+    if (mode === "reply") assert.throws(() => f.service.supervisor.answer(reply(run, question)), /session unavailable/);
+    else if (mode === "recovery") { await f.reopen(); assert.throws(() => f.service.supervisor.answer(reply(run, question)), /not waiting/); }
+    else assert.throws(() => f.service.supervisor.answer(reply(run, question), Date.parse(question.sessionExpiresAt)), /not waiting/);
     assert.equal(f.service.runs.get(run.id).status, "interrupted");
     assert.equal(f.service.runs.get(run.id).questions[0].reply, null);
     await assert.rejects(f.service.supervisor.converse(run.id, "A", "Continue"), /not running/);

@@ -26,7 +26,8 @@ Business capabilities live in tasks, executors, configuration and results. Proto
 
 ## Runtime and safety
 
-- MCP callers define the Task DAG and assign each node to a ready local ACP executor. Pi durable runs one coordinator conversation per TaskRun to advance that fixed DAG, review results and request missing user facts; it does not decompose tasks or change the plan. ACP agents perform domain work. Reuse the SDK model loop; do not add another planner or parallel node scheduler.
+- MCP callers define the Task DAG and assign each node to a ready local ACP executor. Pi durable keeps one coordinator conversation per Task, with separately admitted Runs, to advance that fixed DAG, review results and request missing user facts; it does not decompose tasks or change the plan. ACP agents perform domain work. Reuse the SDK model loop; do not add another planner or parallel node scheduler.
+- Ordinary messages do not answer pending questions or authorize idle ACP work. Supplementary work needs explicit intent; terminal Runs and accepted deliveries remain immutable. Documents and conversation history are advisory, not execution authority. See `docs/task-conversation-plan.md`.
 - A protocol turn ending is not task completion. Only explicitly accepted executor deliveries can unlock dependencies. Unknown external outcomes block new dispatch, including fresh model-issued calls.
 - Use official protocol SDKs and native execution-agent configuration where possible.
 - Persist admission/dispatch intent before external work. Keep Task, Run, Session and external business records distinct.

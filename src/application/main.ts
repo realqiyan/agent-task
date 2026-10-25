@@ -81,7 +81,7 @@ try {
   const executorEnv = executorEnvironment(native, environment, config);
   const discovery = new LocalExecutors(join(native.AGENT_TASK_INSTALL_HOME ?? dirname(configPath), "adapters"), executorEnv);
   tasks = createTaskRuntime(config.dataDir, [], createExecution(executorEnv),
-    config.coordinator ? createCoordinator(config.dataDir, config.coordinator) : undefined, fatal, discovery, config.disabledExecutors);
+    config.coordinator ? createCoordinator(config.dataDir, config.coordinator, fatal) : undefined, fatal, discovery, config.disabledExecutors);
   if (adminToken) settings = new Settings(new LocalSettingsFiles(configPath, environmentPath), configurationPaths, config, base, process.env);
   http = new HttpServer({ tasks, settings, token, adminToken, fatal, restart, instanceId });
   const origin = await http.listen(config.port);

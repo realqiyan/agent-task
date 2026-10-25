@@ -11,11 +11,11 @@ export function initialTime(schedule: Schedule, now: number): number {
 }
 export function resumeSchedule(task: Task, now: number): Task {
   const next = structuredClone(task);
-  if (next.nextAt === null || ["cancelled", "expired"].includes(next.status)) throw new TaskError("precondition", "Task has no future schedule");
-  next.status = "active";
+  if (next.nextAt === null || ["cancelled", "expired"].includes(next.scheduleStatus)) throw new TaskError("precondition", "Task has no future schedule");
+  next.scheduleStatus = "active";
   if (next.nextAt < now) {
     if (next.input.schedule.type === "cron") next.nextAt = parseCron(next.input.schedule, now).next().getTime();
-    else { next.nextAt = null; next.status = "completed"; }
+    else { next.nextAt = null; next.scheduleStatus = "completed"; }
   }
   return next;
 }
@@ -23,7 +23,7 @@ export type Trigger = { kind: "none" } | { kind: "expired" } |
   { kind: "due"; at: number; nextAt: number | null; count: number; reason: string | null };
 /** Calendar only. Node dispatch remains the coordinator's decision. */
 export function dueTrigger(task: Task, overlaps: boolean, now: number): Trigger {
-  if (task.status !== "active" || task.nextAt === null) return { kind: "none" };
+  if (task.scheduleStatus !== "active" || task.nextAt === null) return { kind: "none" };
   if (task.input.expiresAt && now >= Date.parse(task.input.expiresAt)) return { kind: "expired" };
   if (task.nextAt > now) return { kind: "none" };
   const schedule = task.input.schedule;

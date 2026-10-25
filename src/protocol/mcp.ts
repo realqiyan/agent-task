@@ -3,10 +3,10 @@ import { CallToolRequestSchema, ListToolsRequestSchema, ToolSchema } from "@mode
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { errorCode, errorText, StorageError } from "../shared/errors.js";
-import type { Task, TaskRun } from "../tasks/model.js";
+import type { Delivery, Task, TaskMessage, TaskRun } from "../tasks/model.js";
 import type { TaskApi } from "./services.js";
-import { replySchema, taskSchema, taskUpdateSchema, taskIdSchema, runIdSchema, taskListSchema, taskRunListSchema } from "./task-contract.js";
-import { executorsOutput, mcpJsonSchema, pageOutput, runOutput, runSummaryOutput, serverInstructions, statusOutput, taskOutput, taskSummaryOutput, toolOutput } from "./mcp-contract.js";
+import { messageListSchema, messageSchema, replySchema, taskSchema, taskScheduleControlSchema, taskIdSchema, runIdSchema, taskListSchema, taskRunListSchema } from "./task-contract.js";
+import { executorsOutput, messageOutput, mcpJsonSchema, pageOutput, runOutput, runSummaryOutput, serverInstructions, statusOutput, taskOutput, taskSummaryOutput, toolOutput } from "./mcp-contract.js";
 import { version } from "../infrastructure/version.js";
 
 type Hints = { readOnly: boolean; destructive: boolean; idempotent: boolean; openWorld: boolean };
@@ -48,17 +48,17 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
   register("executor_list", "Find local ACP executor IDs for task_create and inspect adapter preparation. Select only state=ready; this confirms launch dependencies, not native authentication or tool authorization. Does not refresh discovery or install adapters.",
     z.object({}).strict(), executorsOutput, () => ({ executors: service.executors.list().executors.map(executorStatus) }));
   register("task_create", "Create a persistent task for immediate, one-time or Cron-scheduled execution. Supply the complete fixed DAG and a ready executor per node; the coordinator reviews deliveries and requests missing facts, but does not plan or reassign work. Requires service_status.coordinatorConfigured=true. Returns a task, not an execution result; find runs with task_run_list(taskId). Background model/ACP work survives MCP disconnection. Retry the same submission with the same requestKey and parameters, not a replacement task.",
-    taskSchema, taskOutput, input => taskView(service.definitions.create(input)),
+    taskSchema, taskOutput, input => taskView(service.definitions.create(input), service.runs.active()),
     { readOnly: false, destructive: false, idempotent: true, openWorld: true });
   register("task_list", "Find tasks and their future-trigger state, including cancelled and completed tasks. Returns compact records, oldest first; follow next for more. Use task_get for the full definition and task_run_list for execution outcomes.",
     taskListSchema, pageOutput(taskSummaryOutput), input => {
       const page = service.definitions.list(input.after, input.limit);
       return { items: page.items.map(taskSummary), next: page.next };
     });
-  register("task_get", "Read a task's full definition and future-trigger state. Its completed status means no trigger remains, not that execution succeeded. Use task_run_list(taskId) to find execution outcomes.",
-    taskIdSchema, taskOutput, input => taskView(service.definitions.get(input.id)));
-  register("task_update", "Pause, resume or cancel only future task triggers and return the updated task. resume can enable background execution; it cannot clear uncertain outcomes, and no MCP tool provides forced recovery. Does not edit the definition, delete history or stop a current run; use task_run_cancel for that run.",
-    taskUpdateSchema, taskOutput, input => taskView(service.definitions.update(input)),
+  register("task_get", "Read a task's full definition and future-trigger state. scheduleStatus=completed means no trigger remains, not that execution succeeded. Use task_run_list(taskId) to find execution outcomes.",
+    taskIdSchema, taskOutput, input => taskView(service.definitions.get(input.taskId), service.runs.active()));
+  register("task_schedule_control", "Pause, resume or cancel only future task triggers and return the updated task. resume can enable background execution; it cannot clear uncertain outcomes, and no MCP tool provides forced recovery. Does not edit the definition, delete history or stop a current run; use task_run_cancel for that run.",
+    taskScheduleControlSchema, taskOutput, input => taskView(service.definitions.controlSchedule(input), service.runs.active()),
     { readOnly: false, destructive: true, idempotent: true, openWorld: true });
   register("task_run_list", "Find runs or poll their progress with compact records, oldest first. Use taskId to track one task or status=waiting_input to find questions. An empty page can mean the task has not triggered yet, not failure. Follow next for more; use task_run_get for delivery text and raw turns.",
     taskRunListSchema, pageOutput(runSummaryOutput), input => {
@@ -66,12 +66,20 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
       return { items: page.items.map(runSummary), next: page.next };
     });
   register("task_run_get", "Read a run's full execution record, questions and outputs. nodes[].result contains accepted delivery text; turns contain raw output, not deliveries. succeeded records coordinator acceptance, not independent verification of external effects. For routine polling, prefer task_run_list.",
-    runIdSchema, runOutput, input => runView(service.runs.get(input.id)));
-  register("task_run_reply", "Submit user facts for the latest unanswered question of a waiting_input run. Resumes the same run asynchronously and returns its snapshot, not a completed result. Cannot edit the plan, grant permissions or retry uncertain work. A new reply requires unexpired waiting deadlines and valid retained ACP sessions; expiry or session loss can end the run even when this call fails.",
-    replySchema, runOutput, input => runView(service.supervisor.reply(input)),
+    runIdSchema, runOutput, input => runView(service.runs.get(input.runId)));
+  register("task_message_list", "Read public Task conversation history, including input receipts, coordinator replies, questions and summaries. No reasoning or internal tool logs. Use next as after; receipt status does not imply fact adoption or execution success.",
+    messageListSchema, pageOutput(messageOutput), input => {
+      const page = service.conversations.list(input.taskId, input.after, input.limit);
+      return { items: page.items.map(messageView), next: page.next };
+    });
+  register("task_message_send", "Send a durable message to the Task coordinator. Ordinary chat never answers a pending question or starts idle ACP work. execute=true explicitly requests supplementary work within the fixed DAG: reference the active Run or a successful baseline Run. No terminal Run is reopened and no uncertain work is retried.",
+    messageSchema, messageOutput, input => messageView(service.supervisor.send(input)),
     { readOnly: false, destructive: false, idempotent: true, openWorld: true });
-  register("task_run_cancel", "Cancel one running or waiting run and return without waiting for resource cleanup; terminal runs are unchanged. Does not roll back external effects or delete history. May pause, but never cancels, the task's future triggers. To stop the whole task, first call task_update(action=cancel), then cancel its active run.",
-    runIdSchema, runOutput, input => runView(service.supervisor.cancel(input.id)),
+  register("task_question_answer", "Answer a specific outstanding question of this Task. Returns a durable input receipt and resumes only the owning waiting Run. Normal messages do not answer questions. Enforces question deadlines, ownership and ACP retention; cannot grant permissions or replay uncertain effects.",
+    replySchema, messageOutput, input => messageView(service.supervisor.answer(input)),
+    { readOnly: false, destructive: false, idempotent: true, openWorld: true });
+  register("task_run_cancel", "Cancel one running or waiting run and return without waiting for resource cleanup; terminal runs are unchanged. Does not roll back external effects or delete history. May pause, but never cancels, the task's future triggers. To stop current execution and future scheduled work, first call task_schedule_control(action=cancel), then cancel its active run.",
+    runIdSchema, runOutput, input => runView(service.supervisor.cancel(input.runId)),
     { readOnly: false, destructive: true, idempotent: true, openWorld: true });
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [...tools.values()].map(tool => tool.definition) }));
@@ -89,15 +97,16 @@ function executorStatus(executor: ReturnType<TaskApi["executors"]["list"]>["exec
     adapterVersion: executor.adapterVersion, error: executor.error };
 }
 
-function taskView(task: Task) {
-  return { ...task,
+function taskView(task: Task, active: TaskRun[]) {
+  const run = active.find(run => run.taskId === task.id);
+  return { conversationInitialized: task.conversationId !== null, activeRun: run ? { runId: run.id, status: run.status } : null, taskId: task.id, input: task.input, workspace: task.workspace, scheduleStatus: task.scheduleStatus, createdAt: task.createdAt,
     executors: Object.fromEntries(Object.entries(task.executors).map(([id, executor]) => [id,
       { nativePath: executor.nativePath, adapterVersion: executor.adapterVersion }])),
     nextAt: task.nextAt === null ? null : new Date(task.nextAt).toISOString() };
 }
 
 function taskSummary(task: Task) {
-  return { id: task.id, requestKey: task.input.requestKey, name: task.input.name, status: task.status,
+  return { taskId: task.id, requestKey: task.input.requestKey, name: task.input.name, scheduleStatus: task.scheduleStatus,
     workspace: task.workspace, schedule: task.input.schedule,
     nextAt: task.nextAt === null ? null : new Date(task.nextAt).toISOString(),
     expiresAt: task.input.expiresAt ?? null, createdAt: task.createdAt,
@@ -105,20 +114,33 @@ function taskSummary(task: Task) {
     executorIds: [...new Set(task.input.nodes.map(node => node.executorId))] };
 }
 
+function deliveryView(delivery: Delivery) {
+  const { id, ...rest } = delivery;
+  return { deliveryId: id, ...rest };
+}
+function messageView(message: TaskMessage) {
+  return { messageId: message.id, taskId: message.taskId, runId: message.runId, questionId: message.questionId,
+    role: message.role, kind: message.kind, content: message.content, status: message.status,
+    error: message.error, createdAt: message.createdAt, finishedAt: message.finishedAt };
+}
 function runView(run: TaskRun) {
-  return { ...run, scheduledAt: new Date(run.scheduledAt).toISOString() };
+  const { id, inputId, ...rest } = run;
+  return { ...rest, runId: id, inputMessageId: inputId, scheduledAt: run.scheduledAt === null ? null : new Date(run.scheduledAt).toISOString(),
+    questions: run.questions.map(({ id, ...question }) => ({ questionId: id, ...question })),
+    nodes: run.nodes.map(({ id, deliveries, baseline, ...node }) => ({ nodeRunId: id, ...node,
+      deliveries: deliveries.map(deliveryView), baseline: baseline ? deliveryView(baseline) : null })) };
 }
 
 function runSummary(run: TaskRun) {
-  return { id: run.id, taskId: run.taskId, status: run.status, scheduledAt: new Date(run.scheduledAt).toISOString(),
+  return { runId: run.id, taskId: run.taskId, source: run.source, status: run.status, scheduledAt: run.scheduledAt === null ? null : new Date(run.scheduledAt).toISOString(),
     createdAt: run.createdAt, finishedAt: run.finishedAt, error: run.error, skippedCount: run.skippedCount,
     steps: run.steps, coordinatorStartedAt: run.coordinatorStartedAt, summary: run.summary, waitedMs: run.waitedMs,
-    questions: run.questions.map(question => ({ id: question.id, nodeId: question.nodeId, question: question.question,
+    questions: run.questions.map(question => ({ questionId: question.id, nodeId: question.nodeId, question: question.question,
       completedWork: question.completedWork, createdAt: question.createdAt, expiresAt: question.expiresAt,
       sessionExpiresAt: question.sessionExpiresAt, answered: question.reply !== null })),
-    nodes: run.nodes.map(node => ({ id: node.id, definitionId: node.definition.id, executorId: node.definition.executorId,
+    nodes: run.nodes.map(node => ({ nodeRunId: node.id, definitionId: node.definition.id, executorId: node.definition.executorId,
       dependsOn: node.definition.dependsOn, status: node.status, turnCount: node.turns.length,
-      delivered: node.result !== null, error: node.error, startedAt: node.startedAt })) };
+      delivered: node.status === "succeeded" && node.deliveryId !== null, error: node.error, startedAt: node.startedAt })) };
 }
 
 function invalidInput(error: z.ZodError): string {

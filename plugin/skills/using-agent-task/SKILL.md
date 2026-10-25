@@ -1,6 +1,6 @@
 ---
 name: using-agent-task
-description: Use Agent Task from Pi, Claude Code or Codex. Covers installing the service, setup and MCP connection, submitting caller-defined task DAGs, inspecting runs and deliveries, answering user-fact questions, registering custom local stdio ACP executors through the administrator CLI, and diagnosing connection failures.
+description: Use Agent Task from Pi, Claude Code or Codex. Covers installing the service, setup and MCP connection, submitting caller-defined task DAGs, inspecting runs and deliveries, discussing a persistent Task, requesting explicit supplementary work, answering user-fact questions, registering custom local stdio ACP executors through the administrator CLI, and diagnosing connection failures.
 ---
 
 # Using Agent Task

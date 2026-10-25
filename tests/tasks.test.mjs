@@ -48,17 +48,17 @@ test("a turn ending with a question is not a DAG delivery; only accepted excerpt
   // Structured storage contract, not an imitation ACP/model execution.
   const run = f.store.run(f.run.id), a = run.nodes[0];
   a.status = "awaiting_review"; a.startedAt = new Date().toISOString();
-  a.turns = [{ prompt: "Inspect data", output: "Which source should I inspect?", stopReason: "end_turn" }];
+  a.turns = [{ prompt: "Inspect data", output: "Which source should I inspect?", stopReason: "end_turn", sessionId: null, inputDeliveries: [], messageIds: [], contextMessageIds: [] }];
   f.store.commitRun( run);
   assert.equal(f.service.runs.get(run.id).nodes[0].resultFile, null);
   await assert.rejects(f.service.supervisor.converse(run.id, "B"), /Dependencies/);
   assert.throws(() => f.service.supervisor.actions(run.id).finish("Finished"), /accepted/);
-  await assert.rejects(f.service.supervisor.accept(run.id, "A", 1, "Invented answer", "complete"), /exact excerpt/);
+  await assert.rejects(f.service.supervisor.actions(run.id).accept("A", 1, "Invented answer", "complete"), /exact excerpt/);
   // A later, complete turn is selected explicitly; the earlier question stays only in the transcript.
-  a.turns.push({ prompt: "Use source X", output: "Progress.\nSource X contains 3 records.\nDone.", stopReason: "end_turn" });
+  a.turns.push({ prompt: "Use source X", output: "Progress.\nSource X contains 3 records.\nDone.", stopReason: "end_turn", sessionId: null, inputDeliveries: [], messageIds: [], contextMessageIds: [] });
   f.store.commitRun( run);
-  await assert.rejects(f.service.supervisor.accept(run.id, "A", 1, "Which source should I inspect?", "complete"), /latest/);
-  await f.service.supervisor.accept(run.id, "A", 2, "Source X contains 3 records.", "The requested source and count are provided.");
+  await assert.rejects(f.service.supervisor.actions(run.id).accept("A", 1, "Which source should I inspect?", "complete"), /latest/);
+  await f.service.supervisor.actions(run.id).accept("A", 2, "Source X contains 3 records.", "The requested source and count are provided.");
   const accepted = f.service.runs.get(run.id).nodes[0];
   assert.equal(readFileSync(accepted.resultFile, "utf8"), "Source X contains 3 records.");
   assert.equal(accepted.status, "succeeded");
@@ -68,15 +68,15 @@ test("a turn ending with a question is not a DAG delivery; only accepted excerpt
   assert.equal(f.service.runs.get(run.id).status, "waiting_input");
   assert.equal(f.service.runs.get(run.id).nodes[1].status, "pending");
   await assert.rejects(f.service.supervisor.converse(run.id, "B"), /not running/);
-  const reply = { runId: run.id, questionId: question.id, requestKey: "answer-1", answer: "Use Y" };
-  f.service.supervisor.reply(reply, Date.parse(question.createdAt) + 1000);
+  const reply = { taskId: run.taskId, questionId: question.id, requestKey: "answer-1", answer: "Use Y" };
+  const receipt = f.service.supervisor.answer(reply, Date.parse(question.createdAt) + 1000);
   assert.equal(f.service.runs.get(run.id).waitedMs, 1000);
   assert.equal(f.service.runs.get(run.id).nodes[0].resultFile, accepted.resultFile);
   assert.equal(f.service.runs.get(run.id).nodes[1].id, run.nodes[1].id);
   assert.throws(() => actions.step(), /Stale/);
-  assert.deepEqual(f.service.supervisor.reply(reply), f.service.runs.get(run.id));
-  assert.throws(() => f.service.supervisor.reply({ ...reply, answer: "changed" }), /requestKey/);
-  assert.throws(() => f.service.supervisor.reply({ ...reply, requestKey: "another" }), /answered/);
+  assert.deepEqual(f.service.supervisor.answer(reply), receipt);
+  assert.throws(() => f.service.supervisor.answer({ ...reply, answer: "changed" }), /requestKey/);
+  assert.throws(() => f.service.supervisor.answer({ ...reply, requestKey: "another" }), /answered/);
 });
 
 test("DAG admission validates structure, assigned executors and deduplication before persisting; budgets remain enforced", async t => {
@@ -123,7 +123,7 @@ test("each run retains the caller DAG and dispatches only to the node's assigned
   const stopped = f.service.runs.get(second.id);
   assert.equal(stopped.nodes[0].sessionId, null);
   assert.equal(stopped.nodes[0].turns.length, 0);
-  assert.equal(stopped.nodes[1].turns[0].prompt, nodes[1].prompt);
+  assert.equal(stopped.nodes[1].turns.length, 1);
   assert.deepEqual(stopped.nodes.map(node => node.definition), nodes);
 });
 
@@ -133,7 +133,7 @@ test("recovery blocks uncertain ACP work, but keeps coordinator-only runs resuma
   assert.equal(f.service.runs.get(f.run.id).status, "running");
   const run = f.store.run(f.run.id);
   run.nodes[0].status = "running"; run.nodes[0].startedAt = new Date().toISOString();
-  run.nodes[0].turns = [{ prompt: "operation", output: "", stopReason: null }];
+  run.nodes[0].turns = [{ prompt: "operation", output: "", stopReason: null, sessionId: null, inputDeliveries: [], messageIds: [], contextMessageIds: [] }];
   f.store.commitRun( run);
   f.service.supervisor.recover();
   assert.equal(f.service.runs.get(run.id).status, "interrupted");
@@ -144,9 +144,9 @@ test("recovery blocks uncertain ACP work, but keeps coordinator-only runs resuma
 test("real failing ACP process closes the run instead of allowing an automatic retry", { timeout: 10000 }, async t => {
   for (const custom of [false, true]) {
     const f = fixture(t, "/usr/bin/false", custom ? ["literal argument"] : [], undefined, custom);
-    await assert.rejects(f.service.supervisor.converse(f.run.id, "A", "Replace the supplied prompt"), /First turn/);
+    await assert.rejects(f.service.supervisor.converse(f.run.id, "A", "Inspect the authorized source"));
     await assert.rejects(f.service.supervisor.converse(f.run.id, "A"));
-    assert.equal(f.service.runs.get(f.run.id).nodes[0].turns[0].prompt, f.input.nodes[0].prompt);
+    assert.deepEqual(f.service.runs.get(f.run.id).nodes[0].definition, f.input.nodes[0]);
     assert.equal(f.service.runs.get(f.run.id).status, "interrupted");
     await assert.rejects(f.service.supervisor.converse(f.run.id, "A"), /not running/);
   }
@@ -174,24 +174,24 @@ test("cancellation and timeout stop real waiting ACP processes without producing
   assert.equal(blocked.service.runs.get(blocked.run.id).status, "failed");
 });
 
-test("task_update affects future slots only, resumes without catch-up and rejects invalid actions without mutation", t => {
+test("task_schedule_control affects future slots only, resumes without catch-up and rejects invalid actions without mutation", t => {
   const f = fixture(t), now = Math.floor(Date.now() / 60_000) * 60_000;
   const task = f.service.definitions.create({ ...f.input, requestKey: "cron", schedule: { type: "cron", expression: "* * * * *", timezone: "UTC" } }, now - 1);
   f.service.runs.trigger(now);
   const run = f.service.runs.list(task.id).items[0];
-  f.service.definitions.update({ id: task.id, action: "pause" }, now);
+  f.service.definitions.controlSchedule({ taskId: task.id, action: "pause" }, now);
   f.service.runs.trigger(now + 120000);
   assert.equal(f.service.runs.list(task.id).items.length, 1);
-  const resumed = f.service.definitions.update({ id: task.id, action: "resume" }, now + 150000);
+  const resumed = f.service.definitions.controlSchedule({ taskId: task.id, action: "resume" }, now + 150000);
   assert.equal(resumed.nextAt, now + 180000);
   assert.equal(f.service.runs.get(run.id).status, "running");
-  assert.throws(() => f.service.definitions.update({ id: task.id, action: "edit" }), { name: "ZodError" });
+  assert.throws(() => f.service.definitions.controlSchedule({ taskId: task.id, action: "edit" }), { name: "ZodError" });
   assert.deepEqual(f.service.definitions.get(task.id), resumed);
-  assert.throws(() => f.service.definitions.update({ id: task.id, action: "pause", prompt: "replace" }));
-  f.service.definitions.update({ id: task.id, action: "cancel" });
+  assert.throws(() => f.service.definitions.controlSchedule({ taskId: task.id, action: "pause", prompt: "replace" }));
+  f.service.definitions.controlSchedule({ taskId: task.id, action: "cancel" });
   assert.equal(f.service.definitions.get(task.id).nextAt, null);
   assert.equal(f.service.runs.get(run.id).status, "running");
-  assert.throws(() => f.service.definitions.update({ id: task.id, action: "resume" }), /no future/);
+  assert.throws(() => f.service.definitions.controlSchedule({ taskId: task.id, action: "resume" }), /no future/);
 });
 
 test("Cron admission persists calendar slots, counts misses without catch-up, skips overlaps and respects the cutoff", async t => {
@@ -224,7 +224,7 @@ test("Cron admission persists calendar slots, counts misses without catch-up, sk
   assert.equal(f.service.definitions.get(task.id).nextAt, now + 30 * 60_000);
   assert.deepEqual(f.service.definitions.get(task.id).input.schedule, schedule);
   f.service.runs.trigger(now + 30 * 60_000);
-  assert.equal(f.service.definitions.get(task.id).status, "expired");
+  assert.equal(f.service.definitions.get(task.id).scheduleStatus, "expired");
   assert.equal(f.service.definitions.get(task.id).nextAt, null);
   assert.equal(f.service.runs.list(task.id).items.length, 3);
   assert.equal(f.service.runs.get(run.id).status, "running");
@@ -325,7 +325,7 @@ test("shutdown closes real waiting execution once, rejects late output and prese
   const close = f.service.close();
   assert.equal(f.service.close(), close);
   assert.throws(() => f.service.definitions.create(f.input), /closed/);
-  assert.throws(() => f.service.runs.trigger(), /closed/);
+  assert.throws(() => f.service.runs.trigger(), /closed/); assert.throws(() => f.service.conversations.list(f.task.id), /closed/);
   assert.throws(() => f.service.runs.record(f.run.id, "A", "output", null, "late"), /closed/);
   assert.throws(() => f.service.supervisor.tick(), /closed/);
   await close; await turn;
@@ -348,14 +348,14 @@ test("cancelling an open external turn pauses future slots and late events canno
   assert.throws(() => f.service.runs.completeTurn(run.id, "A", "end_turn"), /not running/);
   await pending;
   assert.equal(f.service.runs.get(run.id).status, "cancelled");
-  assert.equal(f.service.definitions.get(task.id).status, "paused");
-  assert.throws(() => f.service.definitions.update({ id: task.id, action: "resume" }), /uncertain external outcomes/);
+  assert.equal(f.service.definitions.get(task.id).scheduleStatus, "paused");
+  assert.throws(() => f.service.definitions.controlSchedule({ taskId: task.id, action: "resume" }), /uncertain external outcomes/);
   f.service.runs.trigger(now + 60_000);
   assert.equal(f.service.runs.list(task.id).items.length, 1);
   // A previously persisted active cursor must not bypass the same dispatch guard on restart.
-  const active = f.store.get(task.id); active.status = "active"; f.store.saveDefinition(active);
+  const active = f.store.get(task.id); active.scheduleStatus = "active"; f.store.saveDefinition(active);
   await f.reopen();
   f.service.runs.trigger(now + 120_000);
   assert.equal(f.service.runs.list(task.id).items.length, 1);
-  assert.equal(f.service.definitions.get(task.id).status, "paused");
+  assert.equal(f.service.definitions.get(task.id).scheduleStatus, "paused");
 });

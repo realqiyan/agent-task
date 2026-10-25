@@ -1,6 +1,6 @@
 import { TaskError } from "../shared/errors.js";
 import { iso } from "../shared/time.js";
-import type { CoordinatorInput, InputQuestion, InputReply, QuestionRequest, TaskRun } from "./model.js";
+import type { InputQuestion, InputReply, QuestionRequest, TaskRun } from "./model.js";
 
 /** Human facts are persisted business state, not executor permission or retry authorization. */
 export function askInput(run: TaskRun, request: QuestionRequest, seconds: number, now: number, questionId: string): { run: TaskRun; question: InputQuestion } {
@@ -44,13 +44,4 @@ export function applyReply(run: TaskRun, input: InputReply, now: number): TaskRu
   run.waitedMs += Math.max(0, now - Date.parse(question.createdAt));
   run.status = "running";
   return run;
-}
-
-export function coordinatorInput(run: TaskRun): CoordinatorInput {
-  const question = run.questions.findLast(value => value.reply !== null);
-  if (!question) return { requestId: "run:" + run.id, content: "Advance this task run using its caller-defined DAG. Start by reading inspect_run." };
-  return { requestId: "reply:" + question.id,
-    content: "Human facts for the existing task run. Read inspect_run; preserve the committed plan and accepted deliveries. This reply grants no permissions or authorization to retry uncertain effects.\n" +
-      JSON.stringify({ questionId: question.id, nodeId: question.nodeId, question: question.question,
-        completedWork: question.completedWork, answer: question.reply!.answer }) };
 }

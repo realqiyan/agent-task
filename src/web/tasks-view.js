@@ -13,7 +13,7 @@ export async function renderTasks(root, state, navigate) {
     root.append(element("h2", "任务"), element("p", "触发计划状态不等于运行结果；空闲页面每 10 秒刷新，交互时可手动刷新。"),
       table(["任务", "触发计划状态", "计划", "下次触发"], page.items.map(task => [
         button(task.name, () => navigate({ kind: "task", id: task.id, after: 0 })),
-        task.status, JSON.stringify(task.schedule), time(task.nextAt),
+        task.scheduleStatus, JSON.stringify(task.schedule), time(task.nextAt),
       ])));
     paging(root, page, state, navigate);
   } else if (state.kind === "task") await task(root, state, navigate);
@@ -25,17 +25,17 @@ async function task(root, state, navigate) {
     request("/runs?taskId=" + encodeURIComponent(state.id) + "&after=" + state.after),
   ]);
   root.append(button("返回任务列表", () => navigate({ kind: "tasks", after: 0 })), element("h2", task.input.name),
-    element("p", task.id + " · 触发计划：" + task.status + " · 下次触发：" + time(task.nextAt)),
+    element("p", task.id + " · 触发计划：" + task.scheduleStatus + " · 下次触发：" + time(task.nextAt)),
     element("p", "以下操作只影响未来触发，不停止当前运行，也不回滚外部操作。恢复不会补跑；取消后不可恢复未来触发。"));
   const actions = element("div"); actions.className = "actions";
   for (const [action, label, enabled] of [
-    ["pause", "暂停未来触发", task.status === "active"],
-    ["resume", "恢复未来触发", task.status === "paused"],
-    ["cancel", "取消未来触发", !["cancelled", "expired"].includes(task.status)],
+    ["pause", "暂停未来触发", task.scheduleStatus === "active"],
+    ["resume", "恢复未来触发", task.scheduleStatus === "paused"],
+    ["cancel", "取消未来触发", !["cancelled", "expired"].includes(task.scheduleStatus)],
   ]) {
     actions.append(button(label, async () => {
       if (!confirm(label + "？\n不影响当前运行。恢复不会补跑；取消不可恢复。")) return;
-      await request("/task-update", { id: task.id, action });
+      await request("/task-schedule-control", { taskId: task.id, action });
       notice("未来触发已更新；当前运行未被取消。");
       navigate(state);
     }, !enabled || task.nextAt === null));
@@ -63,7 +63,7 @@ async function run(root, state, navigate) {
     const details = element("details"); details.dataset.key = node.id;
     details.append(element("summary", node.definition.id + " · " + node.status),
       block("节点与会话记录", { definition: node.definition, workspace: node.workspace, inputFiles: node.inputFiles,
-        resultFile: node.resultFile, sessionId: node.sessionId, error: node.error }, node.id + "-metadata"));
+        deliveryId: node.deliveryId, deliveries: node.deliveries, baseline: node.baseline, resultFile: node.resultFile, sessionId: node.sessionId, error: node.error }, node.id + "-metadata"));
     if (node.result !== null) details.append(block("已接受交付", node.result, node.id + "-result"),
       block("接受理由", node.acceptance, node.id + "-acceptance"));
     node.turns.forEach((turn, index) => details.append(block("回合 " + (index + 1) + "（原始材料，不等于交付）", turn, node.id + "-turn-" + index)));

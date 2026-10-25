@@ -9,7 +9,7 @@ import { StorageError, TaskError } from "../../shared/errors.js";
 import type { TaskApi } from "../services.js";
 import { parseSettings, settingsConfigSchema, settingsChangeSchema, credentialUpdateSchema,
   executorRefreshSchema, executorUpgradeSchema, executorRegisterSchema, executorUnregisterSchema } from "../settings-contract.js";
-import { taskIdSchema, taskListSchema, taskRunListSchema, taskUpdateSchema } from "../task-contract.js";
+import { taskIdSchema, runIdSchema, taskListSchema, taskRunListSchema, taskScheduleControlSchema } from "../task-contract.js";
 
 type ConsoleTasks = Pick<TaskApi, "definitions" | "runs" | "supervisor" | "executors">;
 function query<T>(schema: z.ZodType<T>, request: express.Request): T {
@@ -67,17 +67,17 @@ export function createWebRouter(tasks: ConsoleTasks, settings: Settings, token: 
   router.get("/api/status", respond(() => ({ ...tasks.supervisor.status(), settings: settings.status(), instanceId })));
   router.get("/api/tasks", respond(req => {
     const input = query(taskListSchema, req), page = tasks.definitions.list(input.after, input.limit);
-    return { ...page, items: page.items.map(task => ({ id: task.id, name: task.input.name, status: task.status, nextAt: task.nextAt, schedule: task.input.schedule })) };
+    return { ...page, items: page.items.map(task => ({ id: task.id, name: task.input.name, scheduleStatus: task.scheduleStatus, nextAt: task.nextAt, schedule: task.input.schedule })) };
   }));
-  router.get("/api/tasks/:id", respond(req => tasks.definitions.get(taskIdSchema.parse(req.params).id)));
+  router.get("/api/tasks/:id", respond(req => tasks.definitions.get(taskIdSchema.parse({ taskId: req.params["id"] }).taskId)));
   router.get("/api/runs", respond(req => {
     const input = query(taskRunListSchema, req), page = tasks.runs.list(input.taskId, input.after, input.limit);
     return { ...page, items: page.items.map(run => ({ id: run.id, taskId: run.taskId, status: run.status,
       createdAt: run.createdAt, finishedAt: run.finishedAt, error: run.error,
       accepted: run.nodes.filter(node => node.status === "succeeded").length, total: run.nodes.length })) };
   }));
-  router.get("/api/runs/:id", respond(req => tasks.runs.get(taskIdSchema.parse(req.params).id)));
-  router.post("/api/task-update", respond(req => tasks.definitions.update(taskUpdateSchema.parse(req.body))));
+  router.get("/api/runs/:id", respond(req => tasks.runs.get(runIdSchema.parse({ runId: req.params["id"] }).runId)));
+  router.post("/api/task-schedule-control", respond(req => tasks.definitions.controlSchedule(taskScheduleControlSchema.parse(req.body))));
   router.get("/api/executors", respond(() => tasks.executors.list()));
   router.post("/api/executors/refresh", respond(req => {
     parseSettings(executorRefreshSchema, req.body);

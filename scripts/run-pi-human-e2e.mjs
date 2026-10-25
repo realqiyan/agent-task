@@ -8,12 +8,16 @@ process.umask(0o077);
 const args = process.argv.slice(2);
 const options = {};
 for (let i = 0; i < args.length; i += 2) {
-  if (!["--repeat", "--quantity", "--answer-file"].includes(args[i]) || !args[i + 1]) {
-    throw new Error("Usage: npm run test:e2e:human -- [--repeat 1..5] [--quantity 1..9 | --answer-file NEW_PATH]");
+  if (!["--repeat", "--quantity", "--answer-file", "--suite"].includes(args[i]) || !args[i + 1]) {
+    throw new Error("Usage: npm run test:e2e:human -- [--suite human|single|conversation] [--repeat 1..5] [--quantity 1..9 | --answer-file NEW_PATH]");
   }
   options[args[i]] = args[i + 1];
 }
 const repeat = Number(options["--repeat"] ?? 1), quantity = Number(options["--quantity"] ?? 3);
+const suite = options["--suite"] ?? "human";
+const suites = { human: "human-dag", single: "deepseek-acp", conversation: "task-conversation" };
+if (!Object.hasOwn(suites, suite)) throw new Error("Unknown E2E suite");
+if (suite !== "human" && (options["--answer-file"] || options["--quantity"])) throw new Error("Quantity/answer-file only apply to the human suite");
 if (!Number.isInteger(repeat) || repeat < 1 || repeat > 5 || !Number.isInteger(quantity) || quantity < 1 || quantity > 9) throw new Error("Invalid repeat/quantity");
 if (options["--answer-file"] && (repeat !== 1 || options["--quantity"])) throw new Error("Manual input requires one run and no fixture quantity");
 if (!process.env.DEEPSEEK_API_KEY) throw new Error("Load DEEPSEEK_API_KEY in this shell first; never paste it into logs");
@@ -34,8 +38,9 @@ const nativeBin = join(dir, "native-bin"); mkdirSync(nativeBin, { mode: 0o700 })
 const wrapper = join(nativeBin, "pi");
 writeFileSync(wrapper, `#!/bin/sh\nunset DEEPSEEK_API_KEY AGENT_TASK_E2E_TOKEN\nexec ${quote(pi)} --tools read --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve --offline "$@"\n`, { mode: 0o700 });
 console.log(`Private acceptance logs: ${dir}`);
+console.log(`Suite: ${suite}; coordinator/native model: ${settings.defaultModel}`);
 console.log("Real models; billable. Native Pi read tool only (not an OS sandbox). Shared approved test key, not independent-account isolation.");
-console.log(options["--answer-file"] ? `Manual answer file: ${resolve(options["--answer-file"])}` : `Human-role input source: declared fixture quantity=${quantity}`);
+if (suite === "human") console.log(options["--answer-file"] ? `Manual answer file: ${resolve(options["--answer-file"])}` : `Human-role input source: declared fixture quantity=${quantity}`);
 let child, killTimer, stopped = false;
 const signalGroup = signal => {
   if (!child?.pid) return;
@@ -53,7 +58,7 @@ try {
   for (let attempt = 1; attempt <= repeat; attempt++) {
     const fd = openSync(join(dir, `test-${attempt}.log`), "wx", 0o600);
     try {
-      child = spawn(process.execPath, ["--test", "--test-concurrency=1", "tests/e2e/human-dag.test.mjs"], {
+      child = spawn(process.execPath, ["--test", "--test-concurrency=1", `tests/e2e/${suites[suite]}.test.mjs`], {
         detached: true,
         env: { PATH: nativeBin + ":" + process.env.PATH, LANG: process.env.LANG, HOME: home, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
           PI_CODING_AGENT_DIR: agent, PI_TELEMETRY: "0",

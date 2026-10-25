@@ -16,15 +16,21 @@ Use `task_list` to locate tasks, `task_get` for definitions, `task_run_list` for
 
 Distinguish task trigger state from a particular run's outcome. Explain whether work is scheduled, executing, waiting for user facts, failed or delivered using the returned facts. A protocol turn ending or raw executor output is not accepted delivery. Read the accepted content and disclose missing evidence instead of treating a success label as proof of completeness.
 
+## Discuss a Task or request supplementary work
+
+Use `task_message_send` to address the Task coordinator and `task_message_list` to read public conversation records. Do not address nodes as separate chats. A saved or submitted receipt does not prove the coordinator considered the facts or that any work completed.
+
+Ordinary messages do not start idle ACP work, answer a pending question or reopen a terminal Run. Additional work needs explicit user intent and the message tool's execution option and Run reference. After completion, use a successful Run of the same Task as the baseline. Preserve old deliveries and inspect source references; never automatically rerun the DAG or repeat publication because upstream facts changed. Task memory is advisory, not authority or proof.
+
 ## Answer questions
 
-When a run needs user facts, retrieve its current unanswered question and applicable deadlines. Present the actual question and relevant completed work to the user. Submit their answer through `task_run_reply` using that run and question's identities and the tool's request-key contract.
+When a run needs user facts, retrieve its current unanswered question and applicable deadlines. Present the actual question and relevant completed work to the user. Submit their answer through `task_question_answer` using the Task and question identities and the tool's request-key contract. This returns an input receipt; inspect the owning Run for its execution outcome.
 
 Do not invent an answer, substitute your own assumptions, treat a fact reply as permission, or start a new task to bypass the wait. If a reply's outcome is uncertain, inspect the existing run before further writes.
 
 ## Control future work or cancel a run
 
-Use `task_update` for future-trigger pause/resume/cancel, and `task_run_cancel` to stop a particular run. Confirm which scope the user intends; changing future triggers does not cancel the current run. Cancellation cannot undo external side effects.
+Use `task_schedule_control` for future-trigger pause/resume/cancel, and `task_run_cancel` to stop a particular run. Confirm which scope the user intends; changing future triggers does not cancel the current run. Cancellation cannot undo external side effects.
 
 For interrupted or unknown external outcomes, report the block and ask for investigation. Do not automatically retry, replay completed nodes, switch executors, edit the DAG or create replacement work to evade the block.
 

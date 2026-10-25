@@ -6,8 +6,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ErrorCode } fr
 import { version } from "../infrastructure/version.js";
 import { serverInstructions } from "./mcp-contract.js";
 
-const toolNames = new Set(["service_status", "executor_list", "task_create", "task_list", "task_get", "task_update",
-  "task_run_list", "task_run_get", "task_run_reply", "task_run_cancel"]);
+const toolNames = new Set(["service_status", "executor_list", "task_create", "task_list", "task_get", "task_schedule_control",
+  "task_run_list", "task_run_get", "task_question_answer", "task_message_send", "task_message_list", "task_run_cancel"]);
 
 /** A fixed Agent Task adapter; only task creation receives the connection's startup directory. */
 export async function serveStdio(options: { url: string; token: string; workspace: string }): Promise<void> {

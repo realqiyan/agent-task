@@ -59,7 +59,7 @@ export const createExecution = (environment: NodeJS.ProcessEnv): OpenExecution =
   worker.once("close", settle);
   return {
     closed, close,
-    async prompt(text) {
+    async prompt(text, inputFiles = input.inputFiles) {
       if (stopped || exited || busy) throw new Error("Execution closed or busy");
       busy = true;
       try {
@@ -67,7 +67,7 @@ export const createExecution = (environment: NodeJS.ProcessEnv): OpenExecution =
         if (stopped || exited) throw new Error("Execution stopped");
         return await new Promise<{ stopReason: string }>((resolve, reject) => {
           turn = { resolve, reject };
-          worker.send({ type: "prompt", text }, error => { if (error) fail(error); });
+          worker.send({ type: "prompt", text, inputFiles }, error => { if (error) fail(error); });
         });
       } finally { busy = false; }
     },

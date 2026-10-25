@@ -1,15 +1,17 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "../../infrastructure/sqlite.js";
+import { StorageError } from "../../shared/errors.js";
 import { SqliteStorage } from "@earendil-works/pi-durable/storage/sqlite";
 import { openNodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 
 /** The caller holds the application directory lock. New files initialize; existing files must already match the pinned SDK. */
-export async function openCoordinatorStorage(directory: string, runId: string) {
-  if (!/^[a-f0-9-]{36}$/.test(runId)) throw new Error("Invalid run identity");
+export async function openCoordinatorStorage(directory: string, taskId: string, requireExisting = false) {
+  if (!/^[a-f0-9-]{36}$/.test(taskId)) throw new Error("Invalid task identity");
   const root = join(directory, "coordinators");
+  const path = join(root, taskId + ".sqlite");
+  if (requireExisting && !existsSync(path)) throw new StorageError("Bound task conversation storage is missing; no empty replacement created");
   mkdirSync(root, { recursive: true, mode: 0o700 });
-  const path = join(root, runId + ".sqlite");
   if (existsSync(path)) {
     const db = new DatabaseSync(path, { readOnly: true });
     try {

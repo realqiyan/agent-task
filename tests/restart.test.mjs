@@ -45,7 +45,7 @@ test("foreground CLI and Web restart on the same port verify a new process; fail
   // Persist a dispatch intent with unknown external outcome, not a fabricated executor delivery.
   run.nodes[0].status = "running"; run.nodes[0].startedAt = new Date(now).toISOString();
   run.nodes[0].workspace = workspace;
-  run.nodes[0].turns = [{ prompt: "Inspect", output: "", stopReason: null }];
+  run.nodes[0].turns = [{ prompt: "Inspect", output: "", stopReason: null, sessionId: null, inputDeliveries: [], messageIds: [], contextMessageIds: [] }];
   store.commitRun( run); await tasks.close(); store.close();
   const child = spawn(process.execPath, [cli, "start", "--home", home], { env, stdio: ["ignore", "pipe", "pipe"] });
   let logs = "";
@@ -78,7 +78,7 @@ test("foreground CLI and Web restart on the same port verify a new process; fail
   const savedRun = (await admin("/runs/" + run.id)).data;
   assert.equal(savedRun.status, "interrupted");
   assert.equal(savedRun.nodes[0].turns.length, 1);
-  assert.equal((await admin("/tasks/" + task.id)).data.status, "paused");
+  assert.equal((await admin("/tasks/" + task.id)).data.scheduleStatus, "paused");
   const blockedPort = await listen(occupied), settings = (await admin("/settings")).data;
   assert.equal((await admin("/settings/config", { editToken: settings.editToken, config: { ...settings.saved, port: blockedPort } })).status, 200);
   assert.equal((await admin("/restart", {})).status, 503, "must not report success after a bind failure");

@@ -19,6 +19,6 @@ test("real DeepSeek coordinator → MCP task → ACP delivery → accepted compl
   const node = run.nodes[0];
   await verifyDelivery(node);
   assert.ok(run.summary && node.result.includes(marker) && /\b323\b/.test(node.result));
-  e2e.log("verification_passed", { runId: run.id, taskId: task.id, sessionId: node.sessionId, steps: run.steps });
-  t.diagnostic(`Verified run ${run.id}: real ACP turn, accepted delivery and persisted result`);
+  e2e.log("verification_passed", { runId: run.runId, taskId: task.taskId, sessionId: node.sessionId, steps: run.steps });
+  t.diagnostic(`Verified run ${run.runId}: real ACP turn, accepted delivery and persisted result`);
 });

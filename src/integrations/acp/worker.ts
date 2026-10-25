@@ -44,7 +44,7 @@ async function fail(error: unknown): Promise<void> {
 process.on("disconnect", () => { void close(); });
 process.on("SIGTERM", () => { void close(); });
 process.on("SIGINT", () => { void close(); });
-process.on("message", (message: { type?: string; input?: unknown; seq?: number; text?: string }) => {
+process.on("message", (message: { type?: string; input?: unknown; seq?: number; text?: string; inputFiles?: string[] }) => {
   if (message.type === "ack" && message.seq !== undefined) pending.get(message.seq)?.resolve();
   else if (message.type === "close") void close();
   else if (message.type === "open" && !started && !closing) {
@@ -57,9 +57,9 @@ process.on("message", (message: { type?: string; input?: unknown; seq?: number; 
     })();
     void opening.catch(error => { void fail(error); });
   } else if (message.type === "prompt" && session && !closing) {
-    if (busy || typeof message.text !== "string") { void fail(new Error("Invalid or concurrent turn")); return; }
+    if (busy || typeof message.text !== "string" || !Array.isArray(message.inputFiles) || message.inputFiles.length > 20 || message.inputFiles.some(path => typeof path !== "string")) { void fail(new Error("Invalid or concurrent turn")); return; }
     busy = true;
-    void session.prompt(message.text).then(async stopReason => {
+    void session.prompt(message.text, message.inputFiles).then(async stopReason => {
       // Release admission before the parent can observe completion and send the next turn.
       busy = false;
       await send({ type: "turn", stopReason });

@@ -114,12 +114,12 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   assert.equal((await raw("/api/tasks", { headers: { Origin: "https://untrusted.invalid" } })).status, 403);
   assert.equal((await raw("/api/tasks", { headers: { "Sec-Fetch-Site": "same-site" } })).status, 403);
   for (const origin of [undefined, "null", "https://untrusted.invalid"]) {
-    assert.equal((await raw("/api/task-update", { method: "POST", headers: {
+    assert.equal((await raw("/api/task-schedule-control", { method: "POST", headers: {
       "Content-Type": "application/json", ...(origin === undefined ? {} : { Origin: origin }),
-    }, body: JSON.stringify({ id: task.id, action: "cancel" }) })).status, 403);
+    }, body: JSON.stringify({ taskId: task.id, action: "cancel" }) })).status, 403);
   }
-  assert.equal((await raw("/api/task-update", { method: "POST", headers: { Origin: child.origin, "Content-Type": "application/x-www-form-urlencoded" }, body: "action=cancel" })).status, 415);
-  assert.equal((await raw("/api/task-update", { method: "OPTIONS", headers: { Origin: "https://untrusted.invalid" } })).status, 403);
+  assert.equal((await raw("/api/task-schedule-control", { method: "POST", headers: { Origin: child.origin, "Content-Type": "application/x-www-form-urlencoded" }, body: "action=cancel" })).status, 415);
+  assert.equal((await raw("/api/task-schedule-control", { method: "OPTIONS", headers: { Origin: "https://untrusted.invalid" } })).status, 403);
   assert.equal((await fetch(child.origin + "/mcp", { method: "POST", headers: { Authorization: "Bearer " + mcpToken, Origin: child.origin } })).status, 403);
   assert.equal((await fetch(child.origin + "/mcp", { method: "POST", headers: { Authorization: "Bearer " + adminToken } })).status, 401);
   assert.equal((await call("/tasks")).items[0].name, name);
@@ -128,11 +128,11 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   assert.deepEqual(cliCall("run", "show", run.id), currentRun);
   assert.deepEqual(cliCall("task", "list", "--after", "0", "--limit", "1"), await call("/tasks?after=0&limit=1"));
   assert.deepEqual(cliCall("run", "list", "--task", task.id), await call("/runs?taskId=" + task.id));
-  assert.notEqual(invoke(["task", "pause", task.id]).status, 0, "noninteractive changes require explicit confirmation");
+  assert.notEqual(invoke(["task", "schedule", "pause", task.id]).status, 0, "noninteractive changes require explicit confirmation");
   for (const [action, status] of [["pause", "paused"], ["resume", "active"], ["cancel", "cancelled"]]) {
-    const updated = action === "pause" ? await call("/task-update", { id: task.id, action }) : cliCall("task", action, task.id, "--yes");
-    assert.equal(updated.status, status);
-    assert.equal((await call("/tasks/" + task.id)).status, status);
+    const updated = action === "pause" ? await call("/task-schedule-control", { taskId: task.id, action }) : cliCall("task", "schedule", action, task.id, "--yes");
+    assert.equal(updated.scheduleStatus, status);
+    assert.equal((await call("/tasks/" + task.id)).scheduleStatus, status);
     assert.deepEqual(await call("/runs/" + run.id), currentRun);
   }
   for (const path of ["/api/tasks", "/api/task-create", "/api/task-run-reply", "/api/runs/" + run.id + "/cancel"]) {

@@ -11,6 +11,10 @@ export class NodeSessions {
   constructor(private readonly openExecution: OpenExecution, private readonly fatal: (error: unknown) => void) {}
   get size(): number { return this.sessions.size; }
   has(id: string): boolean { return !this.closing && this.sessions.get(id)?.state === "open"; }
+  closingSession(id: string): Promise<void> | undefined {
+    const session = this.sessions.get(id);
+    return session?.state === "closing" ? session.completion : undefined;
+  }
   runIds(): string[] { return [...new Set([...this.sessions.values()].map(value => value.runId))]; }
   nodeIds(): string[] { return [...this.sessions.keys()]; }
   get(id: string): ExecutionSession {

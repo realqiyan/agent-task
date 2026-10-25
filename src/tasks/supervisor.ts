@@ -1,69 +1,121 @@
 import { errorText, StorageError, TaskError } from "../shared/errors.js";
-import { MAX_ACTIVE_RUNS, MAX_NODE_SESSIONS, MAX_TASKS } from "../shared/limits.js";
-import { coordinatorInput } from "./human-input.js";
-import type { EndStatus, InputReply, NodeRun } from "./model.js";
+import { MAX_ACTIVE_COORDINATORS, MAX_CONVERSATION_SECONDS, MAX_NODE_SESSIONS, MAX_TASKS } from "../shared/limits.js";
+import type { TaskConversations } from "./conversations.js";
+import type { EndStatus, InputReply, MessageRequest, NodeRun, TaskMessage } from "./model.js";
 import type { Coordinate, CoordinatorActions, OpenExecution } from "./ports.js";
 import type { TaskRuns } from "./runs.js";
 import { NodeSessions } from "./sessions.js";
 
-/** Owns coordinator generations, the calendar clock and NodeSessions. All persisted decisions go through TaskRuns. */
-export class RunSupervisor {
+type Owner = { runId: string | null; controller: AbortController; completion: Promise<void>; timer: ReturnType<typeof setTimeout> };
+/** One coordinator owner per Task; the SDK owns all model and tool scheduling. */
+export class TaskSupervisor {
   private closed = false;
   private closing?: Promise<void>;
   private timer?: ReturnType<typeof setInterval>;
-  private readonly active = new Map<string, { controller: AbortController; completion: Promise<void>; timer: ReturnType<typeof setTimeout> }>();
+  private readonly active = new Map<string, Owner>();
   private readonly turns = new Set<Promise<NodeRun>>();
   private readonly sessions: NodeSessions;
-  constructor(private readonly runs: TaskRuns, openExecution: OpenExecution,
+  constructor(private readonly runs: TaskRuns, private readonly conversations: TaskConversations, openExecution: OpenExecution,
     private readonly coordinate: Coordinate | undefined, private readonly fatal: (error: unknown) => void) {
     this.sessions = new NodeSessions(openExecution, fatal);
   }
-  private check(): void { if (this.closed) throw new TaskError("unavailable", "Run supervisor closed"); }
+  private check(): void { if (this.closed) throw new TaskError("unavailable", "Task supervisor closed"); }
   status() {
     return { running: !this.closed && this.timer !== undefined && this.runs.healthy,
-      activeTaskRunIds: [...this.active.keys()], activeNodeRunIds: this.sessions.nodeIds(),
+      activeTaskRunIds: [...this.active.values()].flatMap(owner => owner.runId ? [owner.runId] : []),
+      activeTaskIds: [...this.active.keys()], activeNodeRunIds: this.sessions.nodeIds(),
       storageHealthy: this.runs.healthy, coordinatorConfigured: this.coordinate !== undefined,
-      limits: { maxActiveRuns: MAX_ACTIVE_RUNS, maxTasks: MAX_TASKS, maxNodeSessions: MAX_NODE_SESSIONS } };
+      limits: { maxActiveConversations: MAX_ACTIVE_COORDINATORS, maxTasks: MAX_TASKS, maxNodeSessions: MAX_NODE_SESSIONS } };
   }
-  actions(id: string, requestId = coordinatorInput(this.runs.get(id)).requestId): CoordinatorActions {
+  actions(id: string, inputId = this.runs.get(id).inputId): CoordinatorActions {
+    return this.conversationActions(this.conversations.get(inputId), true);
+  }
+  private conversationActions(input: TaskMessage, execution: boolean): CoordinatorActions {
     this.check();
-    const current = () => { this.check(); return this.runs.current(id, requestId); };
+    const { taskId, runId } = input;
+    const current = () => { this.check(); if (execution) this.runs.current(runId!, input.id); };
+    const execute = () => { current(); if (!execution || !runId) throw new TaskError("precondition", "Discussion does not authorize execution or answer a pending question"); return runId; };
     return {
-      inspect: () => { current(); return this.runs.inspect(id, requestId); },
-      step: () => { current(); try { this.runs.step(id); } finally { this.reconcile(id); } },
-      converse: (node, message) => { current(); return this.converse(id, node, message); },
-      accept: (node, turn, result, reason) => { current(); return this.accept(id, node, turn, result, reason); },
-      ask: request => {
-        current(); const question = this.runs.ask(id, request);
-        clearTimeout(this.active.get(id)?.timer); return question;
+      inspect: selected => {
+        this.check();
+        const view = this.runs.inspect(taskId, selected ?? runId);
+        const bound = execution ? (view.run?.id === runId ? view : this.runs.inspect(taskId, runId)) : null;
+        return { ...view, execution: bound ? { runId: runId!, contextMessages: bound.messages } : null };
       },
-      finish: summary => { current(); this.runs.finish(id, summary); },
-      stop: (status, reason) => { current(); this.stopActive(id, status, reason); },
+      readMessage: id => { this.check(); return this.conversations.readMessage(taskId, id); },
+      step: () => { current(); if (execution) { try { this.runs.step(runId!); } finally { this.reconcile(runId!); } } else this.conversations.step(input.id); },
+      converse: (node, message, contextMessageIds) => this.converse(execute(), node, message, contextMessageIds),
+      accept: async (node, turn, result, reason, reuse) => this.runs.accept(execute(), node, turn, result, reason, reuse),
+      ask: request => {
+        const id = execute(), question = this.runs.ask(id, request);
+        clearTimeout(this.active.get(taskId)?.timer); return question;
+      },
+      finish: summary => { this.runs.finish(execute(), summary); },
+      stop: (status, reason) => { this.stopActive(execute(), status, reason); },
+      pending: () => {
+        this.check();
+        if (execution) {
+          const run = this.runs.get(runId!);
+          if (run.status !== "running" || run.inputId !== input.id) return [];
+        }
+        return this.conversations.pending(taskId).filter(message => message.id === input.id ||
+          (message.runId === runId && message.execute === execution && ["message", "supplement"].includes(message.kind)));
+      },
+      submitted: (id, submissionId) => { this.check(); this.conversations.submitted(id, submissionId); },
+      observe: ids => { current(); this.runs.observe(taskId, execution ? runId : null, ids); },
+      settle: (id, error) => { this.check(); this.conversations.settle(id, error); },
+      binding: () => { this.check(); return this.conversations.binding(taskId); },
+      bind: id => { this.check(); this.conversations.bind(taskId, id); },
+      project: (cursor, runId, text) => { this.check(); this.conversations.project(taskId, cursor, runId, text); },
+      validateMemory: items => { current(); this.conversations.validateMemory(taskId, items); },
     };
   }
-  converse(id: string, nodeId: string, message?: string): Promise<NodeRun> {
-    const pending = this.performTurn(id, nodeId, message);
+  converse(id: string, nodeId: string, message?: string, contextMessageIds?: string[]): Promise<NodeRun> {
+    const pending = this.performTurn(id, nodeId, message, contextMessageIds);
     this.turns.add(pending);
     void pending.finally(() => this.turns.delete(pending)).catch(() => {});
     return pending;
   }
-  private async performTurn(id: string, nodeId: string, message?: string): Promise<NodeRun> {
+  private accepted(id: string, nodeId: string): boolean {
+    const node = this.runs.get(id).nodes.find(node => node.definition.id === nodeId)!;
+    return ["succeeded", "stale"].includes(node.status) && node.deliveries.some(delivery => !delivery.source && delivery.turn === node.turns.length);
+  }
+  private async retireAccepted(): Promise<void> {
+    if (this.sessions.size < MAX_NODE_SESSIONS) return;
+    for (const run of this.runs.active()) for (const node of run.nodes) {
+      if (this.sessions.has(node.id) && this.accepted(run.id, node.definition.id)) {
+        await this.sessions.closeSession(node.id); return;
+      }
+    }
+  }
+  private async performTurn(id: string, nodeId: string, message?: string, contextMessageIds?: string[]): Promise<NodeRun> {
     this.check();
+    const currentRun = this.runs.current(id), inputId = currentRun.inputId;
+    const ownedNode = currentRun.nodes.find(node => node.definition.id === nodeId);
     let dispatched = false;
     try {
-      const dispatch = this.runs.prepareTurn(id, nodeId, message, this.sessions);
+      const closing = ownedNode && this.sessions.closingSession(ownedNode.id);
+      if (closing) await closing;
+      if (this.sessions.size >= MAX_NODE_SESSIONS) await this.retireAccepted();
+      this.check(); this.runs.current(id, inputId);
+      const dispatch = this.runs.prepareTurn(id, nodeId, message, this.sessions, contextMessageIds);
       dispatched = true;
       const handle = dispatch.kind === "continue" ? this.sessions.get(dispatch.nodeRunId)
         : this.sessions.open(dispatch.nodeRunId, id, dispatch.input, dispatch.seconds,
           (kind, data, text) => this.runs.record(id, nodeId, kind, data, text),
           () => { this.check(); this.runs.beforeStart(id, nodeId); },
           () => {
+            if (this.accepted(id, nodeId)) { void this.sessions.closeSession(dispatch.nodeRunId).catch(this.fatal); return; }
             const waiting = this.runs.get(id).status === "waiting_input";
             this.stopActive(id, waiting ? "interrupted" : "timed_out", waiting
               ? "ACP session lifetime expired while waiting; no replay" : "ACP node session timed out");
           },
-          () => { if (!this.closed && this.runs.healthy) this.stopActive(id, "interrupted", "ACP session disconnected; external effects unknown"); });
-      const result = await handle.prompt(dispatch.text);
+          () => {
+            if (this.closed || !this.runs.healthy) return;
+            if (this.accepted(id, nodeId)) void this.sessions.closeSession(dispatch.nodeRunId).catch(this.fatal);
+            else this.stopActive(id, "interrupted", "ACP session disconnected; external effects unknown");
+          });
+      const result = await handle.prompt(dispatch.text, dispatch.inputFiles);
       return this.runs.completeTurn(id, nodeId, result.stopReason);
     } catch (error) {
       if (error instanceof StorageError) this.fatal(error);
@@ -71,29 +123,27 @@ export class RunSupervisor {
       throw error;
     } finally { if (!this.closed) this.reconcile(id); }
   }
-  async accept(id: string, nodeId: string, turn: number, result: string, reason: string): Promise<void> {
-    this.check();
-    const owned = this.runs.accept(id, nodeId, turn, result, reason);
-    await this.sessions.closeSession(owned);
-  }
   private reconcile(id: string): void {
     if (!this.runs.healthy) return;
-    if (["running", "waiting_input"].includes(this.runs.get(id).status)) return;
-    this.active.get(id)?.controller.abort(new Error("Run stopped"));
+    const run = this.runs.get(id);
+    if (["running", "waiting_input"].includes(run.status)) return;
+    const owner = this.active.get(run.taskId);
+    if (owner?.runId === id) owner.controller.abort(new Error("Run stopped"));
     void this.sessions.closeRun(id).catch(this.fatal);
   }
   private stopActive(id: string, status: EndStatus, reason: string): void {
     try { this.runs.end(id, status, reason); }
     catch (error) { this.fatal(error); }
-    finally {
-      this.active.get(id)?.controller.abort(new Error(reason));
-      void this.sessions.closeRun(id).catch(this.fatal);
-    }
+    finally { this.reconcile(id); }
   }
-  reply(input: InputReply, now = Date.now()) {
+  answer(input: InputReply, now = Date.now()) {
     this.check();
-    try { return this.runs.reply(input, id => this.sessions.has(id), now); }
-    finally { this.reconcile(input.runId); }
+    try { return this.runs.answer(input, id => this.sessions.has(id), now); }
+    finally { for (const run of this.runs.list(input.taskId).items) this.reconcile(run.id); }
+  }
+  send(input: MessageRequest, now = Date.now()) {
+    this.check();
+    return input.execute ? this.runs.supplement(input, now) : this.conversations.send(input, now);
   }
   cancel(id: string) {
     this.check(); this.runs.get(id);
@@ -105,48 +155,64 @@ export class RunSupervisor {
     this.runs.recover();
   }
   start(): void {
-    this.check(); if (this.timer) throw new TaskError("conflict", "Run supervisor already started");
+    this.check(); if (this.timer) throw new TaskError("conflict", "Task supervisor already started");
     this.recover(); this.timer = setInterval(() => this.tick(), 10_000); this.tick();
   }
   tick(): void {
     this.check();
     try {
       this.runs.trigger();
-      for (const run of this.runs.active()) {
-        if (run.status === "waiting_input") { this.runs.expireWaiting(run.id); this.reconcile(run.id); continue; }
-        if (this.active.has(run.id) || this.active.size >= MAX_ACTIVE_RUNS) continue;
-        this.launch(run.id);
+      for (const run of this.runs.active()) if (run.status === "waiting_input") { this.runs.expireWaiting(run.id); this.reconcile(run.id); }
+      for (const input of this.conversations.pending()) {
+        if (this.active.has(input.taskId) || this.active.size >= MAX_ACTIVE_COORDINATORS) continue;
+        const run = input.runId ? this.runs.get(input.runId) : null;
+        if (input.execute && run?.status === "running") {
+          const admission = this.runs.admitCoordinator(run.id);
+          if (admission) this.launch(admission.input, true, admission.remaining);
+        } else if (input.execute) {
+          if (this.conversations.binding(input.taskId).conversationId !== null) this.launch(input, false, MAX_CONVERSATION_SECONDS * 1000, true);
+          else this.conversations.settle(input.id, "Execution is no longer active; no coordinator submission or replay.");
+        } else {
+          const remaining = this.conversations.admitTurn(input.id);
+          if (remaining > 0) this.launch(input, false, remaining);
+          else this.conversations.settle(input.id, "Conversation turn deadline reached");
+        }
       }
     } catch (error) { if (this.timer) clearInterval(this.timer); this.fatal(error); }
   }
-  private launch(id: string): void {
-    const coordinate = this.coordinate;
-    if (!coordinate) { this.runs.end(id, "failed", "Coordinator not configured"); return; }
-    const admission = this.runs.admitCoordinator(id);
-    if (!admission) return;
-    const { input, remaining } = admission;
+  private launch(input: TaskMessage, execution: boolean, remaining: number, reconcileOnly = false): void {
+    const coordinate = this.coordinate, { taskId, runId } = input;
+    if (!coordinate) { this.conversations.settle(input.id, "Coordinator not configured"); if (execution) this.runs.end(runId!, "failed", "Coordinator not configured"); return; }
     const stillCurrent = () => {
-      const current = this.runs.get(id);
-      return current.status === "running" && coordinatorInput(current).requestId === input.requestId;
+      if (!execution) return false;
+      const current = this.runs.get(runId!);
+      return current.status === "running" && current.inputId === input.id;
     };
     const controller = new AbortController();
-    const timer = setTimeout(() => this.stopActive(id, "timed_out", "Task run timed out"), remaining);
-    // Register the controller before the deferred external entry. Recheck generation and cancellation there.
+    const timer = setTimeout(() => {
+      if (execution) this.stopActive(runId!, "timed_out", "Task run timed out");
+      else { this.conversations.settle(input.id, "Conversation turn timed out"); controller.abort(new Error("Conversation turn timed out")); }
+    }, remaining);
     const completion = Promise.resolve().then(() => {
-      this.check(); controller.signal.throwIfAborted(); this.runs.current(id, input.requestId);
-      return coordinate(id, input, this.actions(id, input.requestId), controller.signal);
+      this.check(); controller.signal.throwIfAborted();
+      if (execution) this.runs.current(runId!, input.id);
+      return coordinate(taskId, input, this.conversationActions(input, execution), controller.signal, reconcileOnly);
     }).then(() => {
-      if (!this.closed && stillCurrent()) this.runs.end(id, "failed", "Coordinator ended without an explicit completion or blocking decision");
+      if (!this.closed && stillCurrent()) this.runs.end(runId!, "failed", "Coordinator ended without an explicit completion or blocking decision");
     }, error => {
       if (error instanceof StorageError) throw error;
-      if (!this.closed && this.runs.healthy && stillCurrent()) this.runs.end(id, "failed", errorText(error));
+      if (!this.closed && this.runs.healthy) {
+        this.conversations.settle(input.id, errorText(error));
+        if (stillCurrent()) this.runs.end(runId!, "failed", errorText(error));
+      }
     }).catch(this.fatal).finally(async () => {
       clearTimeout(timer);
       try {
-        if (!this.runs.healthy || !["running", "waiting_input"].includes(this.runs.get(id).status)) await this.sessions.closeRun(id);
-      } finally { this.active.delete(id); }
+        if (runId && (!this.runs.healthy || !["running", "waiting_input"].includes(this.runs.get(runId).status))) await this.sessions.closeRun(runId);
+      } finally { this.active.delete(taskId); }
+      if (!this.closed && this.runs.healthy) this.tick();
     }).catch(this.fatal);
-    this.active.set(id, { controller, completion, timer });
+    this.active.set(taskId, { runId: execution ? runId : null, controller, completion, timer });
   }
   close(): Promise<void> { return this.closing ??= this.stop(); }
   private async stop(): Promise<void> {
@@ -154,12 +220,14 @@ export class RunSupervisor {
     if (this.timer) clearInterval(this.timer);
     const errors: unknown[] = [];
     for (const id of this.sessions.runIds()) {
-      try { this.runs.end(id, "interrupted", "Service stopped with an open ACP session"); } catch (error) { errors.push(error); }
+      try {
+        const run = this.runs.get(id);
+        if (run.nodes.some(node => ["running", "awaiting_review"].includes(node.status))) this.runs.end(id, "interrupted", "Service stopped with unaccepted ACP work");
+      } catch (error) { errors.push(error); }
     }
     for (const active of this.active.values()) { clearTimeout(active.timer); active.controller.abort(new Error("Service stopping")); }
     const stopped = await Promise.allSettled([this.sessions.close(), ...[...this.active.values()].map(active => active.completion), ...this.turns]);
-    // Rejected prompts are expected during cancellation; resource-close failures remain fatal.
     if (stopped[0]?.status === "rejected") errors.push(stopped[0].reason);
-    if (errors.length) throw new AggregateError(errors, "Run supervision could not close cleanly");
+    if (errors.length) throw new AggregateError(errors, "Task supervision could not close cleanly");
   }
 }
