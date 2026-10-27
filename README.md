@@ -1,54 +1,110 @@
 # Task Conductor
 
-独立的智能任务服务：**MCP 管理任务，pi durable 推进调用方定义的 DAG，ACP 执行端完成领域工作**。协调者凭判断与记忆对整体目标负责，服务保障准入、账本与收尾；不拆解任务或修改计划，也不由程序替代业务判断。
+English | [简体中文](README.zh-CN.md)
 
-当前处于调研阶段，不宣称生产可用，不用于无人值守交易。已有验证结果及适用范围见[验证说明](docs/validation.md)。
+A standalone service for persistent, agent-driven tasks: **MCP manages tasks, a pi durable coordinator advances a caller-defined DAG, and ACP executors perform the work.**
 
-## 从哪里开始
+The caller defines the plan and assigns an executor to each node. The coordinator uses judgment and persistent memory to clarify requirements, review deliveries, and decide whether the overall goal is complete. It does not split tasks or change the plan.
 
-| 目的 | 入口 |
-| --- | --- |
-| 安装、配置、运行 | [部署说明](docs/deployment.md) |
-| 数据格式检查与离线迁移 | [升级说明](docs/upgrades.md) |
-| Pi、Claude Code、Codex 接入包与 using-task-conductor 使用引导 | [宿主接入](docs/host-integrations.md) |
-| 本机控制台、配置保存与 Web/CLI 重启 | [控制台说明](docs/web-console.md) |
-| 命令行配置、凭据和任务管理 | [CLI 说明](docs/cli.md) |
-| 理解产品目标和架构选择 | [总体方案](docs/design-proposal.md) |
-| Pi 原会话自动通知、身份与可靠补读 | [通知设计与使用](docs/notifications.md) |
-| Task 持续对话、Document 记忆与补充交付 | [会话设计](docs/task-conversation-plan.md) |
-| 查询项目术语 | [词汇表](CONTEXT.md) |
-| 查找实现与对应测试 | [代码导航](docs/technical-design.md) |
-| 查询测试命令、真实验收及缺口 | [验证说明](docs/validation.md) |
-| npm 候选验收、GitHub Actions 与受控发布 | [发布说明](docs/release.md) |
-| 修改项目 | [开发指南](AGENTS.md)、[架构原则](docs/architecture-guidelines.md) |
+**Research-stage software.** Not production-ready or intended for unattended trading. Installation, protocol connectivity, and successful task execution are separate claims; see the [validation scope and limitations](docs/validation.md).
 
-文档保留用途、约束和证据；字段、默认值、状态转换及内部流程以代码为准。
+## Quick start
 
-## 使用入口
+Requires **Linux or macOS, Node.js 22.19+, and npm**. Published packages include built runtime files.
 
-Linux/macOS，Node.js **22.19+**。以下为当前源码的使用入口；安装包自带运行产物。实际发布状态及平台验收范围见[发布证据](docs/validation.md#npm-发布候选验证)。
+1. Install at least one native executor CLI (Pi, Codex, Claude Code, or OpenCode) and configure its native authentication and permissions. Administrators can also [register a local stdio ACP executor](docs/cli.md#自定义本机-acp-接入).
+2. Install and configure the service, including its coordinator model and credentials:
+
+   ```bash
+   npm install -g task-conductor
+   task-conductor setup
+   ```
+
+3. Add the stdio server to your MCP host. For hosts that use `mcpServers`:
+
+   ```json
+   {
+     "mcpServers": {
+       "task-conductor": {
+         "command": "task-conductor",
+         "args": ["mcp"]
+       }
+     }
+   }
+   ```
+
+   The configuration location and outer structure depend on the host. Use an absolute command path if the host cannot find it. For a custom installation home, use `["mcp", "--home", "/absolute/private/task-conductor"]`.
+
+4. Connect the host. The MCP entry starts or reuses a separate background service; no prior `start` command is needed. Check its state with:
+
+   ```bash
+   task-conductor status
+   ```
+
+The background service continues after the host disconnects. Native CLI discovery and adapter preparation do not prove that model authentication or tool permissions work. See [deployment](docs/deployment.md) for setup, executor preparation, and troubleshooting.
+
+Pi, Claude Code, and Codex users can optionally install the separate [host integration package](docs/host-integrations.md), which provides the `using-task-conductor` guide. It does not replace the service.
+
+## How tasks work
+
+- Submit a fixed DAG with `task_create`, assigning a ready local ACP executor to each node. Single-node and multi-node tasks use the same API. Immediate, scheduled, and Cron execution are supported.
+- Each Task retains one durable coordination conversation; each Run records a separate execution admission and its results.
+- Explicitly accepted executor deliveries unlock dependencies. An ended protocol turn does not mean that the task is complete.
+- Ordinary discussion does not start idle ACP work or answer a pending question. Additional work requires explicit intent; accepted deliveries and terminal Runs remain immutable.
+- Supply an existing absolute `workspace`, or let the stdio entry supply its launch directory. Direct HTTP callers must provide it. The directory is fixed when the task is created.
+
+The [task contract](src/protocol/task-contract.ts), [MCP tools](src/protocol/mcp.ts), and [conversation design](docs/task-conversation-plan.md) define the detailed interfaces.
+
+## Operations and safety
 
 ```bash
-npm install -g task-conductor
-task-conductor setup
-# 在 MCP 宿主中配置 command: task-conductor，args: [mcp]
-# 连接后可查询后台状态：
 task-conductor status
-# 应用已保存配置并确认新实例可用：
-task-conductor restart
+task-conductor restart   # Apply saved configuration and check the new instance
+task-conductor stop     # Stop the background service and active execution
+task-conductor --help
 ```
 
-setup 确认本机配置；MCP 连接自动启动或复用独立后台，宿主退出后后台继续运行。首次使用须安装至少一种原生执行 CLI，或[注册自定义本机 stdio ACP](docs/cli.md#自定义本机-acp-接入)，并准备其原生认证。Pi、Claude Code 和 Codex 可先安装[接入包](docs/host-integrations.md)，再通过 `using-task-conductor` 引导安装服务、完成 setup 和使用现有 MCP 工具。执行端准备与服务管理见[部署说明](docs/deployment.md)。
+The loopback-only Web console is available at `/admin/` on the address reported by `status`. It uses a separate administrator token. CLI and Web management share the same business services.
 
-任务由 `task_create` 提交固定 DAG，每个节点选择已就绪执行端。每个 Task 保留一条协调会话，Run 单独记录执行；普通消息不启动空闲 ACP 工作，也不代替明确的问题回答。对话与补充执行入口见[会话设计](docs/task-conversation-plan.md#使用与实现入口)。显式工作目录优先，否则 stdio 入口补入自己的启动目录；直接 HTTP 调用必须提供目录。具体契约见 [task-contract.ts](src/protocol/task-contract.ts)，管理工具见 [mcp.ts](src/protocol/mcp.ts)。Prompt、人工回复和工作空间选择都不授予工具权限。
+- Prompts, human replies, and workspace selection do not grant tool permissions. Executors use native authorization; additional ACP approval requests are rejected.
+- Interrupted or uncertain external work blocks new dispatch. The service does not automatically retry, replay side effects, or switch executors.
+- Restarting closes ACP sessions and may interrupt Runs awaiting input. Client disconnection, service shutdown, and task cancellation are different operations.
+- Service upgrades require stopping the background service, backing up private data, installing the target package, checking the data format, and reconnecting MCP. Normal startup does not migrate existing data. Follow the [upgrade procedure](docs/upgrades.md).
+- Logs and agent output may contain sensitive information. Local path checks and environment filtering are not an OS sandbox.
 
-## CLI 命令索引
+## Documentation
 
-完整命令与参数使用 `task-conductor --help`、`task-conductor <命令> --help` 查询，不在文档中维护副本。
+Detailed operational and design documents are currently in **Chinese**. The English and Chinese READMEs provide the repository overview; CLI output and built-in guidance are also currently Chinese.
 
-- 安装与运行：`setup`、`mcp`、`start`、`stop`、`restart`、`status`，见[部署说明](docs/deployment.md)；离线升级使用 `migrate`，见[升级说明](docs/upgrades.md)。
-- 配置与凭据：`config`、`executor`、`coordinator`、`credential`；任务与运行：`task`、`run`，见 [CLI 说明](docs/cli.md)。
+| Topic | Guide |
+| --- | --- |
+| Installation, authentication, and background service | [Deployment](docs/deployment.md) |
+| Data checks and offline migration | [Upgrades](docs/upgrades.md) |
+| Pi, Claude Code, and Codex integration | [Host integrations](docs/host-integrations.md) |
+| Local console and configuration | [Web console](docs/web-console.md) |
+| CLI configuration, credentials, tasks, and Runs | [CLI](docs/cli.md) |
+| Product goals and architecture decisions | [Design proposal](docs/design-proposal.md) |
+| Pi session notifications | [Notifications](docs/notifications.md) |
+| Task conversations, memory, and additional work | [Conversation design](docs/task-conversation-plan.md) |
+| Terminology | [Glossary](CONTEXT.md) |
+| Implementation and test navigation | [Technical design](docs/technical-design.md) |
+| Evidence and unverified boundaries | [Validation](docs/validation.md) |
+| Package validation and controlled npm releases | [Release guide](docs/release.md) |
+| Contributing | [Development guide](AGENTS.md), [architecture guidelines](docs/architecture-guidelines.md) |
 
-## 许可证
+Documentation explains goals, constraints, and evidence. Source contracts remain authoritative for fields, defaults, and state transitions.
 
-[MIT](LICENSE)，Copyright (c) 2026 realqiyan。依赖及执行端仍遵循各自许可证。
+## Development
+
+```bash
+npm ci --ignore-scripts
+npm run check
+npm test
+git diff --check
+```
+
+Tests use real local files, SQLite, processes, and SDKs. Real-model acceptance requires a separately authorized environment; the default suite does not establish successful ACP task execution.
+
+## License
+
+[MIT](LICENSE), Copyright (c) 2026 realqiyan. Dependencies and executors retain their own licenses.
