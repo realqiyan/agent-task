@@ -16,12 +16,12 @@ if ((registry && positional.length) || (!registry && positional.length !== 1)) t
 if (!["linux", "darwin"].includes(process.platform)) throw new Error(`Installation validation is unavailable on ${process.platform}; use Linux or macOS`);
 const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
 if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 19)) throw new Error(`Installation validation requires Node.js 22.19+; current version is ${process.version}`);
-const packageName = "@realqiyan/agent-task";
+const packageName = "task-conductor";
 const spec = registry ? packageName : resolve(positional[0]);
 const expectedVersion = registry ? process.env.EXPECTED_VERSION
   : JSON.parse(execFileSync("tar", ["-xOf", spec, "package/package.json"], { encoding: "utf8" })).version;
 assert(typeof expectedVersion === "string" && expectedVersion.length > 0, "EXPECTED_VERSION is required for --registry; local tarballs must declare a version");
-const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-npm-"));
+const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-npm-"));
 const prefix = join(root, "prefix"), workspace = join(root, "workspace"), home = join(root, "private");
 const isolatedHome = join(root, "native-home"), userConfig = join(root, "npmrc");
 for (const path of [prefix, workspace, isolatedHome]) mkdirSync(path, { mode: 0o700 });
@@ -36,7 +36,7 @@ function run(command, argv) {
   assert(!result.error && result.status === 0, "Validation command failed (output withheld): " + command + " " + argv[0]);
   return result.stdout;
 }
-const cli = join(prefix, "bin/agent-task");
+const cli = join(prefix, "bin/task-conductor");
 const invoke = (...argv) => run(cli, argv);
 async function stop() {
   if (!child) return;
@@ -67,7 +67,7 @@ async function start() {
 }
 async function admin(path, body) {
   const response = await fetch(origin + "/admin/api" + path, { method: body ? "POST" : "GET", headers: {
-    Authorization: "Bearer " + credentials.AGENT_TASK_ADMIN_TOKEN,
+    Authorization: "Bearer " + credentials.TASK_CONDUCTOR_ADMIN_TOKEN,
     ...(body ? { Origin: origin, "Content-Type": "application/json" } : {}),
   }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const result = await response.json();
@@ -142,7 +142,7 @@ try {
   const require = createRequire(join(installed, "package.json"));
   const { Client } = await import(require.resolve("@modelcontextprotocol/sdk/client/index.js"));
   const { StdioClientTransport } = await import(require.resolve("@modelcontextprotocol/sdk/client/stdio.js"));
-  mcpClient = new Client({ name: "agent-task-install-check", version: "1.0.0" });
+  mcpClient = new Client({ name: "task-conductor-install-check", version: "1.0.0" });
   const transport = new StdioClientTransport({ command: process.execPath, args: [cli, "mcp", "--home", home],
     cwd: workspace, env: { ...env, PATH: nativeBin + ":" + env.PATH }, stderr: "pipe" });
   transport.stderr.on("data", data => { logs += data; });

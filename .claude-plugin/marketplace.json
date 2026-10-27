@@ -1,21 +1,21 @@
 {
-  "name": "agent-task",
+  "name": "task-conductor",
   "metadata": {
-    "description": "Agent Task 安装、使用引导与原生 MCP 连接"
+    "description": "Task Conductor 安装、使用引导与原生 MCP 连接"
   },
   "owner": {
     "name": "realqiyan"
   },
   "plugins": [
     {
-      "name": "agent-task",
+      "name": "task-conductor",
       "source": {
         "source": "npm",
-        "package": "@realqiyan/agent-task-plugin",
+        "package": "task-conductor-plugin",
         "version": "0.1.0",
         "registry": "https://registry.npmjs.org"
       },
-      "description": "使用 Agent Task：安装、初始化与现有 MCP 工具"
+      "description": "使用 Task Conductor：安装、初始化与现有 MCP 工具"
     }
   ]
 }

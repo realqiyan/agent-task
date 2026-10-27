@@ -1,6 +1,6 @@
 # 仓库开发指南
 
-Agent Task 是独立开发的 TypeScript 服务。MCP 提供任务管理，ACP 连接执行端。Pi Agent、Codex、Claude、OpenCode 是 ACP 接入目标，不是嵌入本服务的执行器。
+Task Conductor 是独立开发的 TypeScript 服务。MCP 提供任务管理，ACP 连接执行端。Pi Agent、Codex、Claude、OpenCode 是 ACP 接入目标，不是嵌入本服务的执行器。
 
 ## 先阅读
 

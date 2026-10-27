@@ -161,6 +161,6 @@ export async function renderSettings(root, navigate) {
       const ready = await request("/restart", {});
       document.dispatchEvent(new CustomEvent("service-restarted", { detail: ready }));
     }, state.writeBlocked),
-    block("重启命令", "agent-task restart [--home /absolute/installation]"),
-    element("p", "只有新实例通过认证健康检查才显示成功。若请求结果不确定，请先运行 agent-task status；启动失败时检查当前 dataDir/service.log，不删除历史或重放任务来修复。"));
+    block("重启命令", "task-conductor restart [--home /absolute/installation]"),
+    element("p", "只有新实例通过认证健康检查才显示成功。若请求结果不确定，请先运行 task-conductor status；启动失败时检查当前 dataDir/service.log，不删除历史或重放任务来修复。"));
 }

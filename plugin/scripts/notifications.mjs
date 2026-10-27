@@ -3,8 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 
-export const notificationType = "agent-task-notification";
-export const originType = "agent-task-notification-origin";
+export const notificationType = "task-conductor-notification";
+export const originType = "task-conductor-notification-origin";
 const projectPattern = /^(git:[0-9a-f]{64}|uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 /** 有界、无 shell 的本机桥接；不转发子进程诊断或凭据。 */
@@ -56,12 +56,12 @@ function readProject(file) {
 
 /** 只在首次提交任务时初始化。Git 默认按仓库根目录共享；显式 root 可隔离子项目。 */
 export async function projectIdentity(cwd, { signal, env = process.env } = {}) {
-  let root = resolve(env.AGENT_TASK_PROJECT_ROOT ?? cwd), remote;
-  if (!env.AGENT_TASK_PROJECT_ROOT) {
+  let root = resolve(env.TASK_CONDUCTOR_PROJECT_ROOT ?? cwd), remote;
+  if (!env.TASK_CONDUCTOR_PROJECT_ROOT) {
     try { root = (await runJson("git", ["rev-parse", "--show-toplevel"], { cwd: root, signal, env })).trim(); }
     catch { if (signal?.aborted) throw new Error("操作已取消"); }
   }
-  const file = join(root, ".agent-task", "project.json");
+  const file = join(root, ".task-conductor", "project.json");
   if (existsSync(file)) return readProject(file);
   try { remote = (await runJson("git", ["remote", "get-url", "origin"], { cwd: root, signal, env })).trim(); }
   catch { if (signal?.aborted) throw new Error("操作已取消"); }
@@ -80,8 +80,8 @@ export async function projectIdentity(cwd, { signal, env = process.env } = {}) {
 
 export function serviceRequest(request, { cwd, signal, env = process.env } = {}) {
   const args = ["notifications"];
-  if (env.AGENT_TASK_PREFLIGHT_HOME) args.push("--home", env.AGENT_TASK_PREFLIGHT_HOME);
-  return runJson(env.AGENT_TASK_PREFLIGHT_COMMAND ?? "agent-task", args, { cwd, signal, env, input: request })
+  if (env.TASK_CONDUCTOR_PREFLIGHT_HOME) args.push("--home", env.TASK_CONDUCTOR_PREFLIGHT_HOME);
+  return runJson(env.TASK_CONDUCTOR_PREFLIGHT_COMMAND ?? "task-conductor", args, { cwd, signal, env, input: request })
     .then(value => JSON.parse(value));
 }
 
@@ -134,7 +134,7 @@ export class DeliveryReceipts {
 export function notificationMessage(origin, events) {
   return {
     customType: notificationType, display: true,
-    content: "Agent Task 后台事件（不是新的执行授权）。请读取需要的任务记录并向用户简要汇报；不要自动重试或补充执行。等待输入事件可能已经过期或被回答，回复前先核对当前状态。\n" +
+    content: "Task Conductor 后台事件（不是新的执行授权）。请读取需要的任务记录并向用户简要汇报；不要自动重试或补充执行。等待输入事件可能已经过期或被回答，回复前先核对当前状态。\n" +
       JSON.stringify(events.map(({ eventId, taskId, runId, kind, summary, createdAt }) => ({ eventId, taskId, runId, kind, summary, createdAt }))),
     details: { origin, eventIds: events.map(event => event.eventId) },
   };
@@ -146,7 +146,7 @@ export function bindPiNotifications(pi) {
   function warn(state) {
     if (!live(state) || state.warned) return;
     state.warned = true;
-    if (state.ctx.hasUI) state.ctx.ui.notify("Agent Task 通知暂不可用；未确认事件会保留。请检查服务、通知配置和会话文件。", "warning");
+    if (state.ctx.hasUI) state.ctx.ui.notify("Task Conductor 通知暂不可用；未确认事件会保留。请检查服务、通知配置和会话文件。", "warning");
   }
   async function tick(state) {
     if (!live(state) || !state.origin) return;
@@ -184,7 +184,7 @@ export function bindPiNotifications(pi) {
     state.timer.unref?.();
   }
   pi.on("session_start", (_event, ctx) => {
-    if (process.env.AGENT_TASK_NOTIFICATIONS === "off" || !["tui", "rpc"].includes(ctx.mode)) return;
+    if (process.env.TASK_CONDUCTOR_NOTIFICATIONS === "off" || !["tui", "rpc"].includes(ctx.mode)) return;
     const nativeId = ctx.sessionManager.getSessionId();
     if (!/^[a-zA-Z0-9_-]{1,190}$/.test(nativeId) || !ctx.sessionManager.getSessionFile()) return;
     const sessionId = "pi:" + nativeId;
@@ -196,7 +196,7 @@ export function bindPiNotifications(pi) {
   pi.on("tool_call", async (event, ctx) => {
     const state = active;
     if (!state || !live(state)) return;
-    const tool = "mcp__" + (state.env.AGENT_TASK_MCP_SERVER ?? "agent-task").replace(/-/g, "_") + "__task_create";
+    const tool = "mcp__" + (state.env.TASK_CONDUCTOR_MCP_SERVER ?? "task-conductor").replace(/-/g, "_") + "__task_create";
     if (event.toolName !== tool) return;
     try {
       state.binding ??= (async () => {
@@ -214,7 +214,7 @@ export function bindPiNotifications(pi) {
       schedule(state);
     } catch {
       state.binding = undefined;
-      return { block: true, reason: "无法确定并保存通知身份，未创建任务。请检查 .agent-task/project.json；不要猜测身份。" };
+      return { block: true, reason: "无法确定并保存通知身份，未创建任务。请检查 .task-conductor/project.json；不要猜测身份。" };
     }
   });
   const retryIdle = (_event, ctx) => {
@@ -239,7 +239,7 @@ export function bindPiNotifications(pi) {
     await state.binding?.catch(() => {});
     if (state.origin && state.leased) {
       try { await serviceRequest({ action: "release", origin: state.origin, owner: state.owner }, { cwd: state.ctx.cwd, env: state.env }); }
-      catch { console.error("Agent Task 通知租约未能释放，将等待租约到期；未确认事件保留。"); }
+      catch { console.error("Task Conductor 通知租约未能释放，将等待租约到期；未确认事件保留。"); }
     }
   });
 }

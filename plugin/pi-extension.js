@@ -14,7 +14,7 @@ export default function (pi) {
     if (!notice) return;
     if (ctx.hasUI) ctx.ui.notify(notice.systemMessage, "warning");
     pi.sendMessage({
-      customType: "agent-task-onboarding",
+      customType: "task-conductor-onboarding",
       content: notice.systemMessage + "\n" + notice.hookSpecificOutput.additionalContext,
       display: !ctx.hasUI,
       details: { state },

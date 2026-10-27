@@ -12,7 +12,7 @@ test("real terminal setup requires confirmation, confirms directories and port, 
   const probe = spawnSync("script", process.platform === "linux" ? ["-q", "-e", "-c", "true", "/dev/null"]
     : ["-q", "/dev/null", "/usr/bin/true"], { env, encoding: "utf8", timeout: 5000 });
   if (probe.error || probe.status !== 0) { t.skip("The script utility cannot open a PTY in this environment"); return; }
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-wizard-")), cli = resolve("bin/agent-task.mjs");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-wizard-")), cli = resolve("bin/task-conductor.mjs");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, "private");
   const noninteractive = spawnSync(process.execPath, [cli, "setup", "--home", home], { cwd: root, env, encoding: "utf8", timeout: 5000 });
@@ -25,7 +25,7 @@ test("real terminal setup requires confirmation, confirms directories and port, 
       : ["-q", "/dev/null", ...command];
     const child = spawn("script", args, { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
     let output = "", pending = "";
-    const answers = [target, join(target, "data"), "8765", "AGENT_TASK_TOKEN", "generate",
+    const answers = [target, join(target, "data"), "8765", "TASK_CONDUCTOR_TOKEN", "generate",
       ...(key ? ["openai", "not-a-real-model"] : ["none"]), confirm, ...(key ? [key] : [])];
     child.stdout.on("data", data => {
       output += data; pending += data;

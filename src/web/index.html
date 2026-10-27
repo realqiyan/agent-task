@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent Task 控制台</title>
+  <title>Task Conductor 控制台</title>
   <link rel="stylesheet" href="/admin/style.css">
   <script type="module" src="/admin/app.js"></script>
 </head>
 <body>
   <header>
-    <h1>Agent Task</h1>
+    <h1>Task Conductor</h1>
     <p>本机管理控制台 · 配置保存后须手动重启</p>
     <form id="login" autocomplete="off">
       <label>管理员令牌
         <input id="token" type="password" required maxlength="256" autocomplete="off" spellcheck="false">
       </label>
       <button type="submit">连接</button>
-      <p class="hint">使用独立的 AGENT_TASK_ADMIN_TOKEN，不是 MCP token。令牌只保存在当前页面内存中。</p>
+      <p class="hint">使用独立的 TASK_CONDUCTOR_ADMIN_TOKEN，不是 MCP token。令牌只保存在当前页面内存中。</p>
     </form>
     <nav id="navigation" hidden>
       <button id="tasks" type="button">任务</button>

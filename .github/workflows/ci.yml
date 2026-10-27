@@ -46,14 +46,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: npm-plugin-candidate
-          path: realqiyan-agent-task-plugin-*.tgz
+          path: task-conductor-plugin-*.tgz
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: npm-candidate
           path: |
-            realqiyan-agent-task-[0-9]*.tgz
+            task-conductor-[0-9]*.tgz
             scripts/verify-install.mjs
           if-no-files-found: error
           retention-days: 7
@@ -70,4 +70,4 @@ jobs:
         with:
           node-version: "22.19.0"
       - name: Validate installation on this runner
-        run: node scripts/verify-install.mjs realqiyan-agent-task-*.tgz
+        run: node scripts/verify-install.mjs task-conductor-*.tgz

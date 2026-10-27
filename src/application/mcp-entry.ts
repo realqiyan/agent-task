@@ -40,13 +40,13 @@ async function connectBackground(home: string): Promise<Ready> {
     // Concurrent clients may launch together. The existing launcher lock selects one owner.
     await setTimeout(200);
   }
-  throw new Error("Background service did not become ready; inspect the private launcher log and use agent-task status. No restart was attempted");
+  throw new Error("Background service did not become ready; inspect the private launcher log and use task-conductor status. No restart was attempted");
 }
 
 /** The stdio connection owns neither the shared launcher nor persisted work. */
 export async function runMcp(home: string): Promise<void> {
   const workspace = process.cwd();
-  if (!existsSync(join(home, "launch.json"))) throw new Error("Agent Task is not initialized; run agent-task setup first");
+  if (!existsSync(join(home, "launch.json"))) throw new Error("Task Conductor is not initialized; run task-conductor setup first");
   startupPaths(home);
   const ready = await connectBackground(home);
   const paths = startupPaths(home);

@@ -1,6 +1,6 @@
 # npm 发布
 
-npm 包为 [@realqiyan/agent-task](https://www.npmjs.com/package/@realqiyan/agent-task)，发布账号 **realqiyan**，许可证 [MIT](../LICENSE)。发布使用 **latest**，默认 `npm install -g @realqiyan/agent-task` 安装该标签指向的版本。版本号不替代生产可用性验证。实际完成情况见[验证说明](validation.md#npm-发布候选验证)。
+npm 包为 [task-conductor](https://www.npmjs.com/package/task-conductor)，发布账号 **realqiyan**，许可证 [MIT](../LICENSE)。发布使用 **latest**，默认 `npm install -g task-conductor` 安装该标签指向的版本。版本号不替代生产可用性验证。实际完成情况见[验证说明](validation.md#npm-发布候选验证)。
 
 版本、引擎、公开文件和 registry 设置以 [package.json](../package.json) 为准。[打包门禁](../scripts/pack-release.mjs)检查实际包清单；消费者安装不运行构建脚本。不要发布工作目录、私有环境、SQLite、运行日志、模型会话或测试证据。
 
@@ -13,7 +13,7 @@ npm test
 git diff --check
 npm run pack:release
 VERSION=$(node -p "require('./package.json').version")
-npm run test:install -- "./realqiyan-agent-task-$VERSION.tgz"
+npm run test:install -- "./task-conductor-$VERSION.tgz"
 ```
 
 涉及存储格式变化的发布还须通过[数据迁移验收](upgrades.md#支持范围)，不能以新安装成功替代已有数据升级验证。
@@ -28,18 +28,16 @@ npm 接收发布后可能仍在处理包。[发布后验收](../scripts/verify-i
 
 ## 独立接入包
 
-[轻量包](../plugin/package.json)为 `@realqiyan/agent-task-plugin`，使用同一项目版本，不依赖服务或 SDK，不运行安装脚本。它允许先安装 `using-agent-task`，再经用户确认安装服务；不是服务的替代安装。Claude Code/Codex 的正式 marketplace 也从该 npm 包获取插件；服务发行包不携带插件副本。未发布资产使用[本地快照](host-integrations.md#未发布资产的本地验收)。
+[轻量包](../plugin/package.json)为 `task-conductor-plugin`，使用同一项目版本，不依赖服务或 SDK，不运行安装脚本。它允许先安装 `using-task-conductor`，再经用户确认安装服务；不是服务的替代安装。Claude Code/Codex 的正式 marketplace 也从该 npm 包获取插件；服务发行包不携带插件副本。未发布资产使用[本地快照](host-integrations.md#未发布资产的本地验收)。
 
 ```bash
 npm run pack:plugin
-# 产物：realqiyan-agent-task-plugin-<项目版本>.tgz
+# 产物：task-conductor-plugin-<项目版本>.tgz
 ```
 
 [独立包门禁](../scripts/pack-plugin.mjs)检查版本、无执行/依赖字段和实际包清单；不需要构建服务。[接入测试](../tests/host-integrations.test.mjs)使用临时目录和空 npm 缓存离线安装真实 tarball。发布前还须通过本文的项目检查，并用对应宿主验收引导发现与连接，不能将 skill 文本当成模型已执行的证据。
 
-CI 分别生成服务与插件候选产物；当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `realqiyan-agent-task-plugin-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:@realqiyan/agent-task-plugin`；实际已发布版本与验收边界见[验证说明](validation.md#宿主接入包)。
-
-插件首次改名不沿用旧包发布权限。发布时先完成全部门禁，在明确授权后发布新插件包并验证公开 registry 与宿主安装，再推送引用它的 marketplace；不要让正式索引指向尚不可下载的版本。服务 tag 的发布流程保持独立。旧包不自动撤销、弃用或重发，宿主配置也不自动迁移。
+CI 分别生成服务与插件候选产物；当前 GitHub 发布工作流只上传服务包，**不会自动发布独立接入包**。接入包需单独授权发布，先核对同名目标版本未占用及 npm 账号/权限，再发布已检查的 `task-conductor-plugin-<版本>.tgz`，明确使用 `--ignore-scripts --access public --tag latest --registry=https://registry.npmjs.org`。不要为新包擅自复用服务包的 Trusted Publisher 授权或绕过登录/2FA。发布后核查该包的 registry 版本和 latest，并在隔离宿主配置中验证 `pi install npm:task-conductor-plugin`；实际已发布版本与验收边界见[验证说明](validation.md#宿主接入包)。
 
 ## GitHub Actions 门禁与受控发布
 
@@ -64,7 +62,7 @@ git push origin "v$VERSION"
 
 首次启用前，由维护者完成以下配置：
 1. 创建 GitHub Environment **npm**，只允许 master 分支及 `v*` tag 部署；按仓库需要配置审核人。用 tag ruleset 限制发布 tag 的创建、更新和删除，仅仓库管理员可绕过。工作流中的 environment 名称本身**不自动创建审核保护**。
-2. 在 npm 包的 Trusted Publisher 设置中授权 GitHub 仓库 `realqiyan/agent-task`、工作流 `publish.yml`、Environment `npm`，允许 `npm publish`。认证与 2FA 在 npm 官方界面完成，不上传本机登录凭据。
+2. 在 npm 包的 Trusted Publisher 设置中授权 GitHub 仓库 `realqiyan/task-conductor`、工作流 `publish.yml`、Environment `npm`，允许 `npm publish`。认证与 2FA 在 npm 官方界面完成，不上传本机登录凭据。
 3. 核查 master 与工作流修改权限，再推送版本 tag；需要手动发起时，在 Actions 选择 Publish npm 并输入已验收的版本。认证/权限失败须停止，不能换账号或跳过验证。
 
 发布作业使用 Node 24 与支持 OIDC 的 npm；命令明确传 `--tag latest --access public --provenance`。Trusted Publisher 授权和 provenance 是不同条件，设置工作流不等于 npm 已授权。首次配置和有效期限制以 [npm 官方说明](https://docs.npmjs.com/trusted-publishers/)为准。
@@ -78,10 +76,10 @@ npm login --registry=https://registry.npmjs.org
 npm whoami --registry=https://registry.npmjs.org
 # 必须确认输出 realqiyan，再发布已检查的 tarball：
 VERSION=$(node -p "require('./package.json').version")
-npm publish "./realqiyan-agent-task-$VERSION.tgz" --ignore-scripts \
+npm publish "./task-conductor-$VERSION.tgz" --ignore-scripts \
   --access public --tag latest --registry=https://registry.npmjs.org
-npm view "@realqiyan/agent-task@$VERSION" version license --registry=https://registry.npmjs.org
-npm view @realqiyan/agent-task dist-tags --json --registry=https://registry.npmjs.org
+npm view "task-conductor@$VERSION" version license --registry=https://registry.npmjs.org
+npm view task-conductor dist-tags --json --registry=https://registry.npmjs.org
 EXPECTED_VERSION="$VERSION" node scripts/verify-install.mjs --registry
 ```
 

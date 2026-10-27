@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { controlService } from "../dist/integrations/local-service/control.js";
 import { inspectInstallation } from "../plugin/scripts/preflight.mjs";
 
-const cli = resolve("bin/agent-task.mjs");
+const cli = resolve("bin/task-conductor.mjs");
 async function until(read, timeout = 10_000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -33,7 +33,7 @@ function connection(home, cwd, env, command = cli) {
   child.stdout.on("data", chunk => { stdout += chunk; });
   child.stderr.on("data", chunk => { stderr += chunk; });
   const closed = new Promise(resolve => child.once("close", resolve));
-  const client = new Client({ name: "agent-task-process-test", version: "1.0.0" });
+  const client = new Client({ name: "task-conductor-process-test", version: "1.0.0" });
   // The official line-framing transport accepts streams. Owning spawn here gives this real client a separate process group.
   const transport = new StdioServerTransport(child.stdout, child.stdin);
   return { child, client, closed, connect: () => client.connect(transport, { timeout: 15_000 }),
@@ -49,7 +49,7 @@ async function waitClosed(peer) {
 }
 
 test("MCP startup requires explicit initialization and creates no installation", () => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-uninitialized-")), home = join(root, "private");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-uninitialized-")), home = join(root, "private");
   try {
     const result = spawnSync(process.execPath, [cli, "mcp", "--home", home], {
       cwd: root, env: { PATH: "/usr/bin:/bin", HOME: root }, encoding: "utf8", timeout: 5000,
@@ -62,7 +62,7 @@ test("MCP startup requires explicit initialization and creates no installation",
 });
 
 test("concurrent stdio projects share one backend whose future tasks survive EOF and process-group SIGHUP", { timeout: 30_000 }, async t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-stdio-")), home = join(root, "private");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-stdio-")), home = join(root, "private");
   const dataDir = join(home, "data"), nativeBin = join(root, "bin"), userHome = join(root, "user");
   const projectA = join(root, "project-a"), projectB = join(root, "project-b"), override = join(root, "selected workspace");
   for (const directory of [nativeBin, userHome, projectA, projectB, override]) mkdirSync(directory, { mode: 0o700 });
@@ -132,7 +132,7 @@ test("concurrent stdio projects share one backend whose future tasks survive EOF
   const origin = new URL(ready.url).origin;
   const admin = async path => {
     const response = await fetch(origin + "/admin/api" + path, {
-      headers: { Authorization: "Bearer " + environment.AGENT_TASK_ADMIN_TOKEN }, signal: AbortSignal.timeout(3000),
+      headers: { Authorization: "Bearer " + environment.TASK_CONDUCTOR_ADMIN_TOKEN }, signal: AbortSignal.timeout(3000),
     });
     assert.equal(response.status, 200);
     return (await response.json()).data;
@@ -159,19 +159,19 @@ test("concurrent stdio projects share one backend whose future tasks survive EOF
 });
 
 test("package updates retain process versions until full stop and MCP reconnect; preflight never restarts the backend", { timeout: 30_000 }, async t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-upgrade-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-upgrade-"));
   const app = join(root, "app"), home = join(root, "private"), bin = join(root, "bin");
   const user = join(root, "user"), workspace = join(root, "workspace");
   for (const directory of [app, bin, user, workspace]) mkdirSync(directory, { mode: 0o700 });
   // 使用隔离的真实服务包；只更新副本的包版本，不修改仓库或伪造协议响应。
   for (const entry of ["bin", "scripts", "dist", "package.json"]) cpSync(resolve(entry), join(app, entry), { recursive: true });
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
-  const command = join(app, "bin/agent-task.mjs"), packagePath = join(app, "package.json");
+  const command = join(app, "bin/task-conductor.mjs"), packagePath = join(app, "package.json");
   const manifest = JSON.parse(readFileSync(packagePath, "utf8")), initialVersion = manifest.version;
   const updatedVersion = initialVersion + ".upgrade-test";
   symlinkSync(process.execPath, join(bin, "node"));
   symlinkSync("/usr/bin/false", join(bin, "opencode"));
-  const env = { PATH: bin, HOME: user, AGENT_TASK_PREFLIGHT_COMMAND: command, AGENT_TASK_PREFLIGHT_HOME: home };
+  const env = { PATH: bin, HOME: user, TASK_CONDUCTOR_PREFLIGHT_COMMAND: command, TASK_CONDUCTOR_PREFLIGHT_HOME: home };
   const invoke = (...args) => execFileSync(process.execPath, [command, ...args, "--home", home], {
     env, encoding: "utf8", stdio: "pipe", timeout: 10_000,
   });
@@ -233,7 +233,7 @@ test("package updates retain process versions until full stop and MCP reconnect;
   // 关闭管理员接口仍须显示运行版本，检查不依赖管理员 API 是否启用。
   const environmentPath = join(home, "data/environment.json");
   const environment = JSON.parse(readFileSync(environmentPath, "utf8"));
-  delete environment.AGENT_TASK_ADMIN_TOKEN;
+  delete environment.TASK_CONDUCTOR_ADMIN_TOKEN;
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
   const second = connection(home, workspace, env, command); peers.push(second);
   await second.connect();

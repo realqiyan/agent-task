@@ -12,7 +12,7 @@ import { createModels } from "@earendil-works/pi-ai/models";
 
 const compatible = { provider: "openai-compatible", model: "administrator-model",
   baseUrl: "https://models.example.org/v1", apiKeyEnv: "COORDINATOR_KEY", contextWindow: 32000, maxTokens: 4096 };
-const parse = coordinator => configSchema.parse({ dataDir: "/tmp/agent-task", coordinator }).coordinator;
+const parse = coordinator => configSchema.parse({ dataDir: "/tmp/task-conductor", coordinator }).coordinator;
 
 test("SDK providers expose DeepSeek and administrator-defined compatible models without network", () => {
   const deepseek = createCoordinatorProvider(parse({ provider: "deepseek", model: "deepseek-flash" }));
@@ -51,11 +51,11 @@ test("loadConfig isolates DeepSeek and custom coordinator credentials from token
       const config = loadConfig(path);
       assert.equal(config.coordinator.provider, coordinator.provider);
       assert.equal(executorEnvironment({ [key]: "private" }, {}, config)[key], undefined);
-      const environment = { AGENT_TASK_TOKEN: "s".repeat(64), AGENT_TASK_ADMIN_TOKEN: "a".repeat(64) };
+      const environment = { TASK_CONDUCTOR_TOKEN: "s".repeat(64), TASK_CONDUCTOR_ADMIN_TOKEN: "a".repeat(64) };
       for (const credential of Object.values(environment)) {
         assert.throws(() => validateServiceEnvironment(config, { ...environment, [key]: credential }), /distinct/);
       }
-      assert.equal(validateServiceEnvironment(config, { ...environment, [key]: "m".repeat(64) }).token, environment.AGENT_TASK_TOKEN);
+      assert.equal(validateServiceEnvironment(config, { ...environment, [key]: "m".repeat(64) }).token, environment.TASK_CONDUCTOR_TOKEN);
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

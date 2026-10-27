@@ -29,11 +29,11 @@ const timer = setTimeout(() => {
   void terminateGroup(child);
 }, 10000);
 try {
-  connection = await acp.client({ name: "agent-task-probe" }).connect(acp.ndJsonStream(
+  connection = await acp.client({ name: "task-conductor-probe" }).connect(acp.ndJsonStream(
     Writable.toWeb(child.stdin), Readable.toWeb(child.stdout), { maxMessageBytes: 1048576 }));
   const result = await connection.agent.request(acp.methods.agent.initialize, {
     protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {},
-    clientInfo: { name: "agent-task-probe", version },
+    clientInfo: { name: "task-conductor-probe", version },
   });
   if (result.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");
   console.log(JSON.stringify(result, null, 2));

@@ -50,7 +50,7 @@ export function controlService(home: string, action: "status" | "restart" | "sto
     req.once("error", (error: NodeJS.ErrnoException) => reject(new ControlError(timedOut ? "timeout"
       : ["ENOENT", "ECONNREFUSED"].includes(error.code ?? "") ? "unreachable" : "unavailable", timedOut
       ? "Service control timed out; check status before another action"
-      : "Cannot contact launcher; use agent-task mcp or start the service")));
+      : "Cannot contact launcher; use task-conductor mcp or start the service")));
     req.end();
   });
 }

@@ -9,14 +9,14 @@ import { serverInstructions } from "./mcp-contract.js";
 const toolNames = new Set(["service_status", "executor_list", "task_create", "task_list", "task_get", "task_schedule_control",
   "task_run_list", "task_run_get", "task_question_answer", "task_message_send", "task_message_list", "task_run_cancel"]);
 
-/** A fixed Agent Task adapter; only task creation receives the connection's startup directory. */
+/** A fixed Task Conductor adapter; only task creation receives the connection's startup directory. */
 export async function serveStdio(options: { url: string; token: string; workspace: string }): Promise<void> {
   const url = new URL(options.url);
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.pathname !== "/mcp" || url.username || url.password || url.search || url.hash) {
     throw new Error("Invalid local MCP address");
   }
-  const client = new Client({ name: "agent-task-stdio", version });
-  const server = new Server({ name: "agent-task", version }, { capabilities: { tools: {} }, instructions: serverInstructions });
+  const client = new Client({ name: "task-conductor-stdio", version });
+  const server = new Server({ name: "task-conductor", version }, { capabilities: { tools: {} }, instructions: serverInstructions });
   let close: Promise<void> | undefined, finish!: () => void;
   const finished = new Promise<void>(resolve => { finish = resolve; });
   const shutdown = (): Promise<void> => close ??= Promise.resolve().then(async () => {
@@ -34,7 +34,7 @@ export async function serveStdio(options: { url: string; token: string; workspac
     return { ...result, tools: result.tools.filter(tool => toolNames.has(tool.name)) };
   });
   server.setRequestHandler(CallToolRequestSchema, request => {
-    if (!toolNames.has(request.params.name)) throw new McpError(ErrorCode.MethodNotFound, "Unknown Agent Task tool");
+    if (!toolNames.has(request.params.name)) throw new McpError(ErrorCode.MethodNotFound, "Unknown Task Conductor tool");
     const input = request.params.arguments ?? {};
     return client.callTool({ ...request.params, arguments: request.params.name === "task_create" && input.workspace === undefined
       ? { ...input, workspace: options.workspace } : input });

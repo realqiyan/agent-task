@@ -26,17 +26,17 @@ const locate = command => {
   catch { throw new Error(`Missing ${command}. Install and configure the approved native Pi CLI before E2E`); }
 };
 const pi = locate("pi");
-const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-pi-human-"));
+const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-pi-human-"));
 const home = join(dir, "home"), agent = join(home, ".pi", "agent");
 mkdirSync(agent, { recursive: true, mode: 0o700 });
-const settings = { defaultProvider: "deepseek", defaultModel: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash",
+const settings = { defaultProvider: "deepseek", defaultModel: process.env.TASK_CONDUCTOR_E2E_MODEL || "deepseek-flash",
   defaultThinkingLevel: "off", defaultTools: ["read"], quietStartup: true, enableInstallTelemetry: false,
   retry: { enabled: false, provider: { maxRetries: 0 } }, compaction: { enabled: false } };
 writeFileSync(join(agent, "settings.json"), JSON.stringify(settings), { mode: 0o600 });
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
 const nativeBin = join(dir, "native-bin"); mkdirSync(nativeBin, { mode: 0o700 });
 const wrapper = join(nativeBin, "pi");
-writeFileSync(wrapper, `#!/bin/sh\nunset DEEPSEEK_API_KEY AGENT_TASK_E2E_TOKEN\nexec ${quote(pi)} --tools read --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve --offline "$@"\n`, { mode: 0o700 });
+writeFileSync(wrapper, `#!/bin/sh\nunset DEEPSEEK_API_KEY TASK_CONDUCTOR_E2E_TOKEN\nexec ${quote(pi)} --tools read --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve --offline "$@"\n`, { mode: 0o700 });
 console.log(`私有验收日志：${dir}`);
 console.log(`用例：${suite}；协调与原生模型：${settings.defaultModel}`);
 console.log("使用真实模型并产生费用。原生 Pi 仅启用 read 工具，不是 OS 沙箱。两端共用获准测试密钥，不是独立账户隔离。");
@@ -62,9 +62,9 @@ try {
         detached: true,
         env: { PATH: nativeBin + ":" + process.env.PATH, LANG: process.env.LANG, HOME: home, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
           PI_CODING_AGENT_DIR: agent, PI_TELEMETRY: "0",
-          AGENT_TASK_E2E_EXECUTOR: "pi", AGENT_TASK_E2E_ALLOW_RESULT_READ: "1", AGENT_TASK_E2E_MODEL: settings.defaultModel,
-          AGENT_TASK_E2E_QUANTITY: String(quantity),
-          ...(options["--answer-file"] ? { AGENT_TASK_E2E_ANSWER_FILE: resolve(options["--answer-file"]) } : {}),
+          TASK_CONDUCTOR_E2E_EXECUTOR: "pi", TASK_CONDUCTOR_E2E_ALLOW_RESULT_READ: "1", TASK_CONDUCTOR_E2E_MODEL: settings.defaultModel,
+          TASK_CONDUCTOR_E2E_QUANTITY: String(quantity),
+          ...(options["--answer-file"] ? { TASK_CONDUCTOR_E2E_ANSWER_FILE: resolve(options["--answer-file"]) } : {}),
         }, stdio: ["ignore", fd, fd],
       });
       console.log(`运行 ${attempt}/${repeat}：${join(dir, `test-${attempt}.log`)}`);

@@ -16,7 +16,7 @@ let unlock;
 try {
   const options = argumentsFor(process.argv.slice(2));
   if (options.help) {
-    console.log("用法：agent-task setup [--home 私有绝对目录]\n新安装：在终端确认目录、端口、令牌及协调模型。\n非交互初始化：--home 目录 --data-dir 目录 --port 端口 --generate-tokens|--credentials-file 私有JSON文件 --yes [--provider openai|anthropic|deepseek|openai-compatible --model 模型ID]\n兼容 provider：--base-url URL --api openai-completions|openai-responses --api-key-env 变量名 --context-window 整数 --max-tokens 整数\n已有安装：--check [--json] 只读检查；--resume 续接初始化。凭据从私有 JSON 文件或终端隐藏输入读取，不通过命令参数传入。初始化不安装执行端。");
+    console.log("用法：task-conductor setup [--home 私有绝对目录]\n新安装：在终端确认目录、端口、令牌及协调模型。\n非交互初始化：--home 目录 --data-dir 目录 --port 端口 --generate-tokens|--credentials-file 私有JSON文件 --yes [--provider openai|anthropic|deepseek|openai-compatible --model 模型ID]\n兼容 provider：--base-url URL --api openai-completions|openai-responses --api-key-env 变量名 --context-window 整数 --max-tokens 整数\n已有安装：--check [--json] 只读检查；--resume 续接初始化。凭据从私有 JSON 文件或终端隐藏输入读取，不通过命令参数传入。初始化不安装执行端。");
     process.exit(0);
   }
   if (options.json && !options.check) throw new Error("--json 仅用于 setup --check");
@@ -67,16 +67,16 @@ try {
       ...(options.provider === "openai-compatible" ? { baseUrl: options["base-url"], api: options.api,
         apiKeyEnv: options["api-key-env"], contextWindow: Number(options["context-window"]), maxTokens: Number(options["max-tokens"]), reasoning: false } : {}),
     };
-    const config = validateConfig(configSchema.parse({ dataDir, port: Number(options.port), tokenEnv: options["token-env"] ?? "AGENT_TASK_TOKEN", coordinator, disabledExecutors: [] }));
+    const config = validateConfig(configSchema.parse({ dataDir, port: Number(options.port), tokenEnv: options["token-env"] ?? "TASK_CONDUCTOR_TOKEN", coordinator, disabledExecutors: [] }));
     initialEnvironment = options["credentials-file"] ? parseEnvironment(JSON.stringify(json(options["credentials-file"]))) : {};
     if (options["generate-tokens"]) {
-      if (initialEnvironment[config.tokenEnv] || initialEnvironment.AGENT_TASK_ADMIN_TOKEN) throw new Error("提供已有令牌与生成新令牌只能选择一种");
+      if (initialEnvironment[config.tokenEnv] || initialEnvironment.TASK_CONDUCTOR_ADMIN_TOKEN) throw new Error("提供已有令牌与生成新令牌只能选择一种");
       initialEnvironment[config.tokenEnv] = randomBytes(32).toString("hex");
-      initialEnvironment.AGENT_TASK_ADMIN_TOKEN = randomBytes(32).toString("hex");
+      initialEnvironment.TASK_CONDUCTOR_ADMIN_TOKEN = randomBytes(32).toString("hex");
     }
     if (coordinator && options.coordinatorKey) initialEnvironment[coordinatorCredentialEnv(config.coordinator)] = options.coordinatorKey;
     validateServiceEnvironment(config, initialEnvironment);
-    if (!initialEnvironment.AGENT_TASK_ADMIN_TOKEN) throw new Error("初始化需要独立的管理员令牌");
+    if (!initialEnvironment.TASK_CONDUCTOR_ADMIN_TOKEN) throw new Error("初始化需要独立的管理员令牌");
     if (coordinator && !initialEnvironment[coordinatorCredentialEnv(config.coordinator)]) throw new Error("缺少协调凭据，请通过私有凭据文件提供");
     for (const path of [join(root, "launch.json"), join(dataDir, "config.json"), join(dataDir, "environment.json")]) {
       if (existsSync(path)) throw new Error("初始化文件已存在且未归属当前安装，拒绝覆盖：" + path);
@@ -112,7 +112,7 @@ try {
   validateServiceEnvironment(config, readEnvironment(paths.environmentPath));
   console.log(JSON.stringify({ configuration: "valid", coordinator: config.coordinator ? "已配置；未验证认证" : "未配置",
     configPath: paths.configPath, credentialsPath: paths.environmentPath, executorDiscovery: "建立 MCP 连接时发现" }, null, 2));
-  console.log("在 MCP 宿主中配置 command: agent-task、args: [mcp]；自定义安装附加相同 --home。令牌不回显。需要前台管理时运行 agent-task start。");
+  console.log("在 MCP 宿主中配置 command: task-conductor、args: [mcp]；自定义安装附加相同 --home。令牌不回显。需要前台管理时运行 task-conductor start。");
 } catch (error) {
   console.error(error.name === "ZodError" ? "初始化配置无效，请检查 provider、模型、目录和端口" : error.message);
   process.exitCode = 1;

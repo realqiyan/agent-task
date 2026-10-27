@@ -20,7 +20,7 @@ import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage
 import { memoryUpdateParameters, TaskMemory } from "../dist/integrations/coordinator/memory.js";
 
 function fixture(t, coordinator = { provider: "openai", model: "not-a-real-model" }) {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-conversation-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-conversation-"));
   const open = createExecution({ PATH: "/usr/bin:/bin" });
   const coordinate = createCoordinator(dir, coordinator);
   const executor = { id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null };
@@ -77,7 +77,7 @@ test("模型额度耗尽后仍可执行本轮本地动作；整体完成仍须�
 });
 
 test("耗尽额度通过真实 SDK 终止收尾，保留业务原因，不遗留活动 SDK 任务", async t => {
-  const key = "AGENT_TASK_TEST_BUDGET_KEY", previous = process.env[key];
+  const key = "TASK_CONDUCTOR_TEST_BUDGET_KEY", previous = process.env[key];
   process.env[key] = "unused-test-key";
   t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
   // 额度在 provider 入口前耗尽，不发送网络请求，也不制造模型响应。
@@ -113,7 +113,7 @@ test("取消和停服在真实模型连接等待中先终止 SDK，再释放资�
     const sockets = new Set(), server = createServer(socket => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     t.after(async () => { for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve)); });
-    const key = "AGENT_TASK_TEST_CANCEL_KEY", previous = process.env[key];
+    const key = "TASK_CONDUCTOR_TEST_CANCEL_KEY", previous = process.env[key];
     process.env[key] = "unused-test-key";
     t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
     const f = fixture(t, { provider: "openai-compatible", model: "cancel-boundary",
@@ -309,7 +309,7 @@ test("native SDK request preparation observes admitted input, while a memory hoo
   await new Promise(resolve => socket.listen(0, "127.0.0.1", resolve));
   const port = socket.address().port;
   await new Promise((resolve, reject) => socket.close(error => error ? reject(error) : resolve()));
-  const key = "AGENT_TASK_TEST_UNREACHABLE_MODEL_KEY", previous = process.env[key];
+  const key = "TASK_CONDUCTOR_TEST_UNREACHABLE_MODEL_KEY", previous = process.env[key];
   process.env[key] = "test-only-unused-key";
   t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
   const failures = [];

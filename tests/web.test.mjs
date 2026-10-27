@@ -37,13 +37,13 @@ async function start(t, home) {
   throw new Error("Service startup timed out");
 }
 test("Web and CLI share task/configuration rules, preserve HTTP boundaries and apply settings only after restart", { timeout: 60000 }, async t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-web-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-web-"));
   const dataDir = join(root, "data"); mkdirSync(dataDir, { mode: 0o700 });
   writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }), { mode: 0o600 });
   const configPath = join(dataDir, "config.json"), environmentPath = join(dataDir, "environment.json");
   const secrets = Array.from({ length: 4 }, () => randomBytes(32).toString("hex"));
   const [mcpToken, adminToken, oldKey, newKey] = secrets;
-  const environment = { AGENT_TASK_TOKEN: mcpToken, AGENT_TASK_ADMIN_TOKEN: adminToken, OPENAI_API_KEY: oldKey };
+  const environment = { TASK_CONDUCTOR_TOKEN: mcpToken, TASK_CONDUCTOR_ADMIN_TOKEN: adminToken, OPENAI_API_KEY: oldKey };
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
   writeFileSync(configPath, JSON.stringify({ dataDir: join(root, "data"), port: 0,
     coordinator: { provider: "openai", model: "not-a-real-model" },
@@ -81,7 +81,7 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
     return result.data;
   };
   const invoke = (args, input) => {
-    const result = spawnSync(process.execPath, [resolve("bin/agent-task.mjs"), ...args, "--home", root, "--json"],
+    const result = spawnSync(process.execPath, [resolve("bin/task-conductor.mjs"), ...args, "--home", root, "--json"],
       { input, encoding: "utf8", timeout: 15000 });
     for (const secret of secrets) assert(!(result.stdout + result.stderr).includes(secret), "CLI must not print credentials");
     return result;
@@ -193,7 +193,7 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   assert((await call("/settings")).saved.disabledExecutors.includes("pi"));
   const savedCredential = invoke(["credential", "set", "EXTRA_API_KEY", "--stdin", "--yes"], newKey + "\n");
   assert.equal(savedCredential.status, 0, savedCredential.stderr);
-  const rejectedCredential = invoke(["credential", "set", "AGENT_TASK_ADMIN_TOKEN", "--stdin", "--yes"], newKey);
+  const rejectedCredential = invoke(["credential", "set", "TASK_CONDUCTOR_ADMIN_TOKEN", "--stdin", "--yes"], newKey);
   assert.notEqual(rejectedCredential.status, 0);
   cliCall("coordinator", "set", "--provider", "openai-compatible", "--model", "example", "--base-url", "https://untrusted.invalid/v1",
     "--api-key-env", "EXTRA_API_KEY", "--context-window", "4096", "--max-tokens", "1024", "--reasoning", "false", "--yes");
@@ -232,7 +232,7 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   const next = join(root, "next");
   settings = await call("/settings/config", { editToken: settings.editToken,
     config: { ...settings.saved, dataDir: next, port: 0, tokenEnv: "RENAMED_SERVICE_TOKEN" } });
-  const cli = JSON.parse(execFileSync(process.execPath, [resolve("bin/agent-task.mjs"), "restart", "--home", root], { encoding: "utf8" }));
+  const cli = JSON.parse(execFileSync(process.execPath, [resolve("bin/task-conductor.mjs"), "restart", "--home", root], { encoding: "utf8" }));
   assert.notEqual(cli.instanceId, restarted.instanceId);
   child.origin = new URL(cli.url).origin;
   settings = await call("/settings");
@@ -250,7 +250,7 @@ test("Web and CLI share task/configuration rules, preserve HTTP boundaries and a
   // Return the locator offline only for the admin-disabled boundary check.
   writeFileSync(join(root, "launch.json"), JSON.stringify({ dataDir }));
   writeFileSync(configPath, JSON.stringify({ ...changed, dataDir }));
-  delete environment.AGENT_TASK_ADMIN_TOKEN;
+  delete environment.TASK_CONDUCTOR_ADMIN_TOKEN;
   writeFileSync(environmentPath, JSON.stringify(environment));
   child = await start(t, root); children.push(child);
   assert.equal((await raw("/api/tasks")).status, 404);

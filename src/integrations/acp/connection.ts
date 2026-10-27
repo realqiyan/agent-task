@@ -96,7 +96,7 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
     await closed;
   })();
   let busy = false;
-  const app = acp.client({ name: "agent-task" })
+  const app = acp.client({ name: "task-conductor" })
     .onRequest(acp.methods.client.fs.readTextFile, async ctx => {
       try {
         cancel.throwIfAborted();
@@ -122,7 +122,7 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
     if (cancel.aborted) abort();
     const init = await connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: inputFiles.length ? { fs: { readTextFile: true, writeTextFile: false } } : {},
-      clientInfo: { name: "agent-task", version },
+      clientInfo: { name: "task-conductor", version },
     });
     cancel.throwIfAborted();
     if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new Error("Incompatible ACP protocol version");

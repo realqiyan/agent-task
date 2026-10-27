@@ -7,33 +7,33 @@ CLI 覆盖 Web 的配置、凭据、执行端管理、任务查询、未来触�
 先按[部署说明](deployment.md)安装并启动服务。CLI 通过安装目录定位当前实例，从私有环境文件读取管理员令牌，不需要复制令牌或登录命令。使用自定义安装目录时，每条命令都传入 `--home /absolute/installation`。
 
 ```bash
-agent-task --help
-agent-task config --help
-agent-task executor --help
-agent-task coordinator --help
-agent-task credential --help
-agent-task task --help
-agent-task run --help
+task-conductor --help
+task-conductor config --help
+task-conductor executor --help
+task-conductor coordinator --help
+task-conductor credential --help
+task-conductor task --help
+task-conductor run --help
 ```
 
 逐级帮助是命令与参数的完整入口。管理命令支持 `--json`，结果写入 stdout，预览和诊断写入 stderr；失败退出码非零。非交互保存、适配器升级与任务变更须使用 `--yes`，它只确认本次操作，不授予执行端原生工具权限。
 
-服务不可用时，管理命令失败，不自动离线写文件。首次安装仍使用 `setup`；启动故障按[部署说明](deployment.md#后台前台与健康检查)停服核查。数据升级使用独立离线入口 `agent-task migrate`，见[升级说明](upgrades.md)；管理命令不自动迁移或修复历史。
+服务不可用时，管理命令失败，不自动离线写文件。首次安装仍使用 `setup`；启动故障按[部署说明](deployment.md#后台前台与健康检查)停服核查。数据升级使用独立离线入口 `task-conductor migrate`，见[升级说明](upgrades.md)；管理命令不自动迁移或修复历史。
 
 ## 配置流程
 
-交互编辑可用 `agent-task config edit`。编辑器由 `--editor`、`VISUAL` 或 `EDITOR` 指定，值须是可执行文件名或路径，不包含 shell 参数。退出编辑器后先校验并显示影响，再确认保存。
+交互编辑可用 `task-conductor config edit`。编辑器由 `--editor`、`VISUAL` 或 `EDITOR` 指定，值须是可执行文件名或路径，不包含 shell 参数。退出编辑器后先校验并显示影响，再确认保存。
 
 批量编辑使用配置草稿：
 
 ```bash
-agent-task config export --output /absolute/private/draft.json
+task-conductor config export --output /absolute/private/draft.json
 # 编辑草稿中的配置，保留编辑令牌。
-agent-task config validate --file /absolute/private/draft.json
-agent-task config apply --file /absolute/private/draft.json --yes
-agent-task config diff
-agent-task restart
-agent-task config show --running
+task-conductor config validate --file /absolute/private/draft.json
+task-conductor config apply --file /absolute/private/draft.json --yes
+task-conductor config diff
+task-conductor restart
+task-conductor config show --running
 ```
 
 导出文件不包含密钥值，以私有权限创建，拒绝覆盖已有文件。编辑令牌过期、服务重启或任一客户端保存配置/凭据后，旧草稿不能提交；重新读取并人工核对，不自动合并。草稿契约见 [settings-contract.ts](../src/protocol/settings-contract.ts)。
@@ -45,12 +45,12 @@ agent-task config show --running
 ## 执行端发现与更新
 
 ```bash
-agent-task executor list
-agent-task executor show codex
-agent-task executor refresh
+task-conductor executor list
+task-conductor executor show codex
+task-conductor executor refresh
 # 仅在需要升级适配器时执行：
-agent-task executor upgrade codex --yes
-agent-task executor list
+task-conductor executor upgrade codex --yes
+task-conductor executor list
 ```
 
 发现、安装复用、升级影响和原生认证统一见[部署说明](deployment.md#执行端发现与准备)。就绪不证明工具授权或任务成功；PATH 变化也不能仅靠刷新生效。
@@ -59,16 +59,16 @@ agent-task executor list
 
 通过管理员 CLI 注册，不增加任务 MCP 注册工具。注册授权服务启动本机代码；MCP 仍只能查询并选择执行端 ID。Web 使用同一管理 API 和执行端服务。仅接入由服务启动的本机 stdio ACP 进程，不接受远程地址或附着已有服务。
 
-先安装执行程序，在其原生配置中完成认证和无人值守授权。注册文件使用私有权限，不含密钥；格式与限制见 [注册契约](../src/executors/validation.ts)，完整操作引导见 [custom-acp](../plugin/skills/using-agent-task/references/custom-acp.md)。先查 `agent-task executor --help` 确认已安装服务支持此入口，再执行：
+先安装执行程序，在其原生配置中完成认证和无人值守授权。注册文件使用私有权限，不含密钥；格式与限制见 [注册契约](../src/executors/validation.ts)，完整操作引导见 [custom-acp](../plugin/skills/using-task-conductor/references/custom-acp.md)。先查 `task-conductor executor --help` 确认已安装服务支持此入口，再执行：
 
 ```bash
-agent-task executor register --file /absolute/private/my-acp.json --yes
-agent-task executor show my-acp
+task-conductor executor register --file /absolute/private/my-acp.json --yes
+task-conductor executor show my-acp
 # 经确认不再用于后续派发时：
-agent-task executor unregister my-acp --yes
+task-conductor executor unregister my-acp --yes
 ```
 
-管理服务须已运行；尚未启动时，在另一终端运行 `agent-task start`。没有内置 CLI 也能注册。命令使用规范绝对路径及参数数组，直接执行而非 shell 展开。注册可选 `cwd`，须为已存在且可访问的规范绝对目录；省略时进程从任务 workspace 启动。该字段仅设置进程启动目录，不覆盖 ACP 会话使用的任务 workspace。执行端使用后台的过滤后原生环境，不继承注册命令所在终端的新环境变量。
+管理服务须已运行；尚未启动时，在另一终端运行 `task-conductor start`。没有内置 CLI 也能注册。命令使用规范绝对路径及参数数组，直接执行而非 shell 展开。注册可选 `cwd`，须为已存在且可访问的规范绝对目录；省略时进程从任务 workspace 启动。该字段仅设置进程启动目录，不覆盖 ACP 会话使用的任务 workspace。执行端使用后台的过滤后原生环境，不继承注册命令所在终端的新环境变量。
 
 **注册和注销持久化后立即生效，无须重启。** 注册只校验本地启动条件，不启动 ACP 或调用模型；`ready` 不证明协议兼容、认证或工具授权。MCP 初始化曾因无执行端失败时，注册后重连 MCP 即可。原生环境变更仍按[部署说明](deployment.md#执行端发现与准备)处理。
 

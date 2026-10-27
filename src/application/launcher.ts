@@ -93,7 +93,7 @@ export async function launch(home: string, nativeEnvironment: NodeJS.ProcessEnv)
     const log = logFile(join(inputs.dataDir, "service.log"));
     const child = fork(fileURLToPath(new URL("./main.js", import.meta.url)),
       ["--config", inputs.configPath, "--environment", inputs.environmentPath], {
-        env: { ...nativeEnvironment, AGENT_TASK_INSTANCE_ID: randomUUID(), AGENT_TASK_INSTALL_HOME: home }, execArgv: [], stdio: ["ignore", "pipe", "pipe", "ipc"],
+        env: { ...nativeEnvironment, TASK_CONDUCTOR_INSTANCE_ID: randomUUID(), TASK_CONDUCTOR_INSTALL_HOME: home }, execArgv: [], stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
     children.add(child);
     const output = (chunk: Buffer) => { appendFileSync(log, chunk); process.stdout.write(chunk); };

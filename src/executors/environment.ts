@@ -8,5 +8,5 @@ export function executorEnvironment(native: Environment, privateValues: Environm
   const secrets = new Set([...Object.values(privateValues), ...[...blocked].map(key => native[key])].filter(Boolean));
   return Object.fromEntries(Object.entries(native).filter(([key, value]) =>
     value !== undefined && !blocked.has(key) && !secrets.has(value) &&
-    !/^(AGENT_TASK_|NODE_|LD_|DYLD_)/.test(key) && key !== "PI_ACP_PI_COMMAND"));
+    !/^(TASK_CONDUCTOR_|NODE_|LD_|DYLD_)/.test(key) && key !== "PI_ACP_PI_COMMAND"));
 }

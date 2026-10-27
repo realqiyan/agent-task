@@ -1,9 +1,9 @@
 ---
-name: using-agent-task
-description: 使用 Agent Task。适用于 MCP 连接、提交调用方定义的 DAG、查询运行和交付、持续 Task 对话、显式补充工作、回答用户事实问题、通过管理员 CLI 注册本机 stdio ACP 执行端及排查连接故障。
+name: using-task-conductor
+description: 使用 Task Conductor。适用于 MCP 连接、提交调用方定义的 DAG、查询运行和交付、持续 Task 对话、显式补充工作、回答用户事实问题、通过管理员 CLI 注册本机 stdio ACP 执行端及排查连接故障。
 ---
 
-# 使用 Agent Task
+# 使用 Task Conductor
 
 ## 选择下一步
 
@@ -22,4 +22,4 @@ description: 使用 Agent Task。适用于 MCP 连接、提交调用方定义的
 - 协议 turn 结束或提交成功不等于任务完成；分别报告已验收交付、失败和等待用户。
 - 不自动重试中断工作、切换执行端、删除历史或清理工作目录来修复状态。
 
-显式调用：Pi `/skill:using-agent-task`；Claude Code `/agent-task:using-agent-task`；Codex `$using-agent-task` 或在 `/skills` 中选择。
+显式调用：Pi `/skill:using-task-conductor`；Claude Code `/task-conductor:using-task-conductor`；Codex `$using-task-conductor` 或在 `/skills` 中选择。

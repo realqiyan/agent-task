@@ -21,7 +21,7 @@ export function installRoot(options) {
   if (!["linux", "darwin"].includes(process.platform)) throw new Error("Only Linux and macOS are supported");
   const [major, minor] = process.versions.node.split(".").map(Number);
   if (major < 22 || (major === 22 && minor < 19)) throw new Error("Node.js 22.19+ is required");
-  const path = options.home ?? join(homedir(), process.platform === "darwin" ? "Library/Application Support/agent-task" : ".local/share/agent-task");
+  const path = options.home ?? join(homedir(), process.platform === "darwin" ? "Library/Application Support/task-conductor" : ".local/share/task-conductor");
   if (!isAbsolute(path) || /[\x00-\x1f\x7f]/.test(path)) throw new Error("Installation home must be an absolute path without control characters");
   let parent = resolve(path);
   const tail = [];
@@ -52,7 +52,7 @@ export function readManifest(root, allowMigration = false) {
   const value = json(join(root, "installation.json"));
   if (value.project !== "agent-task" || value.root !== root || value.platform !== process.platform || value.home !== homedir() || typeof value.node !== "string" || !isAbsolute(value.node) || value.app !== packageRoot) throw new Error("Installation ownership does not match this user/platform");
   if (!allowMigration && existsSync(join(root, "migration.json")) && json(join(root, "migration.json")).phase !== "completed") {
-    throw new Error("数据迁移未完成；请保持停服，核查备份后运行 agent-task migrate --resume --yes（使用相同 --home）");
+    throw new Error("数据迁移未完成；请保持停服，核查备份后运行 task-conductor migrate --resume --yes（使用相同 --home）");
   }
   return value;
 }

@@ -28,15 +28,13 @@ git diff --check
 
 ## 宿主接入包
 
-`0.1.0-rc.4` 基线上的接入资产，Linux x64、Node 24.15.0，在无个人凭据的隔离 HOME/宿主配置中验证：未安装服务时，Pi 1.4.0、Claude Code 2.1.302、Codex CLI 0.164.0 均可安装本地接入包并发现 `using-agent-task`。随后用本地构建服务完成 setup，Pi 工具发现、Claude MCP 健康连接、Codex app-server 连接及 `executor_list`、`task_list` 调用通过。证据：`/tmp/agent-task-native-hosts-TvywpQ/report.json`、同目录 `codex-runtime.json`。这是本地资产验证，不表示已发布到 npm 或远端 marketplace。
+`0.1.0-rc.4` 基线上的接入资产，Linux x64、Node 24.15.0，在无个人凭据的隔离 HOME/宿主配置中验证：未安装服务时，Pi 1.4.0、Claude Code 2.1.302、Codex CLI 0.164.0 均可安装本地接入包并发现使用引导。随后用本地构建服务完成 setup，Pi 工具发现、Claude MCP 健康连接、Codex app-server 连接及 `executor_list`、`task_list` 调用通过。证据：`/tmp/agent-task-native-hosts-TvywpQ/report.json`、同目录 `codex-runtime.json`。这是本地资产验证，不表示已发布到 npm 或远端 marketplace。
 
 同一环境中，Pi RPC 发出缺少命令的通知并保留模型上下文，未触发模型运行（`pi-preflight.jsonl`）；Claude headless 原生 SessionStart 执行并返回用户提示和上下文（`claude-hook.jsonl`，MCP 被显式关闭以验证独立性）。Codex 发现同步 hook 且无清单错误，但标记为未信任；未绕过审查执行。
 
 [接入测试](../tests/host-integrations.test.mjs)从真实 tarball、空 npm 缓存离线安装独立接入包，并通过真实 setup、stdio 与官方 MCP SDK 调用上述只读工具。[启动检查测试](../tests/host-preflight.test.mjs)检查配置缺失/损坏、失败进程、输出限制与取消、无目录/锁写入及私密值不回显；hook 故障输出不阻塞会话，正常状态不输出通知。[插件包门禁](../scripts/pack-plugin.mjs)检查实际包包含 hook、扩展、清单和 skill，并验证两个 npm marketplace 的版本；[服务包门禁](../scripts/pack-release.mjs)拒绝混入插件资产。原生宿主不是基础测试依赖。
 
-正式接入包为 `@realqiyan/agent-task-plugin`。维护者已主动删除旧名 `@realqiyan/agent-task-hosts`，不恢复旧名发布，也不自动改写用户的旧包注册。
-
-`@realqiyan/agent-task-plugin@0.1.0` 已发布，npmjs latest 指向该版本；本机发布，无 GitHub provenance。Linux x64、Node 24.15.0 下，隔离 HOME/空 npm 缓存的原生 Pi npm 安装通过，证据：`/tmp/agent-task-010-plugin-mP7HwB/install.log`；本地基础测试与补跑的原生 Pi 通知测试合计 91 项通过。未重新验收 Claude/Codex 原生安装或真实模型任务。
+`task-conductor-plugin@0.1.0` 已发布，npmjs latest 指向该版本；本机发布，无 GitHub provenance。Linux x64、Node 24.15.0 下，公开 registry 安装与宿主清单检查通过，证据：`/tmp/task-conductor-plugin-install-GkbIjx/report.json`。当前源码的离线打包安装与 stdio 工具调用通过；三种宿主的原生安装及真实模型任务尚未复验。
 
 以下为 `0.1.0-rc.6` 的历史宿主分发证据，不代表正式版复验：Linux x64、Node 24.15.0 的隔离 HOME/空 npm 缓存中，Pi 1.4.0 的 npm 安装、Claude Code 2.1.302 的清单 URL → npm 安装、Codex CLI 0.164.0 的同仓稀疏索引 → npm 安装均通过。Pi 的 skill 发现和缺少服务命令时的通知、Codex 的 skill/hook 发现通过；没有授予 hook 信任或调用模型。证据：`/tmp/agent-task-rc6-native-b6lchl/remote-report.json`、同目录 `report.json`、`pi-runtime.jsonl`、`codex-runtime.json`。本地开发快照的安装证据为 `/tmp/agent-task-npm-source-nNH1U9/local-report.json`。本次 npm 分发验收不代替上文的 MCP 连接证据或真实任务验收。
 
@@ -67,7 +65,7 @@ git diff --check
 - 持续对话、记忆重开与补充执行：`npm run test:e2e:human -- --suite conversation`。用例仅在无活动协调或 ACP 工作时重启自己的隔离服务；SDK 观察器不写记忆、不恢复任务，也不提供模型响应。
 - 真人模式：`npm run test:e2e:human -- --answer-file /absolute/private/path/quantity.txt`。使用新文件，等待旁边的 `.question.json` 出现，再写入答案。
 
-其他已获准且原生认证与无领域副作用配置已准备的执行端可用 `npm run test:e2e`，将 `AGENT_TASK_E2E_EXECUTOR` 设为对应类型。此入口不代为隔离原生配置，不继承协调密钥；就绪不代表授权或成功。
+其他已获准且原生认证与无领域副作用配置已准备的执行端可用 `npm run test:e2e`，将 `TASK_CONDUCTOR_E2E_EXECUTOR` 设为对应类型。此入口不代为隔离原生配置，不继承协调密钥；就绪不代表授权或成功。
 
 当前三组 E2E 使用中文要求、标识回传与字面字段传递，不再要求算术或开放式审计。调用方明确要求的简单 JSON 对象由测试直接比对；真实模型、ACP、依赖读取、等待续答、记忆重开和补充交付仍走原有流程。简化只降低领域推理噪声，不保证模型稳定调用工具，也不验证复杂领域判断。
 
@@ -123,11 +121,10 @@ Linux x64、Node 24.15.0 的隔离环境证据：
 
 | 范围 | 结论 | 证据 |
 | --- | --- | --- |
-| `0.1.0`，提交 `3619588` | Node 22.19.0/24.x 基础检查、包门禁、Linux 独立安装、GitHub OIDC 发布及 npmjs 默认安装验收通过；公开包有 provenance，latest 指向该版本 | [发布运行](https://github.com/realqiyan/agent-task/actions/runs/40218094281)、[npm 版本](https://www.npmjs.com/package/@realqiyan/agent-task/v/0.1.0) |
-| 同版本，Linux x64、Node 24.15.0 | 从 npmjs 默认安装到独立 prefix，通过前台、Web/CLI 重启、stdio 后台、断开后健康及 stop 检查；捕获输出未发现验证凭据 | `/tmp/agent-task-npm-JL5ZVA/report.json` |
-| `0.0.1-rc.2`，提交 `48549ea`，历史平台证据 | Ubuntu x64 与 macOS ARM64 hosted runner 在 Node 22.19.0 下使用 CI tarball、无源码完成安装、前台、重启及认证检查 | [Validate 运行](https://github.com/realqiyan/agent-task/actions/runs/39829900075) |
+| `task-conductor@0.1.0`，Linux x64、Node 24.15.0 | TypeScript、依赖边界、包门禁、隔离 tarball 与 npmjs 默认安装通过；基础测试及原生 Pi 1.4.0 通知用例共 91 项全部通过；latest 指向该版本，本机发布，无 GitHub provenance | `/tmp/task-conductor-npm-oODcC0/report.json`、`/tmp/task-conductor-npm-YlKO9H/report.json`、`/tmp/task-conductor-final-tests.log` |
+| `0.0.1-rc.2`，提交 `48549ea`，历史平台证据 | Ubuntu x64 与 macOS ARM64 hosted runner 在 Node 22.19.0 下使用 CI tarball、无源码完成安装、前台、重启及认证检查 | [Validate 运行](https://github.com/realqiyan/task-conductor/actions/runs/39829900075) |
 
-`0.1.0` 的发布验收未执行 macOS、浏览器或真实模型/ACP 任务；旧 macOS 证据不覆盖当前版本、Intel Mac、休眠或用户注销。安装检查使用真实失败程序提供可发现路径，不证明成功 ACP 执行。PTY 能力不可用时测试明确跳过，跳过不是通过。
+当前发布验收未执行 macOS、浏览器或真实模型/ACP 任务；旧 macOS 证据不覆盖当前版本、Intel Mac、休眠或用户注销。安装检查使用真实失败程序提供可发现路径，不证明成功 ACP 执行。PTY 能力不可用时测试明确跳过，跳过不是通过。
 
 上述发布状态是验收时的事实，不是实时 registry 查询；包内文档是发布提交的快照。
 

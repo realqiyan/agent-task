@@ -9,7 +9,7 @@ import { LocalResultFiles } from "../dist/results/files.js";
 import { acquireLock } from "../dist/infrastructure/lock.js";
 
 function directory(t) {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-artifacts-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-artifacts-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

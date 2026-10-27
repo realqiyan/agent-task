@@ -16,7 +16,7 @@ const readOnly: Hints = { readOnly: true, destructive: false, idempotent: true, 
 export function createMcpServer(service: TaskApi, fatal: (error: unknown) => void): Server {
   // Own tools/call validation so invalid arguments and operation errors share the
   // advertised envelope. McpServer skips output validation for isError responses.
-  const server = new Server({ name: "agent-task", version }, { capabilities: { tools: {} }, instructions: serverInstructions });
+  const server = new Server({ name: "task-conductor", version }, { capabilities: { tools: {} }, instructions: serverInstructions });
   const tools = new Map<string, { definition: Tool; call(input: unknown): CallToolResult }>();
   function register<S extends z.ZodRawShape, D extends z.ZodType>(name: string, description: string,
     inputSchema: z.ZodObject<S>, dataSchema: D,
@@ -87,8 +87,8 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [...tools.values()].map(tool => tool.definition) }));
   server.setRequestHandler(CallToolRequestSchema, request => {
     const tool = tools.get(request.params.name);
-    if (request.params.task) return result({ ok: false, code: "validation", error: "MCP task-augmented calls are not supported; use Agent Task tools directly" });
-    return tool ? tool.call(request.params.arguments ?? {}) : result({ ok: false, code: "not_found", error: "Unknown Agent Task tool" });
+    if (request.params.task) return result({ ok: false, code: "validation", error: "MCP task-augmented calls are not supported; use Task Conductor tools directly" });
+    return tool ? tool.call(request.params.arguments ?? {}) : result({ ok: false, code: "not_found", error: "Unknown Task Conductor tool" });
   });
   return server;
 }

@@ -17,7 +17,7 @@ import { Harness, createRegistry } from "@earendil-works/pi-durable";
 import { createModels } from "@earendil-works/pi-ai/models";
 
 function fixture(t) {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-input-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-input-"));
   const executor = executorRecord.parse({ id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null });
   const coordinate = createCoordinator(dir, { provider: "openai", model: "not-a-real-model" });
   let store = new TaskStore(dir), service = createTaskRuntime(dir, [executor], openExecution, coordinate, error => { throw error; });

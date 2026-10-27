@@ -16,7 +16,7 @@ test("npm and local catalogs select the reviewed plugin and the same native MCP 
   const codexCatalog = json(".agents/plugins/marketplace.json");
   for (const catalog of [claudeCatalog, codexCatalog]) {
     assert.deepEqual(catalog.plugins[0].source, {
-      source: "npm", package: "@realqiyan/agent-task-plugin",
+      source: "npm", package: "task-conductor-plugin",
       version: json("package.json").version, registry: "https://registry.npmjs.org",
     });
   }
@@ -29,19 +29,19 @@ test("npm and local catalogs select the reviewed plugin and the same native MCP 
   const codex = json(join(bundle, ".codex-plugin/plugin.json"));
   const pkg = json("package.json");
   for (const manifest of [claude, codex]) {
-    assert.equal(manifest.name, "agent-task");
+    assert.equal(manifest.name, "task-conductor");
     assert.equal(manifest.version, pkg.version);
   }
   for (const manifest of [claude, codex]) assert.equal(resolve(bundle, manifest.mcpServers), join(bundle, "mcp.json"));
   assert(existsSync(resolve(bundle, codex.extensions["com.openai"].onboardingSkill)));
   for (const path of json(join(bundle, "package.json")).pi.skills) assert(existsSync(resolve(bundle, path)));
   assert.deepEqual(json(join(bundle, "mcp.json")), {
-    mcpServers: { "agent-task": { type: "stdio", command: "agent-task", args: ["mcp"] } },
+    mcpServers: { "task-conductor": { type: "stdio", command: "task-conductor", args: ["mcp"] } },
   });
 });
 
 test("standalone host tarball installs offline without the service or runtime dependencies", { timeout: 30_000 }, t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-host-package-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-host-package-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const artifact = JSON.parse(execFileSync(process.execPath, [resolve("scripts/pack-plugin.mjs"), root], {
     encoding: "utf8", timeout: 15_000,
@@ -51,9 +51,9 @@ test("standalone host tarball installs offline without the service or runtime de
     cwd: root, encoding: "utf8", timeout: 15_000,
     env: { PATH: process.env.PATH, HOME: root, npm_config_cache: join(root, "cache") },
   });
-  const installed = join(prefix, "node_modules/@realqiyan/agent-task-plugin");
+  const installed = join(prefix, "node_modules/task-conductor-plugin");
   assert.equal(json(join(installed, "package.json")).version, json("package.json").version);
-  assert(!existsSync(join(prefix, "node_modules/@realqiyan/agent-task")));
+  assert(!existsSync(join(prefix, "node_modules/task-conductor")));
   assert(!existsSync(join(installed, "node_modules")));
   const manifest = json(join(installed, ".codex-plugin/plugin.json"));
   assert(existsSync(resolve(installed, manifest.extensions["com.openai"].onboardingSkill)));
@@ -61,16 +61,16 @@ test("standalone host tarball installs offline without the service or runtime de
 });
 
 test("bundled stdio command uses setup and calls existing tools without credentials in host config", { timeout: 30_000 }, async t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-plugin-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-plugin-"));
   const bin = join(root, "bin"), user = join(root, "user");
   for (const path of [bin, user]) mkdirSync(path, { mode: 0o700 });
   symlinkSync(process.execPath, join(bin, "node"));
-  symlinkSync(resolve("bin/agent-task.mjs"), join(bin, "agent-task"));
+  symlinkSync(resolve("bin/task-conductor.mjs"), join(bin, "task-conductor"));
   // Discovery only: this real failing program is never used for ACP work.
   symlinkSync("/usr/bin/false", join(bin, "opencode"));
   const env = { PATH: bin, HOME: user };
-  const home = process.platform === "darwin" ? join(user, "Library/Application Support/agent-task") : join(user, ".local/share/agent-task");
-  const client = new Client({ name: "agent-task-host-config-test", version: "1.0.0" });
+  const home = process.platform === "darwin" ? join(user, "Library/Application Support/task-conductor") : join(user, ".local/share/task-conductor");
+  const client = new Client({ name: "task-conductor-host-config-test", version: "1.0.0" });
   let connected = false;
   t.after(async () => {
     await client.close();
@@ -79,12 +79,12 @@ test("bundled stdio command uses setup and calls existing tools without credenti
     if (connected) rmSync(root, { recursive: true, force: true });
     else t.diagnostic("Failed host connection evidence retained at " + root);
   });
-  execFileSync(process.execPath, [resolve("bin/agent-task.mjs"), "setup", "--home", home, "--data-dir", join(home, "data"), "--port", "0", "--generate-tokens", "--yes"], {
+  execFileSync(process.execPath, [resolve("bin/task-conductor.mjs"), "setup", "--home", home, "--data-dir", join(home, "data"), "--port", "0", "--generate-tokens", "--yes"], {
     cwd: root, env, stdio: "pipe", timeout: 10_000,
   });
   const configPath = join(home, "data/config.json");
   writeFileSync(configPath, JSON.stringify({ ...json(configPath), disabledExecutors: ["pi", "codex", "claude"] }), { mode: 0o600 });
-  const { command, args } = json(join(bundle, "mcp.json")).mcpServers["agent-task"];
+  const { command, args } = json(join(bundle, "mcp.json")).mcpServers["task-conductor"];
   const transport = new StdioClientTransport({ command, args, cwd: root, env, stderr: "pipe" });
   await client.connect(transport, { timeout: 15_000 });
   const tools = (await client.listTools()).tools.map(tool => tool.name);

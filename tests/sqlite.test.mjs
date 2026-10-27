@@ -14,7 +14,7 @@ test("SQLite loads quietly while other runtime warnings remain visible", () => {
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const root = mkdtempSync(join(tmpdir(), "agent-task-sqlite-notice-"));
+    const root = mkdtempSync(join(tmpdir(), "task-conductor-sqlite-notice-"));
     try {
       const storage = await openCoordinatorStorage(root, "00000000-0000-4000-8000-000000000001");
       await storage.close();
@@ -34,7 +34,7 @@ test("SQLite loads quietly while other runtime warnings remain visible", () => {
 });
 
 test("simultaneous launchers elect one owner of a new SQLite lock and release ownership on death", { timeout: 10_000 }, async t => {
-  const directory = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-launcher-lock-")), peers = [];
+  const directory = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-launcher-lock-")), peers = [];
   t.after(async () => {
     for (const peer of peers) peer.child.kill("SIGKILL");
     await Promise.all(peers.map(peer => peer.closed));

@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { inspectInstallation, runtimeState, onboardingNotice } from "../plugin/scripts/preflight.mjs";
 import { version, versionStatus } from "../dist/infrastructure/version.js";
 
-const cli = resolve("bin/agent-task.mjs");
+const cli = resolve("bin/task-conductor.mjs");
 const hook = resolve("plugin/scripts/session-start.mjs");
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 function snapshot(directory) {
@@ -21,12 +21,12 @@ function snapshot(directory) {
   return result;
 }
 function fixture(t) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-preflight-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-preflight-"));
   const bin = join(root, "bin"), user = join(root, "user"), home = join(root, "custom home");
   for (const path of [bin, user]) mkdirSync(path, { mode: 0o700 });
   symlinkSync(process.execPath, join(bin, "node"));
-  symlinkSync(cli, join(bin, "agent-task"));
-  const env = { PATH: bin, HOME: user, AGENT_TASK_PREFLIGHT_HOME: home };
+  symlinkSync(cli, join(bin, "task-conductor"));
+  const env = { PATH: bin, HOME: user, TASK_CONDUCTOR_PREFLIGHT_HOME: home };
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return { root, bin, home, env };
 }
@@ -59,11 +59,11 @@ test("runtime version reports distinguish mismatch, missing evidence and stopped
 test("preflight distinguishes missing executable, setup and failed processes without writing state", async t => {
   const { root, home, env } = fixture(t);
   const before = snapshot(root);
-  assert.equal(await inspectInstallation({ env: { ...env, AGENT_TASK_PREFLIGHT_COMMAND: join(root, "absent") } }), "command-unavailable");
+  assert.equal(await inspectInstallation({ env: { ...env, TASK_CONDUCTOR_PREFLIGHT_COMMAND: join(root, "absent") } }), "command-unavailable");
   assert.equal(await inspectInstallation({ env }), "setup-missing");
-  assert.equal(await inspectInstallation({ env: { ...env, AGENT_TASK_PREFLIGHT_COMMAND: "/usr/bin/false" } }), "check-failed");
+  assert.equal(await inspectInstallation({ env: { ...env, TASK_CONDUCTOR_PREFLIGHT_COMMAND: "/usr/bin/false" } }), "check-failed");
   // A real unbounded-output process proves output bounding and child cleanup, not a simulated CLI.
-  assert.equal(await inspectInstallation({ env: { ...env, AGENT_TASK_PREFLIGHT_COMMAND: "/usr/bin/yes" } }), "check-failed");
+  assert.equal(await inspectInstallation({ env: { ...env, TASK_CONDUCTOR_PREFLIGHT_COMMAND: "/usr/bin/yes" } }), "check-failed");
   const controller = new AbortController();
   controller.abort();
   assert.equal(await inspectInstallation({ env, signal: controller.signal }), "cancelled");

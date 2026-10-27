@@ -135,10 +135,10 @@ async function credentialValue(options: Options): Promise<string> {
 }
 
 export async function runCli(command: string, args: string[], resolveHome: (home?: string) => string): Promise<void> {
-  if (!help[command]) throw new Error("未知命令；请查看 agent-task --help");
+  if (!help[command]) throw new Error("未知命令；请查看 task-conductor --help");
   const { options, positionals } = parse(args);
   if (options.help || (positionals.length === 0 && !["status", "restart"].includes(command))) {
-    console.log("用法：agent-task " + help[command] + "\n" + common); return;
+    console.log("用法：task-conductor " + help[command] + "\n" + common); return;
   }
   const schedule = command === "task" && positionals[0] === "schedule"; const [action, id] = schedule ? positionals.slice(1) : positionals;
   let allowed: string[] = [], count = 1;
@@ -257,7 +257,7 @@ export async function runCli(command: string, args: string[], resolveHome: (home
     if (!process.stdin.isTTY || !process.stderr.isTTY) throw new Error("config edit 需要终端；非交互编辑使用 export 和 apply");
     const editor = text(options, "editor") ?? process.env.VISUAL ?? process.env.EDITOR;
     if (!editor) throw new Error("请将 EDITOR、VISUAL 或 --editor 设置为可执行程序路径，不附加 shell 参数");
-    const directory = mkdtempSync(join(tmpdir(), "agent-task-edit-")), file = join(directory, "draft.json");
+    const directory = mkdtempSync(join(tmpdir(), "task-conductor-edit-")), file = join(directory, "draft.json");
     try {
       writeDraft(file, draft);
       const result = spawnSync(editor, [file], { stdio: "inherit" });

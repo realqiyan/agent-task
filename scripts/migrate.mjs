@@ -12,9 +12,9 @@ import { inspectTaskStorage, markTaskStorage, taskStorageFormat } from "../dist/
 import { inspectCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
 
 process.umask(0o077);
-const help = `用法：agent-task migrate --check [--home 绝对目录] [--json]
-      agent-task migrate --backup 新的绝对备份目录 --yes [--home 绝对目录] [--json]
-      agent-task migrate --resume --yes [--home 绝对目录] [--json]
+const help = `用法：task-conductor migrate --check [--home 绝对目录] [--json]
+      task-conductor migrate --backup 新的绝对备份目录 --yes [--home 绝对目录] [--json]
+      task-conductor migrate --resume --yes [--home 绝对目录] [--json]
 支持的数据格式：0.1.0。缺表、损坏或不受支持的数据拒绝迁移。
 执行前必须停服并保持宿主断开。先取得独占锁、备份并校验，再修改；中断后显式 --resume。
 --check 只读，不取得写锁，其结果不能代替执行时的独占校验。`;

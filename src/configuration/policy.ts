@@ -1,6 +1,6 @@
 import type { Config } from "./model.js";
 
-export const ADMIN_TOKEN_ENV = "AGENT_TASK_ADMIN_TOKEN";
+export const ADMIN_TOKEN_ENV = "TASK_CONDUCTOR_ADMIN_TOKEN";
 export const baseEnvKeys = ["HOME", "PATH", "LANG", "LC_ALL", "TZ", "TMPDIR", "NODE_OPTIONS", "NODE_PATH", "__proto__", "constructor", "prototype"];
 export function coordinatorCredentialEnv(config: NonNullable<Config["coordinator"]>): string {
   switch (config.provider) {

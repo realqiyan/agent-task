@@ -1,19 +1,19 @@
 {
-  "name": "@realqiyan/agent-task",
+  "name": "task-conductor",
   "version": "0.1.0",
   "license": "MIT",
   "author": "realqiyan",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/realqiyan/agent-task.git"
+    "url": "git+https://github.com/realqiyan/task-conductor.git"
   },
-  "homepage": "https://github.com/realqiyan/agent-task#readme",
-  "bugs": "https://github.com/realqiyan/agent-task/issues",
+  "homepage": "https://github.com/realqiyan/task-conductor#readme",
+  "bugs": "https://github.com/realqiyan/task-conductor/issues",
   "bin": {
-    "agent-task": "bin/agent-task.mjs"
+    "task-conductor": "bin/task-conductor.mjs"
   },
   "files": [
-    "bin/agent-task.mjs",
+    "bin/task-conductor.mjs",
     "dist/**/*.js",
     "dist/web/*.html",
     "dist/web/*.css",
@@ -50,8 +50,8 @@
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/deepseek-acp.test.mjs",
     "test:e2e:human": "npm run build && node scripts/run-pi-human-e2e.mjs",
-    "start": "node bin/agent-task.mjs start",
-    "setup": "node bin/agent-task.mjs setup",
+    "start": "node bin/task-conductor.mjs start",
+    "setup": "node bin/task-conductor.mjs setup",
     "prepack": "npm run build",
     "pack:release": "node scripts/pack-release.mjs",
     "plugin:local": "node scripts/create-plugin-marketplace.mjs",

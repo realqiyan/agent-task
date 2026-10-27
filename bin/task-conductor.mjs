@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 
-const help = `用法：agent-task <命令>
+const help = `用法：task-conductor <命令>
   setup [选项]              交互式初始化；参数见 setup --help
   migrate [选项]            离线数据升级、备份与续接；参数见 migrate --help
   mcp [--home 目录]         建立 MCP stdio 连接，启动或复用共享后台
@@ -33,7 +33,7 @@ try {
   } else {
     const lib = await import("../scripts/install-lib.mjs");
     if (command === "notifications") {
-      if (args.includes("--help")) console.log("用法：agent-task notifications [--home 绝对目录]；stdin 提供 poll/ack/release JSON，只访问已有后台。");
+      if (args.includes("--help")) console.log("用法：task-conductor notifications [--home 绝对目录]；stdin 提供 poll/ack/release JSON，只访问已有后台。");
       else {
         const options = lib.argumentsFor(args);
         if (Object.keys(options).some(key => key !== "home")) throw new Error("通知桥接只接受 --home");
@@ -43,7 +43,7 @@ try {
         } catch { throw new Error("通知桥接不可用；未确认事件保留，请检查服务状态和版本。"); }
       }
     } else if (["start", "mcp", "stop"].includes(command)) {
-      if (args.includes("--help")) { console.log("用法：agent-task " + command + " [--home 绝对目录]" + (command === "stop" ? " [--json]" : "")); }
+      if (args.includes("--help")) { console.log("用法：task-conductor " + command + " [--home 绝对目录]" + (command === "stop" ? " [--json]" : "")); }
       else {
         const json = command === "stop" && args.includes("--json");
         if (args.filter(arg => arg === "--json").length > 1) throw new Error("重复选项：--json");
@@ -68,7 +68,7 @@ try {
   }
 } catch (error) {
   const message = process.argv[2] === "mcp"
-    ? error.message + "\n安装、初始化或连接排障请使用 using-agent-task：Pi /skill:using-agent-task；Claude Code /agent-task:using-agent-task；Codex $using-agent-task。先核查原因，不自动重装或重放工作。"
+    ? error.message + "\n安装、初始化或连接排障请使用 using-task-conductor：Pi /skill:using-task-conductor；Claude Code /task-conductor:using-task-conductor；Codex $using-task-conductor。先核查原因，不自动重装或重放工作。"
     : error.message;
   console.error(process.argv.includes("--json") ? JSON.stringify({ error: message }) : message);
   process.exitCode = 1;

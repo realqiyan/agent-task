@@ -6,14 +6,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 test("release admission rejects mismatched versions, branch pushes and commits outside master", t => {
-  const root = mkdtempSync(join(tmpdir(), "agent-task-release-")), repo = join(root, "repo");
+  const root = mkdtempSync(join(tmpdir(), "task-conductor-release-")), repo = join(root, "repo");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(repo);
   const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
   const git = (...args) => execFileSync("git", args, { cwd: repo, env, stdio: "pipe" });
   const version = "0.1.0-rc.2";
   const lock = { version, packages: { "": { version } } };
-  writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "@realqiyan/agent-task", version }));
+  writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "task-conductor", version }));
   writeFileSync(join(repo, "package-lock.json"), JSON.stringify(lock));
   git("init", "--initial-branch=master");
   git("config", "user.name", "Release test");

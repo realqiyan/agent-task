@@ -5,8 +5,8 @@
 ## 先核对范围
 
 1. 确认本机 stdio ACP 可执行文件和非敏感参数。它不是 HTTP/WebSocket 地址、已运行的远程服务或 MCP 服务。服务为每个节点会话启动并持有 ACP 进程。
-2. 检查 `agent-task executor --help` 是否提供 register/unregister。插件和服务独立安装，新技能不证明旧服务支持；缺失时说明版本限制，升级须确认。不虚构 MCP 注册工具或修改私有存储。
-3. 确认安装实例，每次命令使用相同 `--home /absolute/private/agent-task`。用 `agent-task status` 核查；注册要求后台运行且具有管理员访问。未运行时请用户在另一终端执行 `agent-task start`，或经明确批准用宿主进程设施启动。此管理步骤不需要内置执行端。
+2. 检查 `task-conductor executor --help` 是否提供 register/unregister。插件和服务独立安装，新技能不证明旧服务支持；缺失时说明版本限制，升级须确认。不虚构 MCP 注册工具或修改私有存储。
+3. 确认安装实例，每次命令使用相同 `--home /absolute/private/task-conductor`。用 `task-conductor status` 核查；注册要求后台运行且具有管理员访问。未运行时请用户在另一终端执行 `task-conductor start`，或经明确批准用宿主进程设施启动。此管理步骤不需要内置执行端。
 4. 单独准备原生认证及无人值守工具权限。凭据不进入聊天、参数或服务私有环境文件。额外 ACP 权限审批会被拒绝。
 
 执行端须通过 stdin/stdout 使用 ACP，诊断写 stderr，并支持服务采用的协议版本及 initialize/session/prompt 流程。不假设提供客户端终端、任意文件访问、交互登录或额外审批。
@@ -29,8 +29,8 @@
 说明具体程序、参数、cwd、原生授权和服务实例，确认后执行：
 
 ```bash
-agent-task executor register --file /absolute/private/my-acp.json --yes
-agent-task executor show my-acp
+task-conductor executor register --file /absolute/private/my-acp.json --yes
+task-conductor executor show my-acp
 ```
 
 --yes 只确认已批准的注册，不扩大原生权限。注册检查本机路径，先持久化再开放派发；不启动 ACP、不探测模型、不提交任务。参数是启动配置，不是凭据存储。
@@ -39,7 +39,7 @@ agent-task executor show my-acp
 
 ## 验证和使用
 
-- 用 `agent-task executor list` 核对 ID 为 ready；这只证明本机启动准备，不证明 ACP 兼容、模型登录或完整工具授权。
+- 用 `task-conductor executor list` 核对 ID 为 ready；这只证明本机启动准备，不证明 ACP 兼容、模型登录或完整工具授权。
 - 调用宿主实际 MCP `executor_list({})`。如果此前因无执行端而连接失败，重连 MCP，无需重启后台。
 - 通过现有 `task_create` 契约指定节点 executorId，见[任务使用](tasks.md)。不为测试注册而直接提交任务。
 - 真实 ACP/模型验收须另行批准有界任务，不能把注册成功报告为任务执行成功。
@@ -51,7 +51,7 @@ agent-task executor show my-acp
 检查受影响工作并取得确认后：
 
 ```bash
-agent-task executor unregister my-acp --yes
+task-conductor executor unregister my-acp --yes
 ```
 
 注销立即持久生效，不需重启。它阻止后续通过该 ID 派发，但不终止活动进程、删除历史或改变已有快照；后续续接可能被拒绝。同一 ID 换用不同 command、args 或 cwd 不会重绑旧任务。响应丢失时先查询状态，不删除注册文件、历史或工作目录修复不确定状态。

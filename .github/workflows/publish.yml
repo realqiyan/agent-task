@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   preflight:
-    if: github.repository == 'realqiyan/agent-task' && github.actor == 'realqiyan' && github.triggering_actor == 'realqiyan'
+    if: github.repository == 'realqiyan/task-conductor' && github.actor == 'realqiyan' && github.triggering_actor == 'realqiyan'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}
@@ -69,10 +69,10 @@ jobs:
           import { readdirSync } from "node:fs";
           import { execFileSync } from "node:child_process";
           import assert from "node:assert/strict";
-          const files = readdirSync(".").filter(file => /^realqiyan-agent-task-.*\.tgz$/.test(file));
+          const files = readdirSync(".").filter(file => /^task-conductor-.*\.tgz$/.test(file));
           assert.equal(files.length, 1);
           const pkg = JSON.parse(execFileSync("tar", ["-xOf", files[0], "package/package.json"], { encoding: "utf8" }));
-          assert.equal(pkg.name, "@realqiyan/agent-task");
+          assert.equal(pkg.name, "task-conductor");
           assert.equal(pkg.version, process.env.EXPECTED_VERSION);
           assert.equal(pkg.license, "MIT");
           assert.equal(pkg.publishConfig.tag, "latest");
@@ -86,7 +86,7 @@ jobs:
       - name: Publish with npm trusted publishing (no rebuild or package scripts)
         if: github.event_name == 'push' || !inputs.verify_only
         run: |
-          npm publish realqiyan-agent-task-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
+          npm publish task-conductor-*.tgz --ignore-scripts --access public --tag latest --provenance --registry=https://registry.npmjs.org
       - name: Verify public latest and default global install
         env:
           EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}

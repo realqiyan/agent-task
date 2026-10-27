@@ -10,7 +10,7 @@ export class SettingsError extends Error {
   constructor(readonly code: "invalid" | "conflict" | "unavailable", message: string) { super(message); }
 }
 const protectedKeys = new Set(["HOME", "PATH", "LANG", "LC_ALL", "TZ", "TMPDIR", "NODE_OPTIONS", "NODE_PATH",
-  "PI_ACP_PI_COMMAND", "AGENT_TASK_TOKEN", ADMIN_TOKEN_ENV, "__proto__", "constructor", "prototype"]);
+  "PI_ACP_PI_COMMAND", "TASK_CONDUCTOR_TOKEN", ADMIN_TOKEN_ENV, "__proto__", "constructor", "prototype"]);
 const modelKeys = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"];
 type Snapshot = SettingsSnapshot;
 type Edit = { configText: string; environmentText: string; expires: number };

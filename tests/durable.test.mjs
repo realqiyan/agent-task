@@ -12,7 +12,7 @@ import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage
 import { TaskMemory } from "../dist/integrations/coordinator/memory.js";
 
 test("pending SDK tasks reopen unchanged while unsupported versions and kinds still fail closed", async t => {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-pending-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-pending-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const id = randomUUID(), path = join(dir, "coordinators", id + ".sqlite");
   const open = async () => Harness.open(await openCoordinatorStorage(dir, id), { models: createModels(), registry: createRegistry() }, context);
@@ -50,7 +50,7 @@ test("pending SDK tasks reopen unchanged while unsupported versions and kinds st
 });
 
 test("real durable SQLite preserves Task memory and submissions across reopen, and isolates Tasks", async t => {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-durable-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-durable-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const id = randomUUID();
   const open = async runId => Harness.open(await openCoordinatorStorage(dir, runId), { models: createModels(), registry: createRegistry() }, context);

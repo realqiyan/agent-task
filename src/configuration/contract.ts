@@ -23,7 +23,7 @@ const coordinatorSchema = z.discriminatedUnion("provider", [
 export const configSchema = z.object({
   dataDir: z.string().min(1),
   port: z.number().int().min(0).max(65535).default(8765),
-  tokenEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).default("AGENT_TASK_TOKEN"),
+  tokenEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).default("TASK_CONDUCTOR_TOKEN"),
   coordinator: coordinatorSchema.optional(),
   disabledExecutors: z.array(executorTypeSchema).max(4).refine(types => new Set(types).size === types.length,
     "Disabled executor types must be unique").default([]),

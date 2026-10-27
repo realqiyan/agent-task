@@ -17,7 +17,7 @@ import { TaskStore } from "../dist/tasks/storage/store.js";
 import { repositoryIdentity, projectIdentity, runJson } from "../plugin/scripts/notifications.mjs";
 
 function fixture(t) {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-notifications-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-notifications-"));
   const executor = { id: "local", type: "custom", nativePath: realpathSync("/usr/bin/false"), command: realpathSync("/usr/bin/false"), args: [], adapterVersion: null };
   const create = () => createTaskRuntime(dir, [executor], createExecution({ PATH: "/usr/bin:/bin" }),
     createCoordinator(dir, { provider: "openai", model: "gpt-4.1" }), error => { throw error; });
@@ -134,21 +134,21 @@ test("项目身份对 SSH/HTTPS 一致；保留完整分组和大小写，无 re
   assert.equal(repositoryIdentity("ssh://git@example.com/team/sub/app.git"), repositoryIdentity("https://example.com/team/sub/app/"));
   assert.notEqual(repositoryIdentity("https://example.com/Team/app"), repositoryIdentity("https://example.com/team/app"));
   assert.throws(() => repositoryIdentity("/tmp/repo"));
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-project-id-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-project-id-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const env = { ...process.env, AGENT_TASK_PROJECT_ROOT: dir };
+  const env = { ...process.env, TASK_CONDUCTOR_PROJECT_ROOT: dir };
   const [a, b] = await Promise.all([projectIdentity(dir, { env }), projectIdentity(dir, { env })]);
   assert.equal(a, b); assert.match(a, /^uuid:/);
-  assert.equal(JSON.parse(readFileSync(join(dir, ".agent-task/project.json"))).projectId, a);
+  assert.equal(JSON.parse(readFileSync(join(dir, ".task-conductor/project.json"))).projectId, a);
   execFileSync("git", ["init", "--quiet", dir]);
   execFileSync("git", ["-C", dir, "remote", "add", "origin", "https://example.com/team/app.git"]);
   assert.equal(await projectIdentity(dir, { env }), a);
   const repo = join(dir, "second"); mkdirSync(repo);
   execFileSync("git", ["init", "--quiet", repo]);
   execFileSync("git", ["-C", repo, "remote", "add", "origin", "git@example.com:team/sub/app.git"]);
-  assert.equal(await projectIdentity(repo, { env: { ...env, AGENT_TASK_PROJECT_ROOT: repo } }), repositoryIdentity("git@example.com:team/sub/app.git"));
-  writeFileSync(join(repo, ".agent-task/project.json"), "{}");
-  await assert.rejects(projectIdentity(repo, { env: { ...env, AGENT_TASK_PROJECT_ROOT: repo } }), /配置无效/);
+  assert.equal(await projectIdentity(repo, { env: { ...env, TASK_CONDUCTOR_PROJECT_ROOT: repo } }), repositoryIdentity("git@example.com:team/sub/app.git"));
+  writeFileSync(join(repo, ".task-conductor/project.json"), "{}");
+  await assert.rejects(projectIdentity(repo, { env: { ...env, TASK_CONDUCTOR_PROJECT_ROOT: repo } }), /配置无效/);
 });
 
 test("插件桥接有界取消真实进程，不回显原始诊断", async () => {

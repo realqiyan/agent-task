@@ -15,10 +15,10 @@ import { replacePrivateText } from "../dist/infrastructure/private-files.js";
 import { FileCommitError } from "../dist/shared/errors.js";
 
 function fixture(t) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-settings-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-settings-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const configPath = join(root, "config.json"), environmentPath = join(root, "environment.json");
-  const environment = { AGENT_TASK_TOKEN: randomBytes(32).toString("hex"), [ADMIN_TOKEN_ENV]: randomBytes(32).toString("hex") };
+  const environment = { TASK_CONDUCTOR_TOKEN: randomBytes(32).toString("hex"), [ADMIN_TOKEN_ENV]: randomBytes(32).toString("hex") };
   writeFileSync(configPath, JSON.stringify({ dataDir: root, disabledExecutors: [] }), { mode: 0o600 });
   writeFileSync(environmentPath, JSON.stringify(environment), { mode: 0o600 });
   const settings = new Settings(new LocalSettingsFiles(configPath, environmentPath), configurationPaths, loadConfig(configPath), {}, environment);
@@ -34,7 +34,7 @@ test("startup edits are next-start only; secrets stay private, missing credentia
   assert.throws(() => settings.validate(parseSettings(settingsConfigSchema, { editToken: initial.editToken, config })), /missing/);
   assert.equal(readFileSync(configPath, "utf8"), original);
   assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: ADMIN_TOKEN_ENV, action: "replace", value: secret })), /not console-managed/);
-  assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: "ALIAS_KEY", action: "replace", value: environment.AGENT_TASK_TOKEN })), /cannot be reused/);
+  assert.throws(() => settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: "ALIAS_KEY", action: "replace", value: environment.TASK_CONDUCTOR_TOKEN })), /cannot be reused/);
   const prepared = settings.saveCredential(parseSettings(credentialUpdateSchema, { editToken: initial.editToken, key: "OPENAI_API_KEY", action: "replace", value: secret }));
   assert(!JSON.stringify(prepared).includes(secret));
   assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: initial.editToken, config })), /changed/);
@@ -45,7 +45,7 @@ test("startup edits are next-start only; secrets stay private, missing credentia
   assert.deepEqual(saved.saved.disabledExecutors, ["claude"]);
   assert.deepEqual(saved.running.disabledExecutors, []);
   assert.equal(settings.status().pendingRestart, true);
-  assert.equal(readEnvironment(environmentPath).NEXT_SERVICE_TOKEN, environment.AGENT_TASK_TOKEN);
+  assert.equal(readEnvironment(environmentPath).NEXT_SERVICE_TOKEN, environment.TASK_CONDUCTOR_TOKEN);
   assert.equal(readEnvironment(environmentPath).OPENAI_API_KEY, secret);
   assert.equal(statSync(configPath).mode & 0o777, 0o600);
   assert.equal(statSync(environmentPath).mode & 0o777, 0o600);
@@ -58,7 +58,7 @@ test("token aliases cannot become model credentials through settings or offline 
   view = settings.saveConfig(parseSettings(settingsConfigSchema, { editToken: view.editToken, config: { ...view.saved, tokenEnv: "NEXT_SERVICE_TOKEN" } }));
   const before = readFileSync(configPath, "utf8");
   const config = { ...view.saved, dataDir: join(root, "next"), coordinator: { provider: "openai-compatible", model: "example",
-    baseUrl: "https://untrusted.invalid/v1", apiKeyEnv: "AGENT_TASK_TOKEN", contextWindow: 4096, maxTokens: 1024 } };
+    baseUrl: "https://untrusted.invalid/v1", apiKeyEnv: "TASK_CONDUCTOR_TOKEN", contextWindow: 4096, maxTokens: 1024 } };
   const input = { editToken: view.editToken, config };
   assert.throws(() => settings.validate(parseSettings(settingsConfigSchema, input)), /distinct/);
   assert.throws(() => settings.saveConfig(parseSettings(settingsConfigSchema, input)), /distinct/);

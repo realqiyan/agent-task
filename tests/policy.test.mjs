@@ -29,10 +29,10 @@ test("public progress preserves output and omits thoughts and raw tool data", ()
   assert.deepEqual(tools, [{ kind: "tool", data: { id: "id", name: "read", kind: "read", status: "completed" } }]);
 });
 test("native executor environment survives, but service secrets, coordinator credentials and aliases do not", () => {
-  const privateValues = { SERVICE_AUTH: "service", AGENT_TASK_ADMIN_TOKEN: "administrator", MODEL_KEY: "coordinator", NEXT_MODEL_KEY: "next" };
+  const privateValues = { SERVICE_AUTH: "service", TASK_CONDUCTOR_ADMIN_TOKEN: "administrator", MODEL_KEY: "coordinator", NEXT_MODEL_KEY: "next" };
   const config = { tokenEnv: "SERVICE_AUTH", coordinator: { provider: "openai-compatible", apiKeyEnv: "MODEL_KEY" } };
   const env = executorEnvironment({ PATH: "/usr/bin", HOME: "/work", XDG_CONFIG_HOME: "/native", CODEX_HOME: "/native/codex",
     NATIVE_API_KEY: "native", ...privateValues, ALIAS_KEY: "coordinator", PENDING_ALIAS: "next",
-    NODE_OPTIONS: "--require arbitrary", PI_ACP_PI_COMMAND: "/unreviewed", AGENT_TASK_INTERNAL: "private" }, privateValues, config);
+    NODE_OPTIONS: "--require arbitrary", PI_ACP_PI_COMMAND: "/unreviewed", TASK_CONDUCTOR_INTERNAL: "private" }, privateValues, config);
   assert.deepEqual(env, { PATH: "/usr/bin", HOME: "/work", XDG_CONFIG_HOME: "/native", CODEX_HOME: "/native/codex", NATIVE_API_KEY: "native" });
 });

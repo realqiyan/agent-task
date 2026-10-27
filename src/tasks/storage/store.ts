@@ -40,7 +40,7 @@ export function inspectTaskStorage(db: DatabaseSync) {
     return { format: taskStorageFormat, marked };
   } catch (cause) {
     if (cause instanceof StorageError) throw cause;
-    throw new StorageError("任务数据库格式不受支持或数据不完整。请保留数据并运行 agent-task migrate --check；不要手工补表。", { cause });
+    throw new StorageError("任务数据库格式不受支持或数据不完整。请保留数据并运行 task-conductor migrate --check；不要手工补表。", { cause });
   }
 }
 

@@ -1,14 +1,14 @@
 {
-  "name": "agent-task",
+  "name": "task-conductor",
   "interface": {
-    "displayName": "Agent Task"
+    "displayName": "Task Conductor"
   },
   "plugins": [
     {
-      "name": "agent-task",
+      "name": "task-conductor",
       "source": {
         "source": "npm",
-        "package": "@realqiyan/agent-task-plugin",
+        "package": "task-conductor-plugin",
         "version": "0.1.0",
         "registry": "https://registry.npmjs.org"
       },

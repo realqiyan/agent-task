@@ -24,7 +24,7 @@ export async function setupWizard(options, root) {
     options.home = await ask("私有安装目录", options.home ?? root);
     options["data-dir"] = await ask("私有数据目录", options["data-dir"] ?? join(options.home, "data"));
     options.port = await ask("回环 HTTP 端口（0 表示自动分配）", options.port ?? "8765");
-    options["token-env"] = await ask("MCP 令牌变量名", options["token-env"] ?? "AGENT_TASK_TOKEN");
+    options["token-env"] = await ask("MCP 令牌变量名", options["token-env"] ?? "TASK_CONDUCTOR_TOKEN");
     const tokens = await ask("服务与管理员令牌（generate/file）", options["credentials-file"] ? "file" : "generate");
     if (tokens === "generate") options["generate-tokens"] = true;
     else if (tokens === "file") options["credentials-file"] = await ask("私有凭据 JSON 文件", options["credentials-file"]);

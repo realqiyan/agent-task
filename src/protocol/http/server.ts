@@ -51,7 +51,7 @@ export class HttpServer {
         const discovered = options.tasks.executors.refresh();
         if (!discovered.executors.some(executor => executor.type === "custom" ? executor.state === "ready" : executor.nativePath !== null)) {
           res.json({ jsonrpc: "2.0", id: req.body.id ?? null, error: { code: -32000,
-            message: "No local executor found. Install and configure pi, codex, claude or opencode, or register a local stdio ACP executable with agent-task executor register, then reconnect. Management remains available." } });
+            message: "No local executor found. Install and configure pi, codex, claude or opencode, or register a local stdio ACP executable with task-conductor executor register, then reconnect. Management remains available." } });
           return;
         }
       }

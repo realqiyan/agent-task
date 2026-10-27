@@ -17,7 +17,7 @@ function executable(dir, name, command, args) {
   writeFileSync(join(dir, name), "#!/bin/sh\nexec " + [command, ...args].map(quote).join(" ") + "\n", { mode: 0o700 });
 }
 function fixture(t, command = "/usr/bin/false", args = [], nodes = [node("A"), node("B", ["A"])], custom = false, cwd) {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-contract-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-contract-"));
   const store = new TaskStore(dir);
   // Real failing/waiting OS processes, not ACP protocol imitations.
   executable(dir, "codex-acp", command, args);
@@ -232,7 +232,7 @@ test("Cron admission persists calendar slots, counts misses without catch-up, sk
 });
 
 test("custom process cwd defaults to the task workspace or uses its registered directory without changing task records", async t => {
-  const startup = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-startup-"));
+  const startup = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-startup-"));
   try {
     for (const cwd of [undefined, startup]) {
       // Real failing process: this checks process startup and persistence, not successful ACP session setup.
@@ -296,7 +296,7 @@ test("creation keys are scoped to the final workspace, including canonical alias
 });
 
 test("an unrelated database is rejected without changing its records", t => {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-old-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-old-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "tasks.sqlite");
   const db = new DatabaseSync(path);

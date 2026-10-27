@@ -13,9 +13,9 @@ import { createCoordinator } from "../dist/integrations/coordinator/coordinator.
 import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 
-const cli = resolve("bin/agent-task.mjs");
+const cli = resolve("bin/task-conductor.mjs");
 function fixture(t, external = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-migration-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-migration-"));
   const home = join(root, "private"), dataDir = external ? join(root, "data") : join(home, "data");
   const user = join(root, "user"); mkdirSync(user, { mode: 0o700 });
   t.after(() => rmSync(root, { recursive: true, force: true }));

@@ -1,18 +1,18 @@
 {
-  "name": "@realqiyan/agent-task-plugin",
+  "name": "task-conductor-plugin",
   "version": "0.1.0",
   "type": "module",
-  "description": "在 Pi、Claude Code 和 Codex 中安装、配置并通过现有 MCP 工具使用 Agent Task",
+  "description": "在 Pi、Claude Code 和 Codex 中安装、配置并通过现有 MCP 工具使用 Task Conductor",
   "license": "MIT",
   "author": "realqiyan",
   "keywords": [
     "pi-package",
     "mcp",
-    "agent-task"
+    "task-conductor"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/realqiyan/agent-task.git",
+    "url": "git+https://github.com/realqiyan/task-conductor.git",
     "directory": "plugin"
   },
   "files": [

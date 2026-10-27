@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { acquireLock } from "../dist/infrastructure/lock.js";
 
 function fixture(t, cached = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-discovery-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-discovery-"));
   const bin = join(root, "bin"), adapters = join(root, "adapters");
   mkdirSync(bin, { mode: 0o700 });
   t.after(() => rmSync(root, { recursive: true, force: true }));

@@ -11,7 +11,7 @@ import { TaskStore } from "../dist/tasks/storage/store.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 
 function fixture(t) {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-store-"));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-store-"));
   const executor = { id: "local", type: "codex", nativePath: "/usr/bin/false", command: "/usr/bin/false", args: [], adapterVersion: null };
   const failures = [];
   const runtime = createTaskRuntime(dir, [executor], createExecution({ PATH: "/missing" }),

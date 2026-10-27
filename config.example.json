@@ -1,7 +1,7 @@
 {
-  "dataDir": "/absolute/private/path/agent-task",
+  "dataDir": "/absolute/private/path/task-conductor",
   "port": 8765,
-  "tokenEnv": "AGENT_TASK_TOKEN",
+  "tokenEnv": "TASK_CONDUCTOR_TOKEN",
   "coordinator": { "provider": "openai", "model": "YOUR_AVAILABLE_MODEL_ID" },
   "disabledExecutors": []
 }

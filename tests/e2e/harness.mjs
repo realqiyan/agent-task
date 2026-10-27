@@ -12,12 +12,12 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 /** Real local service and remote agents only. No retry, alternate provider or synthetic delivery. */
 export async function startE2e(t, { dependencies = false } = {}) {
   assert.ok(process.env.DEEPSEEK_API_KEY, "Load DEEPSEEK_API_KEY in this shell before running E2E; never print it");
-  const type = process.env.AGENT_TASK_E2E_EXECUTOR;
-  assert.ok(["pi", "codex", "claude", "opencode"].includes(type), "Set AGENT_TASK_E2E_EXECUTOR to an approved native CLI type");
+  const type = process.env.TASK_CONDUCTOR_E2E_EXECUTOR;
+  assert.ok(["pi", "codex", "claude", "opencode"].includes(type), "Set TASK_CONDUCTOR_E2E_EXECUTOR to an approved native CLI type");
   let executor;
-  if (dependencies) assert.equal(process.env.AGENT_TASK_E2E_ALLOW_RESULT_READ, "1",
-    "This case requires explicit approval: AGENT_TASK_E2E_ALLOW_RESULT_READ=1 and native read-only tools for the generated result directory");
-  const dir = await mkdtemp(join(await realpath(tmpdir()), "agent-task-real-e2e-"));
+  if (dependencies) assert.equal(process.env.TASK_CONDUCTOR_E2E_ALLOW_RESULT_READ, "1",
+    "This case requires explicit approval: TASK_CONDUCTOR_E2E_ALLOW_RESULT_READ=1 and native read-only tools for the generated result directory");
+  const dir = await mkdtemp(join(await realpath(tmpdir()), "task-conductor-real-e2e-"));
   t.diagnostic(`Private E2E evidence retained at ${dir}`);
   const log = (event, data = {}) => appendFileSync(join(dir, "events.jsonl"),
     JSON.stringify({ at: new Date().toISOString(), event, ...data }) + "\n", { mode: 0o600 });
@@ -27,10 +27,10 @@ export async function startE2e(t, { dependencies = false } = {}) {
   await mkdir(workspace, { mode: 0o700 });
   await mkdir(join(dataDir, "results"), { recursive: true, mode: 0o700 });
   const configPath = join(dataDir, "config.json"), environmentPath = join(dataDir, "environment.json"), token = randomBytes(32).toString("hex");
-  const tokenEnv = "AGENT_TASK_E2E_TOKEN";
+  const tokenEnv = "TASK_CONDUCTOR_E2E_TOKEN";
   await writeFile(environmentPath, JSON.stringify({ DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, [tokenEnv]: token }), { mode: 0o600 });
   await save("state/config.json", { dataDir, port: 0, tokenEnv,
-    coordinator: { provider: "deepseek", model: process.env.AGENT_TASK_E2E_MODEL || "deepseek-flash" },
+    coordinator: { provider: "deepseek", model: process.env.TASK_CONDUCTOR_E2E_MODEL || "deepseek-flash" },
     disabledExecutors: ["pi", "codex", "claude", "opencode"].filter(value => value !== type),
   });
   let child, closed, readyUrl, spawnError, client, taskId;
@@ -77,7 +77,7 @@ export async function startE2e(t, { dependencies = false } = {}) {
     throw new Error("E2E deadline exceeded; inspect retained private evidence");
   }
   async function connect() {
-    client = new Client({ name: "agent-task-real-e2e", version: "0.1.0" });
+    client = new Client({ name: "task-conductor-real-e2e", version: "0.1.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(readyUrl), {
       requestInit: { headers: { Authorization: `Bearer ${token}` } },
     }));

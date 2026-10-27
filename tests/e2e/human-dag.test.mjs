@@ -5,8 +5,8 @@ import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { startE2e, verifyDelivery } from "./harness.mjs";
 
-const answerFile = process.env.AGENT_TASK_E2E_ANSWER_FILE;
-const fixtureQuantity = Number(process.env.AGENT_TASK_E2E_QUANTITY ?? 3);
+const answerFile = process.env.TASK_CONDUCTOR_E2E_ANSWER_FILE;
+const fixtureQuantity = Number(process.env.TASK_CONDUCTOR_E2E_QUANTITY ?? 3);
 const manualWaitMs = 900000;
 
 async function readAnswer() {

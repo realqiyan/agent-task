@@ -18,13 +18,13 @@ import { LocalExecutors } from "../integrations/acp/discovery.js";
 process.umask(0o077);
 const args = process.argv.slice(2);
 if (args[0] !== "--config" || args.length !== 4 || args[2] !== "--environment") {
-  console.error("Internal runtime requires --config PATH --environment PATH; use agent-task start");
+  console.error("Internal runtime requires --config PATH --environment PATH; use task-conductor start");
   process.exit(2);
 }
 const configPath = resolve(args[1]!), environmentPath = resolve(args[3]!);
 const native = { ...process.env }, base = baseEnvironment(native);
 const environment = readEnvironment(environmentPath);
-const instanceId = process.env.AGENT_TASK_INSTANCE_ID ?? randomUUID();
+const instanceId = process.env.TASK_CONDUCTOR_INSTANCE_ID ?? randomUUID();
 for (const key of Object.keys(process.env)) delete process.env[key];
 Object.assign(process.env, base, environment);
 const config = loadConfig(configPath);
@@ -80,7 +80,7 @@ process.once("disconnect", stop);
 try {
   release = await acquireLock(config.dataDir);
   const executorEnv = executorEnvironment(native, environment, config);
-  const discovery = new LocalExecutors(join(native.AGENT_TASK_INSTALL_HOME ?? dirname(configPath), "adapters"), executorEnv);
+  const discovery = new LocalExecutors(join(native.TASK_CONDUCTOR_INSTALL_HOME ?? dirname(configPath), "adapters"), executorEnv);
   tasks = createTaskRuntime(config.dataDir, [], createExecution(executorEnv),
     config.coordinator ? createCoordinator(config.dataDir, config.coordinator, fatal) : undefined, fatal, discovery, config.disabledExecutors);
   if (adminToken) settings = new Settings(new LocalSettingsFiles(configPath, environmentPath), configurationPaths, config, base, process.env);

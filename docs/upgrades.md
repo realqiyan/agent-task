@@ -1,6 +1,6 @@
 # 数据升级
 
-数据格式基线为 `0.1.0`。服务包升级不修改已有数据格式；存储结构变化通过 `agent-task migrate` 显式转换。格式使用引入该结构的项目版本，不随每次包发布递增。
+数据格式基线为 `0.1.0`。服务包升级不修改已有数据格式；存储结构变化通过 `task-conductor migrate` 显式转换。格式使用引入该结构的项目版本，不随每次包发布递增。
 
 ## 升级步骤
 
@@ -9,17 +9,17 @@
 3. 使用原有 `--home` 检查格式：
 
    ```bash
-   agent-task migrate --check --home /absolute/private/agent-task
+   task-conductor migrate --check --home /absolute/private/task-conductor
    ```
 
 4. 检查结果要求迁移时，指定安装目录及数据目录之外的新备份目录并确认：
 
    ```bash
-   agent-task migrate --home /absolute/private/agent-task \
-     --backup /absolute/private/backups/agent-task-upgrade --yes
+   task-conductor migrate --home /absolute/private/task-conductor \
+     --backup /absolute/private/backups/task-conductor-upgrade --yes
    ```
 
-5. 迁移完成后重新建立 MCP 连接，核对 `agent-task status` 和 MCP `service_status` 的运行版本，并验证只读查询。
+5. 迁移完成后重新建立 MCP 连接，核对 `task-conductor status` 和 MCP `service_status` 的运行版本，并验证只读查询。
 
 `--check` 不写入数据，也不证明执行时已停服。实际迁移取得安装与数据目录的排他锁，校验源数据，备份并校验副本，再修改并校验目标数据。缺表、损坏、未知格式、目录切换未完成或备份路径冲突时拒绝执行。
 
@@ -28,7 +28,7 @@
 迁移记录保存在安装目录的 `migration.json`。备份完成后发生中断时，普通启动拒绝使用未完成的迁移；检查原备份及目录后显式续接：
 
 ```bash
-agent-task migrate --resume --yes --home /absolute/private/agent-task
+task-conductor migrate --resume --yes --home /absolute/private/task-conductor
 ```
 
 续接使用已记录的备份，不覆盖备份，不重放任务、模型调用或 ACP 工作。备份未完成时，业务数据未修改；保留失败目录，另选新备份目录重试。不要删除迁移记录来绕过启动限制。

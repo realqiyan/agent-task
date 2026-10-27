@@ -15,11 +15,11 @@ import { taskSchema } from "../dist/protocol/task-contract.js";
 
 const listen = server => new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
 test("foreground CLI and Web restart on the same port verify a new process; failed startup stays unavailable and uncertain work never replays", { timeout: 30000 }, async t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-restart-")), home = join(root, "private"), workspace = join(root, "workspace");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-restart-")), home = join(root, "private"), workspace = join(root, "workspace");
   const nativeBin = join(root, "bin"), userHome = join(root, "user");
   for (const directory of [workspace, nativeBin, userHome]) mkdirSync(directory, { mode: 0o700 });
   symlinkSync("/usr/bin/false", join(nativeBin, "opencode"));
-  const cli = resolve("bin/agent-task.mjs"), env = { PATH: nativeBin, HOME: userHome };
+  const cli = resolve("bin/task-conductor.mjs"), env = { PATH: nativeBin, HOME: userHome };
   const invoke = (...args) => execFileSync(process.execPath, [cli, ...args, "--home", home], { env, encoding: "utf8", stdio: "pipe" });
   const reservation = createServer(), port = await listen(reservation);
   await new Promise(resolve => reservation.close(resolve));
@@ -62,7 +62,7 @@ test("foreground CLI and Web restart on the same port verify a new process; fail
   let origin = "http://127.0.0.1:" + port;
   const admin = async (path, body) => {
     const response = await fetch(origin + "/admin/api" + path, { method: body ? "POST" : "GET",
-      headers: { Authorization: "Bearer " + secrets.AGENT_TASK_ADMIN_TOKEN, ...(body ? { Origin: origin, "Content-Type": "application/json" } : {}) },
+      headers: { Authorization: "Bearer " + secrets.TASK_CONDUCTOR_ADMIN_TOKEN, ...(body ? { Origin: origin, "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined });
     return { status: response.status, ...(await response.json()) };
   };

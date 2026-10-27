@@ -76,7 +76,7 @@ async function call(client, name, args = {}) {
   return result.structuredContent.data;
 }
 test("MCP checks native CLIs on connection, keeps management available and preserves tasks after disconnect", { timeout: 45_000 }, async t => {
-  const dir = await mkdtemp(join(await realpath(tmpdir()), "agent-task-http-")), config = join(dir, "config.json");
+  const dir = await mkdtemp(join(await realpath(tmpdir()), "task-conductor-http-")), config = join(dir, "config.json");
   const token = randomBytes(32).toString("hex"), adminToken = randomBytes(32).toString("hex");
   await writeFile(config, JSON.stringify({ dataDir: join(dir, "state"), port: 0,
     coordinator: { provider: "openai", model: "not-a-real-model" },
@@ -93,9 +93,9 @@ test("MCP checks native CLIs on connection, keeps management available and prese
   const question = service.supervisor.actions(waitingRun.id).ask({ question: "Which source?", completedWork: "None" });
   await service.close(); store.close();
   const environmentPath = join(dir, "environment.json");
-  await writeFile(environmentPath, JSON.stringify({ AGENT_TASK_TOKEN: token, AGENT_TASK_ADMIN_TOKEN: adminToken }), { mode: 0o600 });
+  await writeFile(environmentPath, JSON.stringify({ TASK_CONDUCTOR_TOKEN: token, TASK_CONDUCTOR_ADMIN_TOKEN: adminToken }), { mode: 0o600 });
   const child = spawn(process.execPath, [resolve("dist/application/main.js"), "--config", config, "--environment", environmentPath], {
-    env: { PATH: dir, AGENT_TASK_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"],
+    env: { PATH: dir, TASK_CONDUCTOR_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "", stderr = "";
   child.stdout.on("data", chunk => stdout += chunk); child.stderr.on("data", chunk => stderr += chunk);

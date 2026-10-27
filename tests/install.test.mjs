@@ -8,7 +8,7 @@ import { createFile, json, saveManifest, operationLock } from "../scripts/instal
 import { readEnvironment } from "../dist/configuration/files.js";
 
 test("setup preserves credentials and serializes initialization records", t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "agent-task-install-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-install-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   createFile(join(root, "invalid.json"), "private-invalid-json");
   assert.throws(() => json(join(root, "invalid.json")), error => !error.message.includes("private-invalid-json"));
@@ -18,8 +18,8 @@ test("setup preserves credentials and serializes initialization records", t => {
   saveManifest(root, manifest);
   assert.deepEqual(json(join(root, "installation.json")), manifest);
   createFile(join(root, "launch.json"), JSON.stringify({ dataDir: root }));
-  createFile(join(root, "environment.json"), JSON.stringify({ AGENT_TASK_TOKEN: "private-test-token", HOME: root }));
+  createFile(join(root, "environment.json"), JSON.stringify({ TASK_CONDUCTOR_TOKEN: "private-test-token", HOME: root }));
   assert.throws(() => createFile(join(root, "environment.json"), "{}"), /EEXIST/);
-  assert.equal(readEnvironment(join(root, "environment.json")).AGENT_TASK_TOKEN, "private-test-token");
+  assert.equal(readEnvironment(join(root, "environment.json")).TASK_CONDUCTOR_TOKEN, "private-test-token");
   assert.equal(readEnvironment(join(root, "environment.json")).HOME, root);
 });
