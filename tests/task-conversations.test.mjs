@@ -18,6 +18,9 @@ import { validateToolArguments } from "@earendil-works/pi-ai";
 import { createRegistry, GenerationTask, Harness, ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { openCoordinatorStorage } from "../dist/integrations/coordinator/storage.js";
 import { memoryUpdateParameters, TaskMemory } from "../dist/integrations/coordinator/memory.js";
+import { coordinatorView } from "../dist/integrations/coordinator/context.js";
+import { Results } from "../dist/results/service.js";
+import { LocalResultFiles } from "../dist/results/files.js";
 
 function fixture(t, coordinator = { provider: "openai", model: "not-a-real-model" }) {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "task-conductor-conversation-"));
@@ -177,6 +180,101 @@ test("ordinary input is idempotent, does not answer questions or reset budgets, 
   assert.equal(page.items[0].id, receipt.id); // Internal execution input is not public history.
   assert.ok(page.next !== null);
   assert.notEqual(f.service.conversations.list(f.task.id, page.next, 1).items[0].id, receipt.id);
+});
+
+test("新增消息经明确无影响审查后验收原输出，遗漏、竞争和上游变化仍被拒绝", t => {
+  const f = fixture(t);
+  f.service.runs.prepareTurn(f.run.id, "A", undefined, f.sessions);
+  f.service.runs.record(f.run.id, "A", "output", null, "Original result");
+  f.service.runs.completeTurn(f.run.id, "A", "end_turn");
+  const message = f.service.supervisor.send({ taskId: f.task.id, requestKey: "progress", message: "进度怎样？" });
+  const accept = ids => f.service.runs.accept(f.run.id, "A", 1, "Original result", "进度询问不改变输入或交付要求", false, ids);
+  assert.throws(() => accept([message.id]), /Unprocessed/);
+  observed(f, message);
+  assert.deepEqual(coordinatorView(f.service.supervisor.actions(f.run.id)).view.run.nodes[0].unreviewedMessageIds, [message.id]);
+  assert.throws(() => accept([]), /predates/);
+  assert.throws(() => accept([randomUUID()]), /predates/);
+  assert.throws(() => accept([message.id, message.id]), /predates/);
+  const later = f.service.supervisor.send({ taskId: f.task.id, requestKey: "progress-2", message: "还在执行吗？" });
+  observed(f, later);
+  assert.throws(() => accept([message.id]), /predates/);
+  const turn = f.service.runs.get(f.run.id).nodes[0].turns[0];
+  const delivery = accept([message.id, later.id]);
+  assert.deepEqual(delivery.messageIds, [message.id, later.id]);
+  assert.ok(delivery.reason.includes(message.id) && delivery.reason.includes(later.id));
+  assert.deepEqual(f.service.runs.get(f.run.id).nodes[0].turns, [turn]);
+
+  f.service.runs.prepareTurn(f.run.id, "B", undefined, f.sessions);
+  f.service.runs.record(f.run.id, "B", "output", null, "Review result");
+  f.service.runs.completeTurn(f.run.id, "B", "end_turn");
+  const changed = f.service.supervisor.send({ taskId: f.task.id, requestKey: "more", message: "补充检查", runId: f.run.id, execute: true });
+  observed(f, changed);
+  f.service.runs.accept(f.run.id, "A", 0, "", "重验证仍有效的上游", true);
+  assert.throws(() => f.service.runs.accept(f.run.id, "B", 1, "Review result", "仍有效", false, [changed.id]), /upstream/);
+});
+
+test("节点回答保留问题语义、来源和范围", t => {
+  const f = fixture(t);
+  const question = f.service.runs.ask(f.run.id, { question: "本次生成几份报告？", completedWork: "尚未开始节点" });
+  const answer = f.service.supervisor.answer({ taskId: f.task.id, questionId: question.id, requestKey: "quantity", answer: "3" });
+  observed(f, answer);
+  const dispatch = f.service.runs.prepareTurn(f.run.id, "A", undefined, f.sessions, [answer.id]);
+  const data = JSON.parse(dispatch.text.split("执行上下文：\n")[1]);
+  assert.deepEqual(data.userFacts, [{ messageId: answer.id, kind: "answer", runId: f.run.id, createdAt: answer.createdAt,
+    content: "3", questionId: question.id, question: question.question }]);
+});
+
+test("大交付补充以有界引用传递，并只开放当前上游和本节点旧交付", t => {
+  const f = fixture(t), large = "x".repeat(130000);
+  review(f, f.run.id, "A", large); review(f, f.run.id, "B", "B");
+  f.service.runs.finish(f.run.id, "Complete");
+  const old = f.service.runs.get(f.run.id);
+  const input = f.service.supervisor.send({ taskId: f.task.id, runId: f.run.id, requestKey: "large-supplement", execute: true, message: "补充原交付" });
+  observed(f, input);
+  const dispatch = f.service.runs.prepareTurn(input.runId, "A", "核对原交付后补充", f.sessions, [input.id]);
+  const data = JSON.parse(dispatch.text.split("执行上下文：\n")[1]);
+  assert.ok(dispatch.text.length < 10000);
+  assert.equal(data.previousDelivery.length, large.length);
+  assert.equal(data.previousDelivery.excerpt.length, 500);
+  assert.equal(data.previousDelivery.resultFile, old.nodes[0].resultFile);
+  assert.deepEqual(dispatch.inputFiles, [old.nodes[0].resultFile]);
+  const results = new Results(new LocalResultFiles(join(f.dir, "results"), true));
+  assert.equal(results.readInputFile(dispatch.inputFiles, data.previousDelivery.resultFile), large);
+  assert.throws(() => results.readInputFile(dispatch.inputFiles, old.nodes[1].resultFile), /authorized/);
+  assert.equal(readFileSync(old.nodes[0].resultFile, "utf8"), large);
+  assert.deepEqual(f.service.runs.get(f.run.id), old);
+});
+
+test("记忆增量更新保留不可见 Run 笔记，支持显式删除并在 SDK 重开后保留", async t => {
+  const f = fixture(t), actions = f.service.supervisor.actions(f.run.id);
+  const historical = { key: "historical", kind: "fact", text: "本轮专属事实", basis: "reported",
+    scope: { type: "run", runId: f.run.id }, sources: [{ type: "run", runId: f.run.id }] };
+  const persistent = { key: "preference", kind: "fact", text: "长期要求", basis: "reported",
+    scope: { type: "task" }, sources: [{ type: "task", taskId: f.task.id }] };
+  const open = async () => Harness.open(await openCoordinatorStorage(f.dir, f.task.id), { models: createModels(), registry: createRegistry() }, context);
+  let harness = await open();
+  try {
+    const root = await harness.root(context);
+    await root.commit(async tx => { (await tx.doc(TaskMemory, root.id)).items = [historical]; }, context);
+    await root.commit(async tx => {
+      const doc = await tx.doc(TaskMemory, root.id);
+      doc.items = actions.updateMemory(doc.items, [persistent], []);
+    }, context);
+  } finally { await harness.close(context); }
+  harness = await open();
+  try {
+    const root = await harness.root(context), memory = await harness.snapshot(TaskMemory, root.id, context);
+    assert.deepEqual(memory.items, [historical, persistent]);
+    assert.throws(() => actions.updateMemory(memory.items, [persistent], [persistent.key]), /冲突/);
+    assert.throws(() => actions.updateMemory(memory.items, [], [historical.key, historical.key]), /重复/);
+    const crowded = Array.from({ length: 39 }, (_, i) => ({ ...persistent, key: "new-" + i }));
+    assert.throws(() => actions.updateMemory(memory.items, crowded, []), /40 items/);
+    await root.commit(async tx => {
+      const doc = await tx.doc(TaskMemory, root.id);
+      doc.items = actions.updateMemory(doc.items, [], [historical.key]);
+    }, context);
+    assert.deepEqual((await harness.snapshot(TaskMemory, root.id, context)).items, [persistent]);
+  } finally { await harness.close(context); }
 });
 
 test("supplementary delivery preserves history, requires explicit intent and blocks downstream reuse until its dependencies are current", t => {

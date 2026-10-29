@@ -7,6 +7,7 @@ import { iso } from "../shared/time.js";
 import type { NotificationOrigin, Task, TaskInput, TaskScheduleControl } from "./model.js";
 import type { DefinitionStore, WorkspaceAccess } from "./ports.js";
 import { validateGraph } from "./graph.js";
+import { validateExecutionContext } from "./execution-context.js";
 import { hasUncertainOutcome, initialTime, resumeSchedule } from "./schedule.js";
 import { notificationOriginData, taskData, taskScheduleControlData } from "./validation.js";
 
@@ -14,7 +15,8 @@ import { notificationOriginData, taskData, taskScheduleControlData } from "./val
 export class TaskDefinitions {
   private closed = false;
   constructor(private readonly store: DefinitionStore, private readonly executors: ExecutorRegistry,
-    private readonly workspaces: WorkspaceAccess, private readonly coordinatorConfigured: boolean) {}
+    private readonly workspaces: WorkspaceAccess, private readonly coordinatorConfigured: boolean,
+    private readonly resultsRoot: string) {}
   private check(): void { if (this.closed) throw new TaskError("unavailable", "Task definition service closed"); }
   create(value: TaskInput, now = Date.now(), notification: NotificationOrigin | null = null): Task {
     this.check();
@@ -31,6 +33,7 @@ export class TaskDefinitions {
     }
     if (all.length >= MAX_TASKS) throw new TaskError("precondition", "Task definition limit reached");
     validateGraph(input.nodes);
+    for (const node of input.nodes) validateExecutionContext(input, node, this.resultsRoot);
     const executors = this.executors.snapshot(input.nodes.map(node => node.executorId));
     const nextAt = initialTime(input.schedule, now);
     if (input.schedule.type !== "now" && nextAt < now) throw new TaskError("validation", "Schedule must start in the future");

@@ -47,7 +47,7 @@ export class TaskSupervisor {
       check: current,
       requestModel: () => { current(); if (execution) { try { this.runs.requestModel(runId!); } finally { this.reconcile(runId!); } } else this.conversations.requestModel(input.id); },
       converse: (node, message, contextMessageIds) => this.converse(execute(), node, message, contextMessageIds),
-      accept: async (node, turn, result, reason, reuse) => this.runs.accept(execute(), node, turn, result, reason, reuse),
+      accept: async (node, turn, result, reason, reuse, reviewedMessageIds) => this.runs.accept(execute(), node, turn, result, reason, reuse, reviewedMessageIds),
       ask: request => {
         const id = execute(), question = this.runs.ask(id, request);
         clearTimeout(this.active.get(taskId)?.timer); return question;
@@ -71,6 +71,7 @@ export class TaskSupervisor {
       bind: id => { this.check(); this.conversations.bind(taskId, id); },
       project: (cursor, runId, text) => { this.conversations.project(taskId, cursor, runId, text); },
       validateMemory: items => { current(); this.conversations.validateMemory(taskId, items); },
+      updateMemory: (stored, items, removeKeys) => { current(); return this.conversations.updateMemory(taskId, stored, items, removeKeys); },
     };
   }
   converse(id: string, nodeId: string, message?: string, contextMessageIds?: string[]): Promise<NodeRun> {
@@ -99,6 +100,7 @@ export class TaskSupervisor {
     try {
       const closing = ownedNode && this.sessions.closingSession(ownedNode.id);
       if (closing) await closing;
+      if (ownedNode && this.accepted(id, nodeId)) await this.sessions.retireWithoutInputFiles(ownedNode.id);
       if (this.sessions.size >= MAX_NODE_SESSIONS) await this.retireAccepted();
       this.check(); this.runs.current(id, inputId);
       const dispatch = this.runs.prepareTurn(id, nodeId, message, this.sessions, contextMessageIds);

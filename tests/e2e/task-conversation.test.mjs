@@ -134,7 +134,7 @@ test("real Task dialogue, persisted model-written memory, restart and supplement
   assert.ok(record.turns.some(turn => turn.contextMessageIds.includes(supplement.messageId)));
   assert.ok(record.turns.some(turn => turn.contextMessageIds.includes(note.messageId)), "Task-scoped facts remain selectable in a supplementary Run");
   assert.ok(record.turns.some(turn => turn.prompt.includes(tag)));
-  assert.deepEqual(copy.inputFiles, [record.resultFile]);
+  assert.deepEqual(copy.inputFiles, [record.resultFile, initial.nodes[1].resultFile]);
   assert.deepEqual(copy.deliveries.at(-1).inputDeliveries, [record.deliveryId]);
   assert.deepEqual(await e2e.getRun(initial.runId), initial, "Supplementary work must leave the original Run immutable");
   assert.equal((await e2e.call("task_run_list", { taskId: task.taskId })).items.length, 2);

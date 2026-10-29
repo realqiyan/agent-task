@@ -53,5 +53,7 @@ export function coordinatorView(actions: CoordinatorActions, args: {
         baseline: node.baseline ? deliveryView(node.baseline) : null,
         deliveries: node.deliveries.map(deliveryView),
         turns: node.turns.map((turn, index) => ({ turn: index + 1, length: turn.output.length, stopReason: turn.stopReason })),
+        unreviewedMessageIds: node.status === "awaiting_review"
+          ? messages.filter(message => !node.turns.at(-1)!.messageIds.includes(message.id)).map(message => message.id) : [],
         latestOutput: excerpt(node.turns.at(-1)?.output ?? "") })) } : null } });
 }

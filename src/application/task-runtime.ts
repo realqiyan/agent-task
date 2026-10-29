@@ -24,7 +24,7 @@ export function createTaskRuntime(directory: string, profiles: readonly Executor
       discovery ? new LocalCustomExecutorFiles(join(directory, "custom-executors.json")) : undefined);
     const workspaces = { resolve: resolveWorkspace, check: checkWorkspace };
     const results = new Results(new LocalResultFiles(join(directory, "results"), true));
-    const definitions = new TaskDefinitions(store, executors, workspaces, Boolean(coordinate));
+    const definitions = new TaskDefinitions(store, executors, workspaces, Boolean(coordinate), results.root);
     const notifications = new TaskNotifications(store);
     const conversations = new TaskConversations(store, () => Boolean(coordinate));
     const runs = new TaskRuns(store, executors, results, workspaces, conversations);

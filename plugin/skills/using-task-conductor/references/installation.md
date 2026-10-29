@@ -31,7 +31,7 @@
 
 插件通过有时长和输出限制的 `task-conductor setup --check --json` 只读检查；配置有效后，用 `task-conductor status --json` 查询已有后台的运行版本。不自动启动、重启或修复。失败或不支持时只能报告不确定；已初始化但停止的后台不是未安装。启动检查不是持续监控，当前会话中升级仍须按上述流程完成重连验证。
 
-根据提示行动前核对命令和 home。配置自定义 MCP 时，经确认在宿主启动环境设置 `TASK_CONDUCTOR_PREFLIGHT_COMMAND` 与 `TASK_CONDUCTOR_PREFLIGHT_HOME`。它们是非敏感的诊断目标，不配置 MCP 或服务；不写入服务凭据，也不假设插件识别了手工宿主配置。
+根据提示行动前核对命令和 home。配置自定义 MCP 时，经确认在宿主启动环境设置 `TASK_CONDUCTOR_PREFLIGHT_COMMAND` 与 `TASK_CONDUCTOR_PREFLIGHT_HOME`。它们选择启动检查及 Pi 通知桥接的程序和 home，必须与 MCP 指向同一安装；变量本身不修改 MCP 或服务配置。不写入服务凭据，也不假设插件识别了手工宿主配置。
 
 Codex 需要用户在 /hooks 审查并信任 hook，不绕过信任。hook/扩展禁用或 Node 无法启动时使用显式技能入口；没有提示不证明就绪。用户可以禁用检查而保留技能。
 

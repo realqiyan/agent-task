@@ -11,6 +11,8 @@ import { executorRecord } from "../dist/executors/validation.js";
 import { taskSchema } from "../dist/protocol/task-contract.js";
 import { createExecution } from "../dist/integrations/acp/execution.js";
 import { createCoordinator } from "../dist/integrations/coordinator/coordinator.js";
+import { executionContext } from "../dist/tasks/execution-context.js";
+import { NodeSessions } from "../dist/tasks/sessions.js";
 
 function executable(dir, name, command, args) {
   const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -89,6 +91,8 @@ test("DAG admission validates structure, assigned executors and deduplication be
     [[node("A", ["B"]), node("B", ["A"])], /Cyclic/], [[node("A", ["missing"])], /Unknown dependency/],
     [[{ ...node("A"), executorId: "unregistered" }], /not ready/],
   ]) assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "invalid", nodes }), error);
+  assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "oversized-context", prompt: "x".repeat(64000),
+    nodes: [{ ...node("large"), prompt: "y".repeat(64000) }] }), /上下文超过/);
   f.executors.splice(0);
   await f.reopen();
   assert.throws(() => f.service.definitions.create({ ...f.input, requestKey: "unapproved" }), /not ready/);
@@ -99,6 +103,51 @@ test("DAG admission validates structure, assigned executors and deduplication be
   for (let i = 0; i < f.input.maxModelCalls; i++) actions.requestModel();
   assert.throws(() => actions.requestModel(), /模型请求额度/);
   assert.equal(f.service.runs.get(f.run.id).status, "failed");
+});
+
+test("创建预留直接上游和旧交付的上下文容量，接近上限的定义在持久化前被拒绝", t => {
+  const f = fixture(t), largeNode = { ...node("B", ["A"]), prompt: "b".repeat(64000) };
+  const input = { ...f.input, requestKey: "context-boundary", nodes: [node("A"), largeNode], prompt: "a" };
+  input.prompt = "a".repeat(127990 - executionContext(input, largeNode).length + 1);
+  assert.equal(executionContext(input, largeNode).length, 127990);
+  const before = f.store.definitions();
+  assert.throws(() => f.service.definitions.create(input), error => error.code === "validation" && /必要交付引用/.test(error.message));
+  assert.deepEqual(f.store.definitions(), before);
+});
+
+test("含 JSON 转义与十九个上游的长上下文可派发，并容纳补充 Run 的旧交付", async t => {
+  const f = fixture(t), parents = Array.from({ length: 19 }, (_, i) => node("parent" + i));
+  const sink = { ...node("sink", parents.map(parent => parent.id)), prompt: "b".repeat(60000) };
+  const task = f.service.definitions.create({ ...f.input, requestKey: "context-reserve",
+    prompt: "a" + "\u0001".repeat(9000) + "a".repeat(4000), nodes: [...parents, sink] });
+  const sessions = new NodeSessions(createExecution({ PATH: "/usr/bin:/bin" }), error => { throw error; });
+  t.after(() => sessions.close());
+  f.service.runs.trigger();
+  const run = f.service.runs.list(task.id).items[0];
+  // 真实业务账本和结果文件，只验证派发上下文，不建立成功 ACP 会话。
+  for (const definition of task.input.nodes) {
+    const dispatch = f.service.runs.prepareTurn(run.id, definition.id, undefined, sessions);
+    assert.ok(dispatch.text.length <= 128000);
+    const output = definition.id === "sink" ? "\u0001".repeat(500) + "z".repeat(130000) : definition.id;
+    f.service.runs.record(run.id, definition.id, "output", null, output);
+    f.service.runs.completeTurn(run.id, definition.id, "end_turn");
+    f.service.runs.accept(run.id, definition.id, 1, output, "交付满足节点要求");
+  }
+  f.service.runs.finish(run.id, "已完成");
+  const old = f.service.runs.get(run.id);
+  const receipt = f.service.supervisor.send({ taskId: task.id, runId: run.id, requestKey: "context-supplement", execute: true, message: "补充核对" });
+  f.store.saveMessages([{ ...receipt, status: "submitted", submissionId: "1" }]);
+  f.service.runs.observe(task.id, receipt.runId, [receipt.id]);
+  for (const parent of parents) f.service.runs.accept(receipt.runId, parent.id, 0, "", "原输入及交付仍满足要求", true);
+  const dispatch = f.service.runs.prepareTurn(receipt.runId, sink.id, "核对", sessions);
+  const context = JSON.parse(dispatch.text.split("执行上下文：\n")[1]);
+  assert.ok(dispatch.text.length > 120000 && dispatch.text.length <= 128000);
+  assert.equal(context.upstream.length, 19);
+  assert.equal(context.previousDelivery.excerpt, "\u0001".repeat(500));
+  assert.equal(context.previousDelivery.length, 130500);
+  assert.equal(context.previousDelivery.resultFile, old.nodes.at(-1).resultFile);
+  assert.equal(dispatch.inputFiles.length, 20);
+  assert.deepEqual(f.service.runs.get(run.id), old);
 });
 
 test("each run retains the caller DAG and dispatches only to the node's assigned executor", async t => {

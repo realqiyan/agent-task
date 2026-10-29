@@ -46,7 +46,7 @@ Pi 扩展和 Claude Code/Codex 的 `SessionStart` hook 独立于 MCP 连接检�
 
 检查只在会话启动时运行，不持续监控，也不验证宿主 MCP 连接。当前会话内升级后仍须主动重连验证。
 
-自定义 MCP 命令或 home 时，在宿主启动环境设置 `TASK_CONDUCTOR_PREFLIGHT_COMMAND` 和 `TASK_CONDUCTOR_PREFLIGHT_HOME`；它们只选择检查目标，MCP 须另行配置相同程序和 home。不需要检查或使用其他连接时，可在宿主中禁用对应 hook/扩展。
+自定义 MCP 命令或 home 时，在宿主启动环境设置 `TASK_CONDUCTOR_PREFLIGHT_COMMAND` 和 `TASK_CONDUCTOR_PREFLIGHT_HOME`；它们选择检查及 Pi 通知桥接目标，MCP 须另行配置相同程序和 home。不需要检查或使用其他连接时，可在宿主中禁用对应 hook/扩展。
 
 Codex hook 须先在 `/hooks` 中审查并信任。不绕过信任。检查禁用、未获信任或 Node 无法启动时，技能仍可显式调用。
 

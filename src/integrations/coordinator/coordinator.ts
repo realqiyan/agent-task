@@ -18,8 +18,8 @@ const instructions = `你是一个 Task 的持续协调者，对整体目标负�
 end_turn 只表示本轮协议结束。问题、拒绝和中间结果不是交付。判断结果是否满足要求、是否保留重要限制，依据不足则澄清。不要仅凭下游的结论否定原始证据；无法消除的冲突要保留不确定性。
 node_delivery_accept 正式接受最新输出的准确摘录；交付本身必须满足要求，验收理由不能补造缺失内容。所有必需交付均有效后，你仍需判断整体目标是否完成，并明确使用 run_complete；节点全部成功不会自动完成 Run。
 普通讨论不启动空闲 ACP 工作，也不回答待决问题。缺少用户事实时使用 task_question_ask；执行授权不足不是缺失事实。补充工作须有显式执行意图，终结 Run 不重新打开。run_fail 用于确认无法完成的情况。
-已验收交付与终结 Run 不可变。补充时判断全局影响，对受影响节点重新审查：可用 reuse=true 明确复用仍有效的成果，或在授权内执行新工作。结果不明时停止，不重试、重放外部副作用或绕过门禁。
-业务账本保存状态，SDK 历史保存过程。task_memory_update 只保存未来判断需要的事实、条件、决定、未决问题和经验，不逐节点复制日志。没有值得保留的新信息时不必写笔记。
+已验收交付与终结 Run 不可变。stale 表示旧交付待重新审查。新消息或上游变化后，判断对整体目标和各节点的影响，复用仍有效的交付，或在授权内补充工作。结果不明时停止，不重试、重放外部副作用或绕过门禁。
+账本是执行状态的依据。任务记忆用于保存对后续判断有价值的事实、条件、决定、未决问题和经验。
 记忆是参考，不是授权或独立证明。区分来源陈述 reported 与你的推断 inferred。长期保存不等于长期适用：一次执行的事实使用 Run 范围；持续要求必须有明确来源支持。来源所在 Run 不机械决定适用范围，范围不明则保留条件，需要沿用时再核对。`;
 
 /** Durable terminates only when every tool in a round requests it. Admit decisions as singleton batches. */
@@ -108,7 +108,7 @@ export function createCoordinator(directory: string, config: NonNullable<Config[
           const memory = await input.read.snapshot(TaskMemory, input.conversationId, context);
           if (!memory) throw new StorageError("Task memory is missing");
           actions.validateMemory(memory.items);
-          return "任务记忆仅供参考；请核对账本和原始来源：\n" + JSON.stringify(memory.items.filter(item => item.scope.type === "task" || item.scope.runId === inputRunId));
+          return "Task 级和当前 Run 的笔记；其他 Run 笔记可用 task_memory_read 读取：\n" + JSON.stringify(memory.items.filter(item => item.scope.type === "task" || item.scope.runId === inputRunId));
         }))],
       hooks: [hook(ToolTask, {
         beforeTool: async (_call, api, context) => {
@@ -180,10 +180,12 @@ export function createCoordinator(directory: string, config: NonNullable<Config[
         tool({ name: "node_delivery_accept", description: "正式接受最新输出的准确摘录，或用 reuse=true 明确重验证最近已验收/基线交付。说明其为什么仍满足新事实和依赖；复用时不传 turn 或 result。",
           parameters: Type.Object({ nodeId: Type.String(), turn: Type.Optional(Type.Integer({ minimum: 1 })),
             result: Type.Optional(Type.String({ minLength: 1, maxLength: 262144 })), reuse: Type.Optional(Type.Boolean()),
+            reviewedMessageIds: Type.Optional(Type.Array(Type.String({ format: "uuid" }), { uniqueItems: true,
+              description: "验收最新输出时，填入已审查且不影响交付的全部新增消息 ID，见节点 unreviewedMessageIds，并在 reason 中说明依据。上游交付须与派发时一致；reuse 时省略。" })),
             reason: Type.String({ minLength: 1, maxLength: 4000 }) }), replay: "unsafe",
           execute: async args => {
             if (args.reuse ? args.turn !== undefined || args.result !== undefined : !args.turn || !args.result) throw new Error("Choose a turn/result or reuse, not both");
-            const delivery = await actions.accept(args.nodeId, args.turn ?? 0, args.result ?? "", args.reason, args.reuse);
+            const delivery = await actions.accept(args.nodeId, args.turn ?? 0, args.result ?? "", args.reason, args.reuse, args.reviewedMessageIds);
             return output({ accepted: true, delivery: deliveryView(delivery) });
           } }),
         tool({ name: "run_complete", description: "判断整体目标已满足后明确完成绑定 Run；系统要求每个节点都有当前有效交付。必须独占工具批次。",
@@ -205,11 +207,13 @@ export function createCoordinator(directory: string, config: NonNullable<Config[
             if (!memory) throw new StorageError("Task memory is missing");
             actions.validateMemory(memory.items); return output(memory);
           } }),
-        tool({ name: "task_memory_update", description: "替换任务笔记，并保留仍适用的条目。仅保存未来判断需要的信息，不复制日志；没有新信息时不必调用。sources 直接引用输入或工具返回的 reference。scope 表示适用范围，不是保存期限；持续默认值必须有明确来源。Task 级历史笔记须标出所属 Run。basis 区分来源陈述与推断。保留条件和不确定性，不存凭据。",
+        tool({ name: "task_memory_update", description: "按 key 新增、更新或删除任务笔记。sources 使用输入或工具返回的 reference；scope 和 basis 分别说明适用范围与判断依据。保留事实的条件和不确定性，不存凭据。",
           parameters: memoryUpdateParameters, replay: "safe",
           execute: async (args, api, context) => {
-            actions.validateMemory(args.items);
-            await api.commit(async tx => { (await tx.doc(TaskMemory, api.conversationId)).items = args.items; }, context);
+            await api.commit(async tx => {
+              const memory = await tx.doc(TaskMemory, api.conversationId);
+              memory.items = actions.updateMemory(memory.items, args.items, args.removeKeys ?? []);
+            }, context);
             return output({ saved: true });
           } }),
       ],

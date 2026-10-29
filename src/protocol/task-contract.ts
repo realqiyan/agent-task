@@ -7,7 +7,7 @@ export const nodeSchema = nodeData.extend({
   prompt: z.string().trim().min(1).max(64_000).describe("执行端的独立工作要求与验收标准。整体目标、选定用户事实和已验收上游引用仅补充上下文，不替换要求。未指定格式时允许普通文本或 Markdown 交付。"),
   executorId: nodeData.shape.executorId.describe("来自 executor_list 且 state=ready 的执行端 ID；创建后固定，不自动切换。"),
   dependsOn: nodeData.shape.dependsOn.default([]).describe("直接上游节点 ID；无依赖时可省略。节点必须存在，不得重复、自引用或成环。仅已验收交付解锁本节点，上游以文件路径提供，不传完整会话。"),
-  maxRunSeconds: nodeData.shape.maxRunSeconds.default(600).describe("从打开起计算的 ACP 会话总寿命，单位秒；包括执行、审查、澄清和等待用户，不按 turn 重置。"),
+  maxRunSeconds: nodeData.shape.maxRunSeconds.default(600).describe("本 Run 内该节点从首次派发计算的总寿命，单位秒；包括执行、审查、澄清及等待。后续 turn 或新会话沿用剩余时间。"),
 });
 export const replySchema = replyData.extend({
   taskId: replyData.shape.taskId.describe("问题所属的 Task。"),
@@ -19,7 +19,7 @@ export const messageSchema = messageData.safeExtend({
   taskId: messageData.shape.taskId.describe("消息接收方 Task 协调者；节点不是独立聊天入口。"),
   requestKey: messageData.shape.requestKey.describe("Task 内稳定的输入去重键，与问题回答共用；完全相同的重提返回同一回执。"),
   message: z.string().trim().min(1).max(16000).describe("用户消息或相关事实；不回答待决问题，也不授予执行端权限。"),
-  runId: messageData.shape.runId.describe("可选的上下文 Run。execute=true 时必填，指向活动 Run 或成功的基线 Run。"),
+  runId: messageData.shape.runId.describe("可选的上下文 Run。execute=true 时必填：有活动 Run 时须引用当前 running Run，waiting_input 不接受补充；无活动 Run 时引用本 Task 的 succeeded 基线。"),
   execute: messageData.shape.execute.default(false).describe("明确请求固定 DAG 内的补充工作。省略或 false 表示讨论或上下文；空闲讨论不启动 ACP。"),
 });
 export const messageListSchema = z.object({
@@ -62,5 +62,5 @@ export const taskSchema = taskData.extend({
   maxRunSeconds: taskData.shape.maxRunSeconds.default(1800).describe("Run 从协调开始计算的执行时长，单位秒，包含 ACP 执行但扣除等待用户的时间；独立于 expiresAt 和节点会话寿命。"),
   maxModelCalls: taskData.shape.maxModelCalls.default(20).describe("每个 Run 最多准入的模型请求次数，包含失败请求及 SDK 压缩请求。每次请求计一次，工具不重复计数；等待及回答不重置。独立讨论按输入使用同样上限，工程收尾不消耗模型额度。"),
   maxNodeTurns: taskData.shape.maxNodeTurns.default(3).describe("每个 Run 内每个节点最多 ACP turn 数，包括首轮工作、澄清和显式授权的补充工作，不允许自动重试。"),
-  inputWaitSeconds: taskData.shape.inputWaitSeconds.default(86400).describe("每个用户回答的等待秒数。保留 ACP 会话时，还受 300 秒上限和剩余会话寿命约束。以问题 expiresAt 和非空 sessionExpiresAt 中较早者为准。"),
+  inputWaitSeconds: taskData.shape.inputWaitSeconds.default(86400).describe("每个用户回答的等待秒数。需保留尚未验收的 ACP 会话以续接时，还受 300 秒上限和节点剩余寿命约束。以问题 expiresAt 和非空 sessionExpiresAt 中较早者为准。"),
 });

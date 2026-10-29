@@ -40,7 +40,7 @@ export const taskScheduleControlData = z.object({ taskId: z.string().uuid(), act
 export const messageData = z.object({
   taskId: z.string().uuid(), requestKey: identifier, message: text(16000),
   runId: z.string().uuid().optional(), execute: z.boolean().optional(),
-}).strict().refine(input => !input.execute || input.runId !== undefined, "Supplementary execution requires a successful base runId");
+}).strict().refine(input => !input.execute || input.runId !== undefined, "Supplementary execution requires a runId");
 export const memorySourceData = z.discriminatedUnion("type", [
   z.object({ type: z.literal("task"), taskId: z.string().uuid() }).strict(),
   z.object({ type: z.literal("run"), runId: z.string().uuid() }).strict(),

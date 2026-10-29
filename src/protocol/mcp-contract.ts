@@ -31,7 +31,7 @@ const taskNodeOutput = nodeData.safeExtend({
   prompt: nodeData.shape.prompt.describe("固定执行要求，结合整体目标、选定用户事实和上游引用使用。"),
   executorId: nodeData.shape.executorId.describe("创建任务时指定的执行端 ID，不自动切换。"),
   dependsOn: nodeData.shape.dependsOn.describe("直接上游节点 ID；只有已验收交付才能解锁本节点。"),
-  maxRunSeconds: nodeData.shape.maxRunSeconds.describe("ACP 会话寿命，单位秒，包含审查和等待用户。"),
+  maxRunSeconds: nodeData.shape.maxRunSeconds.describe("本 Run 内节点从首次派发计算的寿命，单位秒；包含审查和等待，后续 turn 或新会话不重置。"),
 });
 
 const taskInputOutput = taskData.safeExtend({
@@ -41,7 +41,7 @@ const taskInputOutput = taskData.safeExtend({
   nodes: z.array(taskNodeOutput).min(1).max(20).describe("固定 DAG，包含调用方定义的节点 ID 和执行端指派。"),
   workspace: taskData.shape.workspace.describe("规范任务工作目录。"),
   schedule: scheduleOutput,
-  expiresAt: taskData.shape.expiresAt.describe("设置后限制新 Run 和尚未开始的节点。"),
+  expiresAt: taskData.shape.expiresAt.describe("限制新 Run 及每次新 ACP 工作开始，不终止已开始的 turn。"),
   maxRunSeconds: taskData.shape.maxRunSeconds.describe("从协调开始计算的 Run 时长额度，单位秒，扣除等待用户时间。"),
   maxModelCalls: taskData.shape.maxModelCalls.describe("每个 Run 最多准入的模型请求数；工具不重复计数，等待和回答不重置额度。"),
   maxNodeTurns: taskData.shape.maxNodeTurns.describe("每个 Run 内每个节点最多 ACP turn 数，包含补充工作。"),
@@ -74,7 +74,7 @@ export const taskSummaryOutput = z.object({
   workspace: absolutePath.describe("所有 Run 固定使用的规范工作目录。"),
   schedule: scheduleOutput,
   nextAt: z.string().datetime().nullable().describe("下一个未消耗触发时点，暂停时仍保留；没有剩余时为 null。"),
-  expiresAt: timestamp.nullable().describe("新 Run/节点的截止时间；未设置时为 null。"),
+  expiresAt: timestamp.nullable().describe("新 Run 及每次新 ACP 工作开始的截止时间；未设置时为 null。"),
   createdAt: timestamp,
   nodeIds: z.array(identifier).describe("按存储顺序列出的 DAG 节点 ID。要求与依赖见 task_get。"),
   executorIds: z.array(identifier).describe("DAG 指派的去重执行端 ID。"),
@@ -87,7 +87,7 @@ const questionOutput = questionData.safeExtend({
   questionId: z.string().uuid().describe("问题 UUID，作为 questionId 传给 task_question_answer。"),
   createdAt: timestamp,
   expiresAt: timestamp.describe("回答截止时间，仅在 waiting_input Run 的该问题尚未回答时生效。"),
-  sessionExpiresAt: timestamp.nullable().describe("等待此问题时的 ACP 保留截止时间，到期会中断 Run；可能早于 expiresAt。提问时未保留会话则为 null。"),
+  sessionExpiresAt: timestamp.nullable().describe("尚未验收、需保留以续接的 ACP 会话截止时间，到期会中断 Run；可能早于 expiresAt。没有此类会话时为 null，已验收会话不受此问题期限约束。"),
   reply: z.object({
     requestKey: identifier.describe("回答去重键。"),
     answer: z.string().describe("已保存的回答正文。"),
@@ -102,7 +102,7 @@ const questionSummaryOutput = z.object({
   completedWork: questionData.shape.completedWork.describe("提问前协调者已经完成的工作。"),
   createdAt: timestamp,
   expiresAt: timestamp.describe("回答截止时间，仅在 waiting_input Run 的该问题尚未回答时生效。"),
-  sessionExpiresAt: timestamp.nullable().describe("等待此问题时的 ACP 保留截止时间，可能早于 expiresAt；提问时未保留会话则为 null。"),
+  sessionExpiresAt: timestamp.nullable().describe("尚未验收、需保留以续接的 ACP 会话截止时间，可能早于 expiresAt；没有此类会话时为 null。"),
   answered: z.boolean().describe("是否已保存回答，不表示当前仍可回答。回答正文见 task_run_get。"),
 }).strict();
 
@@ -127,7 +127,7 @@ export const nodeOutput = z.object({
   definition: taskNodeOutput.describe("创建 Run 时从 Task 复制的节点定义。"),
   status: nodeStatusSchema.describe(nodeStatusDescription),
   workspace: absolutePath.nullable().describe("节点使用的工作目录，开始前为 null；当前为 Task 工作目录。"),
-  inputFiles: z.array(absolutePath).describe("传给节点的已验收上游文件；只是本地路径，不授予访问权限。"),
+  inputFiles: z.array(absolutePath).describe("传给节点的已验收直接上游及本节点旧交付文件；ACP 客户端仅允许读取这些精确路径，原生工具权限仍由执行端管理。"),
   resultFile: absolutePath.nullable().describe("已验收交付的持久文件；只是本地路径，不是 URL 或授权。"),
   result: z.string().nullable().describe("最近验收的文本，包括显式复用。仅当 status=succeeded 且 deliveryId 已设置时有效；原始输出不是交付。"),
   acceptance: z.string().nullable().describe("协调者接受 result 的理由；验收前为 null。"),
@@ -217,8 +217,8 @@ export const executorsOutput = z.object({
 
 export function pageOutput<T extends z.ZodType>(item: T) {
   return z.object({
-    items: z.array(item).max(100).describe("本页记录，按创建时间升序；空数组表示该偏移没有匹配记录。"),
-    next: z.number().int().nonnegative().nullable().describe("同样过滤条件下下一页的 after 偏移；null 表示本次扫描结束，不表示所有工作完成。"),
+    items: z.array(item).max(100).describe("本页记录，按创建时间升序；空数组表示当前位置没有匹配记录。"),
+    next: z.number().int().nonnegative().nullable().describe("保持过滤条件，作为下一页 after 原样传回，不自行计算；null 表示本次扫描结束，不表示所有工作完成。"),
   }).strict();
 }
 

@@ -1,6 +1,6 @@
 import type { ExecutionSession, OpenExecution } from "./ports.js";
 
-type OwnedSession = { runId: string; handle: ExecutionSession } & (
+type OwnedSession = { runId: string; handle: ExecutionSession; readsInputFiles: boolean } & (
   { state: "open"; timer: ReturnType<typeof setTimeout> } | { state: "closing"; completion: Promise<void> }
 );
 
@@ -11,6 +11,10 @@ export class NodeSessions {
   constructor(private readonly openExecution: OpenExecution, private readonly fatal: (error: unknown) => void) {}
   get size(): number { return this.sessions.size; }
   has(id: string): boolean { return !this.closing && this.sessions.get(id)?.state === "open"; }
+  async retireWithoutInputFiles(id: string): Promise<void> {
+    const session = this.sessions.get(id);
+    if (session && !session.readsInputFiles) await this.closeSession(id);
+  }
   closingSession(id: string): Promise<void> | undefined {
     const session = this.sessions.get(id);
     return session?.state === "closing" ? session.completion : undefined;
@@ -28,7 +32,7 @@ export class NodeSessions {
     if (this.sessions.has(id)) throw new Error("Node session already exists");
     const handle = this.openExecution(input, event, beforeStart);
     const timer = setTimeout(expired, seconds * 1000);
-    this.sessions.set(id, { runId, handle, state: "open", timer });
+    this.sessions.set(id, { runId, handle, readsInputFiles: input.inputFiles.length > 0, state: "open", timer });
     void handle.closed.then(() => {
       if (this.sessions.get(id)?.state === "open" && !this.closing) disconnected();
     }).catch(this.fatal);
@@ -41,7 +45,7 @@ export class NodeSessions {
     clearTimeout(owned.timer);
     // Mark closing before the handle can report a disconnect; concurrent close calls share completion.
     const completion = Promise.resolve().then(() => owned.handle.close()).then(() => { this.sessions.delete(id); });
-    this.sessions.set(id, { runId: owned.runId, handle: owned.handle, state: "closing", completion });
+    this.sessions.set(id, { runId: owned.runId, handle: owned.handle, readsInputFiles: owned.readsInputFiles, state: "closing", completion });
     return completion;
   }
   async closeRun(id: string): Promise<void> {

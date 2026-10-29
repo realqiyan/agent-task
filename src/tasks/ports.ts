@@ -50,7 +50,7 @@ export type CoordinatorActions = {
   check(): void;
   requestModel(): void;
   converse(nodeId: string, message?: string, contextMessageIds?: string[]): Promise<NodeRun>;
-  accept(nodeId: string, turn: number, result: string, reason: string, reuse?: boolean): Promise<Delivery>;
+  accept(nodeId: string, turn: number, result: string, reason: string, reuse?: boolean, reviewedMessageIds?: string[]): Promise<Delivery>;
   finish(summary: string): void;
   ask(request: QuestionRequest): InputQuestion;
   stop(status: EndStatus, reason: string): void;
@@ -62,5 +62,6 @@ export type CoordinatorActions = {
   bind(conversationId: string): void;
   project(cursor: string, runId: string | null, text?: string): void;
   validateMemory(items: MemoryItem[]): void;
+  updateMemory(current: MemoryItem[], items: MemoryItem[], removeKeys: string[]): MemoryItem[];
 };
 export type Coordinate = (taskId: string, input: TaskMessage, actions: CoordinatorActions, signal: AbortSignal, reconcileOnly?: boolean) => Promise<void>;

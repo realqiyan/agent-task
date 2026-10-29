@@ -74,7 +74,7 @@ export function createMcpServer(service: TaskApi, fatal: (error: unknown) => voi
       const page = service.conversations.list(input.taskId, input.after, input.limit);
       return { items: page.items.map(messageView), next: page.next };
     });
-  register("task_message_send", "向 Task 协调者提交持久消息。普通讨论不回答待决问题，也不启动空闲 ACP 工作。execute=true 明确请求固定 DAG 内的补充工作，须引用活动 Run 或成功基线 Run。不重开终结 Run，不重试结果不明的工作。",
+  register("task_message_send", "向 Task 协调者提交持久消息。普通讨论不回答待决问题，也不启动空闲 ACP 工作。execute=true 明确请求固定 DAG 内的补充工作，须引用当前 running Run；waiting_input 不接受补充。无活动 Run 时可引用本 Task 的成功基线 Run。不重开终结 Run，不重试结果不明的工作。",
     messageSchema, messageOutput, input => messageView(service.supervisor.send(input)),
     { readOnly: false, destructive: false, idempotent: true, openWorld: true });
   register("task_question_answer", "回答本 Task 的具体待决问题。返回持久输入回执，只续接所属等待 Run。普通消息不代替回答。检查问题期限、归属和 ACP 保留状态；回答不授予权限，也不重放不确定副作用。",

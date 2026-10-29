@@ -1,4 +1,5 @@
 import { OUTPUT_LIMIT } from "../shared/limits.js";
+import { TaskError } from "../shared/errors.js";
 import type { ResultFiles } from "./ports.js";
 
 /** Authorization and content policy; the file adapter owns OS operations and durability. */
@@ -11,12 +12,12 @@ export class Results {
     this.files.readable(path);
   }
   readInputFile(allowed: readonly string[], path: string, line = 1, limit?: number): string {
-    if (!allowed.includes(path)) throw new Error("Input file is not authorized for this run");
+    if (!allowed.includes(path)) throw new TaskError("precondition", "Input file is not authorized for this run");
+    if (!Number.isInteger(line) || line < 1 || (limit !== undefined && (!Number.isInteger(limit) || limit < 1))) throw new TaskError("validation", "Invalid line range");
     const facts = this.files.describe(path);
     if (!facts.canonical) throw new Error("Input file is not authorized for this run");
     if (!facts.inside) throw new Error("Input file outside result scope");
     if (!facts.regular) throw new Error("Invalid input file");
-    if (!Number.isInteger(line) || line < 1 || (limit !== undefined && (!Number.isInteger(limit) || limit < 1))) throw new Error("Invalid line range");
     const content = this.files.read(path);
     if (line === 1 && limit === undefined) return content;
     return content.split("\n").slice(line - 1, limit === undefined ? undefined : line - 1 + limit).join("\n");

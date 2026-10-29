@@ -12,7 +12,7 @@ function files(directory) {
 const roles = {
   model: ["tasks/model.ts", "executors/model.ts", "configuration/model.ts"],
   port: ["tasks/ports.ts", "configuration/ports.ts", "results/ports.ts", "executors/ports.ts"],
-  rule: ["shared/time.ts", "shared/limits.ts", "shared/errors.ts", "tasks/graph.ts", "tasks/schedule.ts", "tasks/cron.ts", "tasks/human-input.ts",
+  rule: ["shared/time.ts", "shared/limits.ts", "shared/errors.ts", "tasks/graph.ts", "tasks/execution-context.ts", "tasks/schedule.ts", "tasks/cron.ts", "tasks/human-input.ts",
     "executors/permissions.ts", "executors/environment.ts", "configuration/policy.ts", "configuration/environment.ts"],
   schema: ["shared/validation.ts", "tasks/validation.ts", "tasks/storage/records.ts", "executors/validation.ts", "configuration/contract.ts"],
   service: ["tasks/notifications.ts", "tasks/definitions.ts", "tasks/runs.ts", "tasks/conversations.ts", "tasks/supervisor.ts", "tasks/sessions.ts", "executors/registry.ts",

@@ -159,6 +159,20 @@ export class TaskConversations {
     }
   }
 
+  updateMemory(taskId: string, current: MemoryItem[], items: MemoryItem[], removeKeys: string[]): MemoryItem[] {
+    this.validateMemory(taskId, current);
+    this.validateMemory(taskId, items);
+    const removed = new Set(removeKeys);
+    if (removed.size !== removeKeys.length || items.some(item => removed.has(item.key))) {
+      throw new TaskError("validation", "记忆更新和删除不能包含重复或冲突的 key");
+    }
+    const merged = new Map(current.filter(item => !removed.has(item.key)).map(item => [item.key, item]));
+    for (const item of items) merged.set(item.key, item);
+    const next = [...merged.values()];
+    this.validateMemory(taskId, next);
+    return next;
+  }
+
   validateMemory(taskId: string, items: MemoryItem[]): void {
     this.check();
     this.store.get(taskId);

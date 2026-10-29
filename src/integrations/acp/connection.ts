@@ -9,6 +9,7 @@ import { Results } from "../../results/service.js";
 import { LocalResultFiles } from "../../results/files.js";
 import { permissionDecision } from "../../executors/permissions.js";
 import { version } from "../../infrastructure/version.js";
+import { TaskError } from "../../shared/errors.js";
 
 export type Progress = (kind: string, data: unknown, text?: string) => Promise<void>;
 
@@ -32,6 +33,21 @@ export function progressEvents(update: acp.SessionUpdate): { kind: string; data:
     })) }];
   }
   return [];
+}
+
+export function readTextFile(results: Results, inputFiles: readonly string[], request: acp.ReadTextFileRequest,
+  sessionId: string | undefined, controller: AbortController): acp.ReadTextFileResponse {
+  controller.signal.throwIfAborted();
+  if (request.sessionId !== sessionId) throw acp.RequestError.invalidParams(undefined, "Wrong input-file session");
+  try {
+    return { content: results.readInputFile(inputFiles, request.path, request.line ?? 1, request.limit ?? undefined) };
+  } catch (error) {
+    if (error instanceof TaskError && ["validation", "precondition"].includes(error.code)) {
+      throw acp.RequestError.invalidParams(undefined, error.message);
+    }
+    controller.abort(error);
+    throw error;
+  }
 }
 
 function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -96,13 +112,11 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
     await closed;
   })();
   let busy = false;
+  const supportsInputFiles = inputFiles.length > 0;
   const app = acp.client({ name: "task-conductor" })
     .onRequest(acp.methods.client.fs.readTextFile, async ctx => {
-      try {
-        cancel.throwIfAborted();
-        if (ctx.params.sessionId !== sessionId) throw new Error("Wrong input-file session");
-        return { content: results.readInputFile(inputFiles, ctx.params.path, ctx.params.line ?? 1, ctx.params.limit ?? undefined) };
-      } catch (error) { controller.abort(error); throw error; }
+      cancel.throwIfAborted();
+      return readTextFile(results, inputFiles, ctx.params, sessionId, controller);
     })
     .onRequest(acp.methods.client.session.requestPermission, async ctx => {
       const request = ctx.params;
@@ -121,7 +135,8 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
     ));
     if (cancel.aborted) abort();
     const init = await connection.agent.request(acp.methods.agent.initialize, {
-      protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: inputFiles.length ? { fs: { readTextFile: true, writeTextFile: false } } : {},
+      protocolVersion: acp.PROTOCOL_VERSION,
+      clientCapabilities: supportsInputFiles ? { fs: { readTextFile: true, writeTextFile: false } } : {},
       clientInfo: { name: "task-conductor", version },
     });
     cancel.throwIfAborted();
@@ -136,6 +151,7 @@ export async function openAcp(executor: Executor, workspace: string, signal: Abo
       async prompt(text: string, files: string[] = inputFiles): Promise<string> {
         cancel.throwIfAborted();
         if (closing || busy) throw new Error("ACP session closed or busy");
+        if (files.length && !supportsInputFiles) throw new Error("ACP session has no input-file capability");
         inputFiles = [...files]; busy = true;
         try {
           const result = await connection!.agent.request(acp.methods.agent.session.prompt, {
